@@ -10,6 +10,8 @@ services:
       - "4000:4000"
     env_file:
       - ./server/.env
+    environment:
+      - CLIENT_ORIGIN=${CLIENT_ORIGIN:-http://localhost:5173}
     volumes:
       - ./server/data:/usr/src/app/server/data
 
