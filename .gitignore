@@ -20,6 +20,9 @@
 !/client
 !/client/**
 
+# Ignore frontend build output
+/client/dist/
+
 # Unignore node modules if needed for package locks only
 /node_modules/
 /client/node_modules/
