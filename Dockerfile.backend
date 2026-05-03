@@ -1,0 +1,12 @@
+FROM node:20-alpine
+
+WORKDIR /usr/src/app
+
+COPY package.json package-lock.json ./
+RUN npm install --production
+
+COPY server ./server
+COPY server/data ./server/data
+
+EXPOSE 4000
+CMD ["node", "server/index.js"]

@@ -1,0 +1,35 @@
+[
+  {
+    "registration": "AB12CDE",
+    "vin": "1HGCM82633A004352",
+    "make": "Honda",
+    "model": "Accord",
+    "year": "2003",
+    "engineCode": "K24A4",
+    "fuelType": "Petrol",
+    "trim": "ES",
+    "bodyType": "Saloon"
+  },
+  {
+    "registration": "YX68XYZ",
+    "vin": "WVWZZZ1KZBW000001",
+    "make": "Volkswagen",
+    "model": "Golf",
+    "year": "2018",
+    "engineCode": "EA211",
+    "fuelType": "Petrol",
+    "trim": "GT",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "LR65ABC",
+    "vin": "SAJWA0ES7J8D12345",
+    "make": "Jaguar",
+    "model": "XF",
+    "year": "2018",
+    "engineCode": "AJ-V6",
+    "fuelType": "Petrol",
+    "trim": "R-Sport",
+    "bodyType": "Saloon"
+  }
+]

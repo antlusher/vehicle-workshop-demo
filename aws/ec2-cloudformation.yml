@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Vehicle Workshop demo app on EC2 with Docker
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t2.micro
+      - t2.small
+    Description: EC2 instance type
+  SSHLocation:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: The IP address range that can be used to SSH to the EC2 instance
+  RepoUrl:
+    Type: String
+    Description: Git repo URL containing this project
+  RepoBranch:
+    Type: String
+    Default: main
+    Description: Git branch to deploy
+  UbuntuAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    Description: SSM parameter for the Ubuntu 22.04 AMI ID
+  OpenAIAPIKey:
+    Type: String
+    NoEcho: true
+    Description: OpenAI API key for production AI guidance
+  RegLookupApiUrl:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: DVLA or registration lookup API URL
+  RegLookupApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: DVLA or registration lookup API key
+  ClientOrigin:
+    Type: String
+    Default: http://localhost:5173
+    Description: Frontend origin for the app
+
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH and HTTP access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 0.0.0.0/0
+
+  WorkshopInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      ImageId: !Ref UbuntuAmiId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          apt-get update -y
+          apt-get install -y docker.io docker-compose-plugin git
+          usermod -aG docker ubuntu
+          systemctl enable docker
+          systemctl start docker
+          mkdir -p /opt/vehicle-workshop
+          cd /opt/vehicle-workshop
+          rm -rf ./*
+          git clone --branch ${RepoBranch} ${RepoUrl} .
+          cat > server/.env <<'EOF'
+          OPENAI_API_KEY=${OpenAIAPIKey}
+          REG_LOOKUP_API_URL=${RegLookupApiUrl}
+          REG_LOOKUP_API_KEY=${RegLookupApiKey}
+          CLIENT_ORIGIN=${ClientOrigin}
+          EOF
+          docker compose up --build -d
+
+Outputs:
+  WebsiteURL:
+    Description: URL for the frontend app
+    Value: !Sub "http://${WorkshopInstance.PublicIp}"
+  ApiURL:
+    Description: URL for the backend API
+    Value: !Sub "http://${WorkshopInstance.PublicIp}:4000"

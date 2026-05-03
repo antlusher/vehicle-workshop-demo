@@ -1,0 +1,32 @@
+# Ignore everything by default, then selectively allow project files
+*
+
+# Keep git ignore itself
+!.gitignore
+
+# Allow project metadata and deployment files
+!/README.md
+!/package.json
+!/package-lock.json
+!/Dockerfile.backend
+!/Dockerfile.frontend
+!/docker-compose.yml
+!/aws
+!/aws/**
+
+# Allow app directories and files
+!/server
+!/server/**
+!/client
+!/client/**
+
+# Unignore node modules if needed for package locks only
+/node_modules/
+/client/node_modules/
+/server/node_modules/
+
+# Ignore environment files and IDE artifacts
+/server/.env
+.vscode/
+.DS_Store
+npm-debug.log*

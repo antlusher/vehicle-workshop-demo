@@ -1,0 +1,10 @@
+[
+  {
+    "id": "demo-user-1",
+    "email": "demo@workshop.local",
+    "password": "demo123",
+    "subscribed": true,
+    "token": "demo-token-123",
+    "createdAt": "2026-05-03T12:00:00.000Z"
+  }
+]

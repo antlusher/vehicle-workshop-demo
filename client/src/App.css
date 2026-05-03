@@ -1,0 +1,109 @@
+.app-shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+button {
+  border: none;
+  background: #2563eb;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+button.secondary {
+  background: #6b7280;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: white;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.card,
+.panel {
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  padding: 22px;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 20px;
+}
+
+.demo-banner {
+  margin: 0 0 20px;
+  padding: 14px 18px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.project-card,
+.history-entry {
+  border: 1px solid #e5e7eb;
+  padding: 14px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+.project-card strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.project-card .meta {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.section-title {
+  margin-top: 0;
+}
+
+.error {
+  color: #b91c1c;
+  margin-top: 10px;
+}
+
+@media (max-width: 960px) {
+  .app-grid {
+    grid-template-columns: 1fr;
+  }
+}
