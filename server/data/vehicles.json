@@ -32,4 +32,225 @@
     "trim": "R-Sport",
     "bodyType": "Saloon"
   }
+  ,
+  {
+    "registration": "ST19ABC",
+    "vin": "WF0FXXGCHFJR12345",
+    "make": "Ford",
+    "model": "Focus",
+    "year": "2019",
+    "engineCode": "1.5 EcoBlue",
+    "fuelType": "Diesel",
+    "trim": "Titanium",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "BM20XYZ",
+    "vin": "WBA5A7C50FD123456",
+    "make": "BMW",
+    "model": "3 Series",
+    "year": "2020",
+    "engineCode": "B48B20",
+    "fuelType": "Petrol",
+    "trim": "Sport",
+    "bodyType": "Saloon"
+  },
+  {
+    "registration": "VA17DEF",
+    "vin": "W0L000000H8123456",
+    "make": "Vauxhall",
+    "model": "Astra",
+    "year": "2017",
+    "engineCode": "A16XER",
+    "fuelType": "Petrol",
+    "trim": "SRi",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "TY21GHJ",
+    "vin": "JTDKB20U993123456",
+    "make": "Toyota",
+    "model": "Prius",
+    "year": "2021",
+    "engineCode": "2ZR-FXE",
+    "fuelType": "Hybrid",
+    "trim": "Excel",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "ME19KLM",
+    "vin": "WDD2050411R123456",
+    "make": "Mercedes-Benz",
+    "model": "C-Class",
+    "year": "2019",
+    "engineCode": "OM654",
+    "fuelType": "Diesel",
+    "trim": "AMG Line",
+    "bodyType": "Saloon"
+  },
+  {
+    "registration": "AU20NOP",
+    "vin": "WAUZZZ8K9AA123456",
+    "make": "Audi",
+    "model": "A4",
+    "year": "2020",
+    "engineCode": "CYRB",
+    "fuelType": "Petrol",
+    "trim": "S Line",
+    "bodyType": "Saloon"
+  },
+  {
+    "registration": "NQ18RST",
+    "vin": "SJNFAAJ11U1123456",
+    "make": "Nissan",
+    "model": "Qashqai",
+    "year": "2018",
+    "engineCode": "MR20DD",
+    "fuelType": "Petrol",
+    "trim": "N-Connecta",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "FF16UVW",
+    "vin": "WF0JXXGAHJGR12345",
+    "make": "Ford",
+    "model": "Fiesta",
+    "year": "2016",
+    "engineCode": "1.0 EcoBoost",
+    "fuelType": "Petrol",
+    "trim": "Zetec",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "RR22YZA",
+    "vin": "SALWA2BF8HA123456",
+    "make": "Land Rover",
+    "model": "Range Rover Sport",
+    "year": "2022",
+    "engineCode": "306DT",
+    "fuelType": "Diesel",
+    "trim": "HSE",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "HT21BCD",
+    "vin": "KMHJ341ABMU123456",
+    "make": "Hyundai",
+    "model": "Tucson",
+    "year": "2021",
+    "engineCode": "G4NA",
+    "fuelType": "Petrol",
+    "trim": "Premium",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "SK19EFG",
+    "vin": "TMBEJ7NE0K0123456",
+    "make": "Skoda",
+    "model": "Octavia",
+    "year": "2019",
+    "engineCode": "DGTE",
+    "fuelType": "Diesel",
+    "trim": "SE",
+    "bodyType": "Estate"
+  },
+  {
+    "registration": "RM17HIJ",
+    "vin": "VF1BM0B0H54123456",
+    "make": "Renault",
+    "model": "Megane",
+    "year": "2017",
+    "engineCode": "H4Bt",
+    "fuelType": "Petrol",
+    "trim": "Dynamique",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "PE20KLM",
+    "vin": "VF3LCYHZPHS123456",
+    "make": "Peugeot",
+    "model": "308",
+    "year": "2020",
+    "engineCode": "DV6FC",
+    "fuelType": "Diesel",
+    "trim": "Allure",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "KS21NOP",
+    "vin": "U5YHM81B4ML123456",
+    "make": "Kia",
+    "model": "Sportage",
+    "year": "2021",
+    "engineCode": "G4FJ",
+    "fuelType": "Hybrid",
+    "trim": "GT-Line",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "MZ19QRS",
+    "vin": "JM3KFBCM4K0123456",
+    "make": "Mazda",
+    "model": "CX-5",
+    "year": "2019",
+    "engineCode": "PY-VPTS",
+    "fuelType": "Petrol",
+    "trim": "Sport Nav",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "VV20TUV",
+    "vin": "YV1DZ8256L2123456",
+    "make": "Volvo",
+    "model": "XC60",
+    "year": "2020",
+    "engineCode": "D4204T23",
+    "fuelType": "Diesel",
+    "trim": "Momentum",
+    "bodyType": "SUV"
+  },
+  {
+    "registration": "MC18WXY",
+    "vin": "WMWXU310X0T123456",
+    "make": "MINI",
+    "model": "Cooper",
+    "year": "2018",
+    "engineCode": "B38A15A",
+    "fuelType": "Petrol",
+    "trim": "Sport",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "SL17ZAB",
+    "vin": "VSSZZZ5FZHR123456",
+    "make": "SEAT",
+    "model": "Leon",
+    "year": "2017",
+    "engineCode": "CZEA",
+    "fuelType": "Petrol",
+    "trim": "FR",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "CC19CDE",
+    "vin": "VF7SCYHZPJT123456",
+    "make": "Citroen",
+    "model": "C3",
+    "year": "2019",
+    "engineCode": "EB2F",
+    "fuelType": "Petrol",
+    "trim": "Flair",
+    "bodyType": "Hatchback"
+  },
+  {
+    "registration": "SF20FGH",
+    "vin": "JF1SJADC5LH123456",
+    "make": "Subaru",
+    "model": "Forester",
+    "year": "2020",
+    "engineCode": "FB25",
+    "fuelType": "Petrol",
+    "trim": "XE Premium",
+    "bodyType": "SUV"
+  }
 ]
