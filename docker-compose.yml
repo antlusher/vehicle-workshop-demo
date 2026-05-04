@@ -1,6 +1,24 @@
 version: '3.9'
 
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: vehicle-workshop-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-workshop}
+      POSTGRES_USER: ${POSTGRES_USER:-workshop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workshop}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-workshop} -d ${POSTGRES_DB:-workshop}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: .
@@ -12,6 +30,10 @@ services:
       - ./server/.env
     environment:
       - CLIENT_ORIGIN=${CLIENT_ORIGIN:-http://localhost:5173}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://workshop:workshop@db:5432/workshop}
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./server/data:/usr/src/app/server/data
 
@@ -26,3 +48,6 @@ services:
       - "5173:80"
     depends_on:
       - backend
+
+volumes:
+  pgdata:

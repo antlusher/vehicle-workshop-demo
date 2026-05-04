@@ -1,134 +1,127 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
-const { loadData, saveData } = require('./storage');
+const { query } = require('./db');
 
-const USERS_FILE = 'users.json';
 const SALT_ROUNDS = 10;
 
-function getUsers() {
-  return loadData(USERS_FILE, []);
+function toUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    email: row.email,
+    password: row.password,
+    role: row.role,
+    subscribed: row.subscribed,
+    sessionActive: row.session_active,
+    token: row.token,
+    resetToken: row.reset_token,
+    resetExpiry: row.reset_expiry,
+    lastLoginAt: row.last_login_at,
+    createdAt: row.created_at,
+  };
 }
 
-function saveUsers(users) {
-  saveData(USERS_FILE, users);
-}
-
-function findUserByEmail(email) {
+async function findUserByEmail(email) {
   if (!email) return null;
-  const users = getUsers();
-  return users.find((user) => user.email.toLowerCase() === email.toLowerCase());
+  const { rows } = await query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+  return toUser(rows[0]);
 }
 
-function findUserByToken(token) {
+async function findUserByToken(token) {
   if (!token) return null;
-  const users = getUsers();
-  return users.find((user) => user.token === token);
+  const { rows } = await query('SELECT * FROM users WHERE token = $1', [token]);
+  return toUser(rows[0]);
 }
 
 async function createUser(email, password) {
-  const existing = findUserByEmail(email);
-  if (existing) {
-    throw new Error('An account with this email already exists');
-  }
+  const existing = await findUserByEmail(email);
+  if (existing) throw new Error('An account with this email already exists');
 
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-  const users = getUsers();
-  const user = {
-    id: crypto.randomUUID(),
-    email,
-    password: hashedPassword,
-    role: 'tech',
-    subscribed: false,
-    sessionActive: false,
-    token: null,
-    createdAt: new Date().toISOString(),
-  };
-  users.push(user);
-  saveUsers(users);
-  return user;
+  const { rows } = await query(
+    `INSERT INTO users (email, password, role, subscribed, session_active)
+     VALUES ($1, $2, 'tech', false, false) RETURNING *`,
+    [email, hashedPassword]
+  );
+  return toUser(rows[0]);
 }
 
 async function loginUser(email, password) {
-  const users = getUsers();
-  const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+  const user = await findUserByEmail(email);
+  if (!user) throw new Error('Invalid email or password');
 
-  if (!user) {
-    throw new Error('Invalid email or password');
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) throw new Error('Invalid email or password');
+
+  // Auto-clear session if last login was over 24 hours ago
+  if (user.sessionActive && user.lastLoginAt) {
+    const sessionAge = Date.now() - new Date(user.lastLoginAt).getTime();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    if (sessionAge > twentyFourHours) {
+      await query('UPDATE users SET session_active = false, token = NULL WHERE id = $1', [user.id]);
+      user.sessionActive = false;
+    }
   }
 
-  const passwordMatch = await bcrypt.compare(password, user.password);
-  if (!passwordMatch) {
-    throw new Error('Invalid email or password');
-  }
-
-  if (user.sessionActive) {
+  const singleSessionEnabled = process.env.SINGLE_SESSION !== 'false';
+  if (singleSessionEnabled && user.sessionActive) {
     throw new Error('This account is already active on another device');
   }
 
   const token = crypto.randomBytes(32).toString('hex');
-  const index = users.findIndex((u) => u.id === user.id);
-  users[index] = { ...user, token, sessionActive: true, lastLoginAt: new Date().toISOString() };
-  saveUsers(users);
-
-  return users[index];
+  const { rows } = await query(
+    `UPDATE users SET token = $1, session_active = true, last_login_at = now()
+     WHERE id = $2 RETURNING *`,
+    [token, user.id]
+  );
+  return toUser(rows[0]);
 }
 
-function logoutUser(token) {
-  const users = getUsers();
-  const index = users.findIndex((u) => u.token === token);
-  if (index === -1) return;
-  users[index] = { ...users[index], token: null, sessionActive: false };
-  saveUsers(users);
+async function logoutUser(token) {
+  await query(
+    'UPDATE users SET token = NULL, session_active = false WHERE token = $1',
+    [token]
+  );
 }
 
-function createPasswordResetToken(email) {
-  const users = getUsers();
-  const index = users.findIndex((u) => u.email.toLowerCase() === email.toLowerCase());
-  if (index === -1) return null;
+async function subscribeUser(token) {
+  const { rows } = await query(
+    'UPDATE users SET subscribed = true WHERE token = $1 RETURNING *',
+    [token]
+  );
+  if (!rows.length) throw new Error('Invalid session');
+  return toUser(rows[0]);
+}
+
+async function createPasswordResetToken(email) {
+  const user = await findUserByEmail(email);
+  if (!user) return null;
 
   const resetToken = crypto.randomBytes(32).toString('hex');
-  const resetExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-  users[index] = { ...users[index], resetToken, resetExpiry };
-  saveUsers(users);
+  const resetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+  await query(
+    'UPDATE users SET reset_token = $1, reset_expiry = $2 WHERE id = $3',
+    [resetToken, resetExpiry, user.id]
+  );
   return resetToken;
 }
 
 async function resetPassword(resetToken, newPassword) {
-  const users = getUsers();
-  const index = users.findIndex((u) => u.resetToken === resetToken);
-  if (index === -1) {
-    throw new Error('Invalid or expired reset link');
-  }
-  if (new Date(users[index].resetExpiry) < new Date()) {
-    throw new Error('Invalid or expired reset link');
-  }
+  const { rows } = await query(
+    'SELECT * FROM users WHERE reset_token = $1 AND reset_expiry > now()',
+    [resetToken]
+  );
+  if (!rows.length) throw new Error('Invalid or expired reset link');
 
   const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  users[index] = {
-    ...users[index],
-    password: hashedPassword,
-    resetToken: null,
-    resetExpiry: null,
-    token: null,
-    sessionActive: false,
-  };
-  saveUsers(users);
-}
-
-function subscribeUser(token) {
-  const users = getUsers();
-  const index = users.findIndex((u) => u.token === token);
-  if (index === -1) {
-    throw new Error('Invalid session');
-  }
-  users[index].subscribed = true;
-  saveUsers(users);
-  return users[index];
+  await query(
+    `UPDATE users SET password = $1, reset_token = NULL, reset_expiry = NULL,
+     token = NULL, session_active = false WHERE id = $2`,
+    [hashedPassword, rows[0].id]
+  );
 }
 
 module.exports = {
-  getUsers,
-  saveUsers,
   findUserByEmail,
   findUserByToken,
   createUser,
