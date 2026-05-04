@@ -53,7 +53,20 @@ async function loginUser(email, password) {
   const match = await bcrypt.compare(password, user.password);
   if (!match) throw new Error('Invalid email or password');
 
-  if (user.sessionActive) throw new Error('This account is already active on another device');
+  // Auto-clear session if last login was over 24 hours ago
+  if (user.sessionActive && user.lastLoginAt) {
+    const sessionAge = Date.now() - new Date(user.lastLoginAt).getTime();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    if (sessionAge > twentyFourHours) {
+      await query('UPDATE users SET session_active = false, token = NULL WHERE id = $1', [user.id]);
+      user.sessionActive = false;
+    }
+  }
+
+  const singleSessionEnabled = process.env.SINGLE_SESSION !== 'false';
+  if (singleSessionEnabled && user.sessionActive) {
+    throw new Error('This account is already active on another device');
+  }
 
   const token = crypto.randomBytes(32).toString('hex');
   const { rows } = await query(
