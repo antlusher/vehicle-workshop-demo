@@ -5,7 +5,10 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js"
+    "dev": "node server/index.js",
+    "migrate": "node-pg-migrate up -m server/migrations",
+    "migrate:down": "node-pg-migrate down -m server/migrations",
+    "seed": "node server/seeds/dev.js"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +21,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.4",
-    "openai": "^6.35.0"
+    "node-pg-migrate": "^8.0.4",
+    "openai": "^6.35.0",
+    "pg": "^8.20.0"
   }
 }

@@ -1,28 +1,59 @@
 const express = require('express');
-const { loadData, saveData } = require('../services/storage');
+const { query } = require('../services/db');
 const { lookupVehicle } = require('../services/vehicleProviders');
 const { findUserByToken } = require('../services/authService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  const user = findUserByToken(token);
-  if (!user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  req.user = user;
-  next();
+  findUserByToken(token).then((user) => {
+    if (!user) return res.status(401).json({ error: 'Authentication required' });
+    req.user = user;
+    next();
+  }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-function findProject(userId, projectId) {
-  const projects = loadData('projects.json', []);
-  return projects.find((project) => project.id === projectId && project.userId === userId);
+function toProject(row, history = []) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    registration: row.registration,
+    vin: row.vin,
+    make: row.make,
+    model: row.model,
+    year: row.year,
+    engineCode: row.engine_code,
+    fuelType: row.fuel_type,
+    trim: row.trim,
+    bodyType: row.body_type,
+    source: row.source,
+    active: row.active,
+    closed: row.closed,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    history: history.map((h) => ({
+      id: h.id,
+      role: h.role,
+      text: h.text,
+      confirmed: h.confirmed,
+      createdAt: h.created_at,
+    })),
+  };
 }
 
-router.get('/', requireAuth, (req, res) => {
-  const projects = loadData('projects.json', []);
-  const userProjects = projects.filter((project) => project.userId === req.user.id);
-  return res.json(userProjects);
+router.get('/', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM projects WHERE user_id = $1 ORDER BY updated_at DESC',
+    [req.user.id]
+  );
+  const projects = await Promise.all(rows.map(async (row) => {
+    const { rows: history } = await query(
+      'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
+      [row.id]
+    );
+    return toProject(row, history);
+  }));
+  return res.json(projects);
 });
 
 router.post('/', requireAuth, async (req, res) => {
@@ -33,49 +64,41 @@ router.post('/', requireAuth, async (req, res) => {
 
   try {
     const vehicleData = await lookupVehicle(identifier);
-    const projects = loadData('projects.json', []);
-    const project = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-      userId: req.user.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      active: true,
-      closed: false,
-      history: [],
-      ...vehicleData,
-    };
-
-    projects.push(project);
-    saveData('projects.json', projects);
-    return res.json(project);
+    const { rows } = await query(
+      `INSERT INTO projects (user_id, registration, vin, make, model, year, engine_code, fuel_type, trim, body_type, source, active, closed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,false) RETURNING *`,
+      [req.user.id, vehicleData.registration, vehicleData.vin, vehicleData.make, vehicleData.model,
+       vehicleData.year, vehicleData.engineCode, vehicleData.fuelType, vehicleData.trim,
+       vehicleData.bodyType, vehicleData.source]
+    );
+    return res.json(toProject(rows[0], []));
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Unable to create project' });
   }
 });
 
-router.get('/:projectId', requireAuth, (req, res) => {
-  const project = findProject(req.user.id, req.params.projectId);
-  if (!project) {
-    return res.status(404).json({ error: 'Project not found' });
-  }
-  return res.json(project);
+router.get('/:projectId', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+
+  const { rows: history } = await query(
+    'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
+    [rows[0].id]
+  );
+  return res.json(toProject(rows[0], history));
 });
 
-router.post('/:projectId/close', requireAuth, (req, res) => {
-  const projects = loadData('projects.json', []);
-  const index = projects.findIndex(
-    (project) => project.id === req.params.projectId && project.userId === req.user.id,
+router.post('/:projectId/close', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    `UPDATE projects SET closed = true, active = false, updated_at = now()
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [req.params.projectId, req.user.id]
   );
-  if (index === -1) {
-    return res.status(404).json({ error: 'Project not found' });
-  }
-
-  projects[index].closed = true;
-  projects[index].active = false;
-  projects[index].updatedAt = new Date().toISOString();
-  saveData('projects.json', projects);
-
-  return res.json(projects[index]);
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  return res.json(toProject(rows[0], []));
 });
 
 module.exports = router;
