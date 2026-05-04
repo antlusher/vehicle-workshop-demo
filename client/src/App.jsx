@@ -41,11 +41,14 @@ function App() {
   const handleLogin = (authData) => {
     localStorage.setItem('token', authData.token);
     setToken(authData.token);
-    setUser({ email: authData.email, subscribed: authData.subscribed, demoMode: authData.demoMode });
+    setUser({ email: authData.email, role: authData.role, subscribed: authData.subscribed, demoMode: authData.demoMode });
     setStatus('ready');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (token) {
+      try { await api.logout(token); } catch (_) {}
+    }
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
