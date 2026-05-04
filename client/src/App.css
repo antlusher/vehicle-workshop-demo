@@ -102,6 +102,51 @@ label {
   margin-top: 10px;
 }
 
+.ai-response {
+  line-height: 1.6;
+}
+
+.ai-response p {
+  margin: 0 0 8px;
+}
+
+.ai-response ul,
+.ai-response ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.ai-response li {
+  margin-bottom: 4px;
+}
+
+.ai-response h1,
+.ai-response h2,
+.ai-response h3 {
+  margin: 12px 0 6px;
+  font-size: 1rem;
+}
+
+.ai-response strong {
+  font-weight: 700;
+}
+
+.ai-response code {
+  background: #f3f4f6;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.ai-response pre {
+  background: #f3f4f6;
+  padding: 10px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 8px;
+}
+
 @media (max-width: 960px) {
   .app-grid {
     grid-template-columns: 1fr;

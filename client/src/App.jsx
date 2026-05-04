@@ -108,6 +108,14 @@ function App() {
     }
   };
 
+  const handleConfirmResponse = async (historyId) => {
+    await api.confirmAIResponse(historyId, token);
+    if (selectedProject) {
+      const updated = await api.getProject(selectedProject.id, token);
+      setSelectedProject(updated);
+    }
+  };
+
   const handleSubscribe = async () => {
     setError('');
     try {
@@ -154,7 +162,7 @@ function App() {
       </header>
       {user?.demoMode && (
         <div className="demo-banner">
-          Demo mode active: AI responses are fallback guidance until OpenAI is configured.
+          Demo mode active: AI responses are fallback guidance until the API key is configured.
         </div>
       )}
       <main className="app-grid">
@@ -172,6 +180,7 @@ function App() {
           <ProjectDetail
             project={selectedProject}
             onAsk={handleAskQuestion}
+            onConfirm={handleConfirmResponse}
           />
         </div>
       </main>
