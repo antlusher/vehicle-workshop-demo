@@ -16,6 +16,13 @@ function buildSystemPrompt(project) {
     'Provide clear, structured, technician-friendly guidance with likely causes and recommended checks.',
     'If a DTC code is mentioned, use the get_dtc_info tool.',
     '',
+    'IMPORTANT formatting rules for your responses:',
+    '- When asking diagnostic questions, write ONE question per bullet point. Never combine two questions in one bullet with "or" or "and". Split them into separate bullets.',
+    '- Every diagnostic question bullet MUST end with a question mark (?).',
+    '- Suggested actions and fixes must NOT end with a question mark.',
+    '- When a diagnostic step depends on the answer to a previous question, clearly label it, e.g. "If yes → Check the crankshaft position sensor."',
+    '- Keep each bullet point concise — one idea only.',
+    '',
     'Current vehicle project:',
   ];
 

@@ -12,6 +12,11 @@ function nodeText(node) {
 
 function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
   const [confirmed, setConfirmed] = useState({});
+  const [answers, setAnswers] = useState({});
+
+  const handleAnswer = useCallback((key, answer) => {
+    setAnswers((prev) => ({ ...prev, [key]: prev[key] === answer ? null : answer }));
+  }, []);
 
   const handleConfirm = useCallback(async (suggestionText) => {
     const key = suggestionText.trim();
@@ -25,18 +30,38 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
 
   const components = {
     li({ children }) {
-      const text = nodeText(children).trim();
-      const isConfirmed = confirmed[text];
+      const itemText = nodeText(children).trim();
+      const isQuestion = itemText.endsWith('?');
+      const answer = answers[itemText];
+      const isConfirmed = confirmed[itemText];
+
       return (
         <li className="ai-suggestion">
           <span>{children}</span>
-          {isConfirmed ? (
+          {isQuestion ? (
+            <div className="yn-buttons">
+              <button
+                type="button"
+                className={`yn-btn yn-yes${answer === 'yes' ? ' active' : ''}`}
+                onClick={() => handleAnswer(itemText, 'yes')}
+              >
+                Yes
+              </button>
+              <button
+                type="button"
+                className={`yn-btn yn-no${answer === 'no' ? ' active' : ''}`}
+                onClick={() => handleAnswer(itemText, 'no')}
+              >
+                No
+              </button>
+            </div>
+          ) : isConfirmed ? (
             <small className="suggestion-confirmed">✓ Confirmed fix</small>
           ) : (
             <button
               type="button"
               className="secondary suggestion-confirm-btn"
-              onClick={() => handleConfirm(text)}
+              onClick={() => handleConfirm(itemText)}
             >
               Confirm fix
             </button>
