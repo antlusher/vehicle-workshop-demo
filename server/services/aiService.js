@@ -1,16 +1,24 @@
-const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
+const { toolDefinitions, toolHandlers } = require('./agentTools');
 
-function createOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function createClient() {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 }
 
-const client = createOpenAIClient();
+const client = createClient();
 
-function summarizeProject(project) {
-  const lines = [];
+function buildSystemPrompt(project) {
+  const lines = [
+    'You are an expert automotive diagnostic assistant for professional vehicle repair technicians.',
+    'You have access to a workshop knowledge base and vehicle database via tools.',
+    'Always use your tools to check for confirmed fixes and vehicle specs before answering.',
+    'Provide clear, structured, technician-friendly guidance with likely causes and recommended checks.',
+    'If a DTC code is mentioned, use the get_dtc_info tool.',
+    '',
+    'Current vehicle project:',
+  ];
+
   if (project.registration) lines.push(`Registration: ${project.registration}`);
   if (project.vin) lines.push(`VIN: ${project.vin}`);
   if (project.make) lines.push(`Make: ${project.make}`);
@@ -19,55 +27,86 @@ function summarizeProject(project) {
   if (project.engineCode) lines.push(`Engine code: ${project.engineCode}`);
   if (project.fuelType) lines.push(`Fuel type: ${project.fuelType}`);
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
+
   return lines.join('\n');
 }
 
-function buildPrompt(project, history, question) {
-  const summary = summarizeProject(project);
-  const recentHistory = history
-    .slice(-6)
-    .map((entry) => `${entry.role === 'user' ? 'User' : 'AI'}: ${entry.text}`)
-    .join('\n');
+function buildMessages(history, question) {
+  const messages = history.slice(-10).map((h) => ({
+    role: h.role === 'user' ? 'user' : 'assistant',
+    content: h.text,
+  }));
+  messages.push({ role: 'user', content: question });
+  return messages;
+}
 
-  return `You are a technical guidance assistant for vehicle repair professionals.
-Use the project information and technical data when answering. Do not invent unsupported details.
+async function runAgentLoop(client, project, history, question) {
+  const messages = buildMessages(history, question);
+  const systemPrompt = buildSystemPrompt(project);
 
-Vehicle project summary:
-${summary}
+  let response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    system: systemPrompt,
+    tools: toolDefinitions,
+    messages,
+  });
 
-Recent context:
-${recentHistory || 'None'}
+  while (response.stop_reason === 'tool_use') {
+    const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use');
+    const toolResults = [];
 
-Question:
-${question}
+    for (const toolUse of toolUseBlocks) {
+      const handler = toolHandlers[toolUse.name];
+      let result;
+      try {
+        result = handler ? await handler(toolUse.input) : { error: `Unknown tool: ${toolUse.name}` };
+      } catch (err) {
+        result = { error: err.message };
+      }
 
-Provide a technician-friendly workflow, likely causes, and recommended checks or repairs.`;
+      toolResults.push({
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify(result),
+      });
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: toolResults });
+
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: systemPrompt,
+      tools: toolDefinitions,
+      messages,
+    });
+  }
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  return textBlock?.text || 'No response generated.';
+}
+
+function demoFallback(project, question) {
+  return [
+    'Demo fallback (ANTHROPIC_API_KEY not configured):',
+    '',
+    `Vehicle: ${project.make || 'Unknown'} ${project.model || ''} ${project.year || ''}`,
+    `Question: ${question}`,
+    '',
+    '- Check relevant fault codes with a diagnostic tool',
+    '- Inspect ignition system: plugs, coils, wiring',
+    '- Verify fuel pressure and injector operation',
+    '- Review service history for related issues',
+  ].join('\n');
 }
 
 async function generateRepairAdvice(project, history = [], question) {
-  const prompt = buildPrompt(project, history, question);
-
   if (!client) {
-    return `Demo fallback guidance (OpenAI not configured):\n\n- Verify ignition system health: spark plugs, coils, and wiring.\n- Check for misfire codes on cylinder 3 and inspect the coil pack or plug.\n- Confirm fuel pressure and injector operation for the affected cylinder.\n- Review service history for timing belt/chain issues or compression loss.\n- Use the vehicle details when diagnosing: ${project.make || 'Unknown make'} ${project.model || 'Unknown model'} ${project.year || ''}.\n\nQuestion: ${question}`;
+    return demoFallback(project, question);
   }
-
-  const response = await client.responses.create({
-    model: 'gpt-4.1-mini',
-    input: prompt,
-  });
-
-  const output = response.output?.[0]?.content?.find((item) => item.type === 'output_text')?.text;
-  if (output) {
-    return output;
-  }
-
-  if (typeof response.output_text === 'string') {
-    return response.output_text;
-  }
-
-  return 'No advice could be generated. Please try again.';
+  return runAgentLoop(client, project, history, question);
 }
 
-module.exports = {
-  generateRepairAdvice,
-};
+module.exports = { generateRepairAdvice };
