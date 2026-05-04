@@ -2,14 +2,14 @@ exports.up = (pgm) => {
   pgm.createTable('confirmed_suggestions', {
     id: 'id',
     project_id: {
-      type: 'integer',
+      type: 'uuid',
       notNull: true,
-      references: 'projects(id)',
+      references: '"projects"',
       onDelete: 'CASCADE',
     },
     history_id: {
-      type: 'integer',
-      references: 'project_history(id)',
+      type: 'uuid',
+      references: '"project_history"',
       onDelete: 'SET NULL',
     },
     text: { type: 'text', notNull: true },
