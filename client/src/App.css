@@ -147,6 +147,33 @@ label {
   margin-bottom: 8px;
 }
 
+.ai-suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.ai-suggestion > span {
+  flex: 1;
+}
+
+.suggestion-confirm-btn {
+  font-size: 0.7rem;
+  padding: 2px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.suggestion-confirmed {
+  color: #16a34a;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
 @media (max-width: 960px) {
   .app-grid {
     grid-template-columns: 1fr;

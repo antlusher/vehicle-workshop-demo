@@ -75,3 +75,7 @@ export async function askAI(projectId, question, token) {
 export async function confirmAIResponse(historyId, token) {
   return request(`/api/ai/confirm/${historyId}`, { method: 'POST' }, token);
 }
+
+export async function confirmSuggestion(projectId, historyId, text, token) {
+  return request('/api/ai/confirm-suggestion', { method: 'POST', body: { projectId, historyId, text } }, token);
+}

@@ -116,6 +116,10 @@ function App() {
     }
   };
 
+  const handleConfirmSuggestion = async (projectId, historyId, text) => {
+    await api.confirmSuggestion(projectId, historyId, text, token);
+  };
+
   const handleSubscribe = async () => {
     setError('');
     try {
@@ -181,6 +185,7 @@ function App() {
             project={selectedProject}
             onAsk={handleAskQuestion}
             onConfirm={handleConfirmResponse}
+            onConfirmSuggestion={handleConfirmSuggestion}
           />
         </div>
       </main>

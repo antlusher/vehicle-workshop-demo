@@ -82,6 +82,26 @@ router.post('/ask', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/confirm-suggestion', requireAuth, async (req, res) => {
+  const { projectId, historyId, text } = req.body;
+  if (!projectId || !text) {
+    return res.status(400).json({ error: 'projectId and text are required' });
+  }
+
+  const { rows: projectRows } = await query(
+    'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+    [projectId, req.user.id]
+  );
+  if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
+
+  const { rows } = await query(
+    'INSERT INTO confirmed_suggestions (project_id, history_id, text) VALUES ($1, $2, $3) RETURNING *',
+    [projectId, historyId || null, text]
+  );
+
+  return res.json({ id: rows[0].id, confirmed: true });
+});
+
 router.post('/confirm/:historyId', requireAuth, async (req, res) => {
   const { historyId } = req.params;
 

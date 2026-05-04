@@ -1,8 +1,59 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 
-function ProjectDetail({ project, onAsk, onConfirm }) {
+function nodeText(node) {
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(nodeText).join('');
+  if (node.props?.children) return nodeText(node.props.children);
+  return '';
+}
+
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
+  const [confirmed, setConfirmed] = useState({});
+
+  const handleConfirm = useCallback(async (suggestionText) => {
+    const key = suggestionText.trim();
+    setConfirmed((prev) => ({ ...prev, [key]: true }));
+    try {
+      await onConfirmSuggestion(projectId, historyId, key);
+    } catch {
+      setConfirmed((prev) => ({ ...prev, [key]: false }));
+    }
+  }, [projectId, historyId, onConfirmSuggestion]);
+
+  const components = {
+    li({ children }) {
+      const text = nodeText(children).trim();
+      const isConfirmed = confirmed[text];
+      return (
+        <li className="ai-suggestion">
+          <span>{children}</span>
+          {isConfirmed ? (
+            <small className="suggestion-confirmed">✓ Confirmed fix</small>
+          ) : (
+            <button
+              type="button"
+              className="secondary suggestion-confirm-btn"
+              onClick={() => handleConfirm(text)}
+            >
+              Confirm fix
+            </button>
+          )}
+        </li>
+      );
+    },
+  };
+
+  return (
+    <div className="ai-response">
+      <ReactMarkdown components={components}>{text}</ReactMarkdown>
+    </div>
+  );
+}
+
+function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -85,7 +136,12 @@ function ProjectDetail({ project, onAsk, onConfirm }) {
               <div key={entry.id} className="history-entry" style={{ borderLeft: isConfirmed ? '3px solid #16a34a' : undefined }}>
                 <strong>{entry.role === 'user' ? 'You' : 'AI'}</strong>
                 {entry.role === 'ai' ? (
-                  <div className="ai-response"><ReactMarkdown>{entry.text}</ReactMarkdown></div>
+                  <AiResponse
+                    text={entry.text}
+                    historyId={entry.id}
+                    projectId={project.id}
+                    onConfirmSuggestion={onConfirmSuggestion}
+                  />
                 ) : (
                   <p>{entry.text}</p>
                 )}

@@ -29,16 +29,14 @@ async function getVehicleSpecs({ make, model, year, engine_code }) {
 
 async function searchKnowledgeBase({ make, model, year, symptom }) {
   const { rows } = await query(
-    `SELECT ph.text, ph.role, p.make, p.model, p.year, p.engine_code,
-            COUNT(*) OVER (PARTITION BY ph.text) as frequency
-     FROM project_history ph
-     JOIN projects p ON ph.project_id = p.id
-     WHERE ph.confirmed = true
-       AND ph.role = 'ai'
-       AND LOWER(p.make) = LOWER($1)
+    `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
+            COUNT(*) OVER (PARTITION BY cs.text) as frequency
+     FROM confirmed_suggestions cs
+     JOIN projects p ON cs.project_id = p.id
+     WHERE LOWER(p.make) = LOWER($1)
        AND LOWER(p.model) = LOWER($2)
        AND ($3::varchar IS NULL OR p.year = $3)
-       AND ph.text ILIKE $4
+       AND cs.text ILIKE $4
      ORDER BY frequency DESC
      LIMIT 5`,
     [make, model, year || null, `%${symptom}%`]
@@ -62,15 +60,13 @@ async function searchKnowledgeBase({ make, model, year, symptom }) {
 
 async function getCommonFixes({ make, model, year }) {
   const { rows } = await query(
-    `SELECT ph.text, COUNT(*) as confirmed_count, p.make, p.model, p.year
-     FROM project_history ph
-     JOIN projects p ON ph.project_id = p.id
-     WHERE ph.confirmed = true
-       AND ph.role = 'ai'
-       AND LOWER(p.make) = LOWER($1)
+    `SELECT cs.text, COUNT(*) as confirmed_count, p.make, p.model, p.year
+     FROM confirmed_suggestions cs
+     JOIN projects p ON cs.project_id = p.id
+     WHERE LOWER(p.make) = LOWER($1)
        AND LOWER(p.model) = LOWER($2)
        AND ($3::varchar IS NULL OR p.year = $3)
-     GROUP BY ph.text, p.make, p.model, p.year
+     GROUP BY cs.text, p.make, p.model, p.year
      ORDER BY confirmed_count DESC
      LIMIT 5`,
     [make, model, year || null]
