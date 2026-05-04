@@ -10,9 +10,10 @@ function nodeText(node) {
   return '';
 }
 
-function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
   const [confirmed, setConfirmed] = useState({});
   const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
 
   const handleAnswer = useCallback((key, answer) => {
     setAnswers((prev) => ({ ...prev, [key]: prev[key] === answer ? null : answer }));
@@ -27,6 +28,17 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
       setConfirmed((prev) => ({ ...prev, [key]: false }));
     }
   }, [projectId, historyId, onConfirmSuggestion]);
+
+  const handleContinue = useCallback(async () => {
+    const answered = Object.entries(answers).filter(([, v]) => v !== null);
+    if (!answered.length) return;
+    setSubmitted(true);
+    const lines = answered.map(([q, a]) => `- ${q} → ${a === 'yes' ? 'Yes' : 'No'}`);
+    const message = `Diagnostic answers:\n${lines.join('\n')}\n\nBased on these answers, what is the next diagnostic step?`;
+    await onContinue(message);
+  }, [answers, onContinue]);
+
+  const hasAnswers = Object.values(answers).some((v) => v !== null);
 
   const components = {
     li({ children }) {
@@ -74,6 +86,19 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion }) {
   return (
     <div className="ai-response">
       <ReactMarkdown components={components}>{text}</ReactMarkdown>
+      {isLatestAi && hasAnswers && !submitted && (
+        <button
+          type="button"
+          className="continue-btn"
+          disabled={isBusy}
+          onClick={handleContinue}
+        >
+          {isBusy ? 'Thinking...' : 'Continue diagnosis →'}
+        </button>
+      )}
+      {submitted && !isBusy && (
+        <small className="suggestion-confirmed">Answers sent — see next step below</small>
+      )}
     </div>
   );
 }
@@ -84,11 +109,12 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
   const [error, setError] = useState('');
   const [confirmedIds, setConfirmedIds] = useState({});
 
+  const isBusy = !!status;
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setStatus('Thinking...');
-
     try {
       await onAsk(project.id, question.trim());
       setQuestion('');
@@ -99,7 +125,19 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
     }
   };
 
-  const handleConfirm = async (historyId) => {
+  const handleContinue = useCallback(async (composedMessage) => {
+    setError('');
+    setStatus('Thinking...');
+    try {
+      await onAsk(project.id, composedMessage);
+      setStatus('');
+    } catch (err) {
+      setError(err.message);
+      setStatus('');
+    }
+  }, [onAsk, project]);
+
+  const handleConfirmEntry = async (historyId) => {
     try {
       await onConfirm(historyId);
       setConfirmedIds((prev) => ({ ...prev, [historyId]: true }));
@@ -116,6 +154,9 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
       </div>
     );
   }
+
+  const aiEntries = project.history?.filter((e) => e.role === 'ai') ?? [];
+  const latestAiId = aiEntries[aiEntries.length - 1]?.id ?? null;
 
   return (
     <div className="card">
@@ -145,7 +186,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
           required
         />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" disabled={!question.trim() || !!status}>Ask AI</button>
+          <button type="submit" disabled={!question.trim() || isBusy}>Ask AI</button>
           <VoiceInput onResult={(t) => setQuestion(t)} />
         </div>
         {status && <p>{status}</p>}
@@ -157,6 +198,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
         {project.history?.length ? (
           project.history.map((entry) => {
             const isConfirmed = entry.confirmed || confirmedIds[entry.id];
+            const isLatestAi = entry.role === 'ai' && entry.id === latestAiId;
             return (
               <div key={entry.id} className="history-entry" style={{ borderLeft: isConfirmed ? '3px solid #16a34a' : undefined }}>
                 <strong>{entry.role === 'user' ? 'You' : 'AI'}</strong>
@@ -166,6 +208,9 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
                     historyId={entry.id}
                     projectId={project.id}
                     onConfirmSuggestion={onConfirmSuggestion}
+                    onContinue={handleContinue}
+                    isLatestAi={isLatestAi}
+                    isBusy={isBusy}
                   />
                 ) : (
                   <p>{entry.text}</p>
@@ -180,7 +225,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
                         type="button"
                         className="secondary"
                         style={{ fontSize: '0.75rem', padding: '2px 10px' }}
-                        onClick={() => handleConfirm(entry.id)}
+                        onClick={() => handleConfirmEntry(entry.id)}
                       >
                         Confirm correct
                       </button>

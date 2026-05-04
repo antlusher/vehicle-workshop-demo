@@ -210,6 +210,23 @@ label {
   font-weight: 600;
 }
 
+.continue-btn {
+  margin-top: 14px;
+  background: #0f766e;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 8px 18px;
+}
+
+.continue-btn:hover:not(:disabled) {
+  background: #0d5e57;
+}
+
+.continue-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (max-width: 960px) {
   .app-grid {
     grid-template-columns: 1fr;
