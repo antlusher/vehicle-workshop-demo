@@ -2,12 +2,20 @@ import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 
+const OPEN_ENDED = /^(which|what|how|describe|list|name|where|when|who)\b/i;
+
 function nodeText(node) {
   if (!node) return '';
   if (typeof node === 'string') return node;
   if (Array.isArray(node)) return node.map(nodeText).join('');
   if (node.props?.children) return nodeText(node.props.children);
   return '';
+}
+
+function questionType(text) {
+  if (!text.endsWith('?')) return 'fix';
+  if (OPEN_ENDED.test(text)) return 'open';
+  return 'yesno';
 }
 
 function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
@@ -30,27 +38,30 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
   }, [projectId, historyId, onConfirmSuggestion]);
 
   const handleContinue = useCallback(async () => {
-    const answered = Object.entries(answers).filter(([, v]) => v !== null);
+    const answered = Object.entries(answers).filter(([, v]) => v !== null && v !== '');
     if (!answered.length) return;
     setSubmitted(true);
-    const lines = answered.map(([q, a]) => `- ${q} → ${a === 'yes' ? 'Yes' : 'No'}`);
+    const lines = answered.map(([q, a]) => {
+      if (a === 'yes' || a === 'no') return `- ${q} → ${a === 'yes' ? 'Yes' : 'No'}`;
+      return `- ${q} → ${a}`;
+    });
     const message = `Diagnostic answers:\n${lines.join('\n')}\n\nBased on these answers, what is the next diagnostic step?`;
     await onContinue(message);
   }, [answers, onContinue]);
 
-  const hasAnswers = Object.values(answers).some((v) => v !== null);
+  const hasAnswers = Object.values(answers).some((v) => v !== null && v !== '');
 
   const components = {
     li({ children }) {
       const itemText = nodeText(children).trim();
-      const isQuestion = itemText.endsWith('?');
+      const type = questionType(itemText);
       const answer = answers[itemText];
       const isConfirmed = confirmed[itemText];
 
       return (
-        <li className="ai-suggestion">
+        <li className={`ai-suggestion${type === 'open' ? ' ai-suggestion--open' : ''}`}>
           <span>{children}</span>
-          {isQuestion ? (
+          {type === 'yesno' && (
             <div className="yn-buttons">
               <button
                 type="button"
@@ -67,16 +78,28 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
                 No
               </button>
             </div>
-          ) : isConfirmed ? (
-            <small className="suggestion-confirmed">✓ Confirmed fix</small>
-          ) : (
-            <button
-              type="button"
-              className="secondary suggestion-confirm-btn"
-              onClick={() => handleConfirm(itemText)}
-            >
-              Confirm fix
-            </button>
+          )}
+          {type === 'open' && (
+            <input
+              className="open-answer-input"
+              type="text"
+              placeholder="Type your answer..."
+              value={answer || ''}
+              onChange={(e) => handleAnswer(itemText, e.target.value || null)}
+            />
+          )}
+          {type === 'fix' && (
+            isConfirmed ? (
+              <small className="suggestion-confirmed">✓ Confirmed fix</small>
+            ) : (
+              <button
+                type="button"
+                className="secondary suggestion-confirm-btn"
+                onClick={() => handleConfirm(itemText)}
+              >
+                Confirm fix
+              </button>
+            )
           )}
         </li>
       );
