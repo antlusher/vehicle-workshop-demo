@@ -120,6 +120,12 @@ function App() {
     await api.confirmSuggestion(projectId, historyId, text, token);
   };
 
+  const handleClearHistory = async (projectId) => {
+    await api.clearProjectHistory(projectId, token);
+    const updated = await api.getProject(projectId, token);
+    setSelectedProject(updated);
+  };
+
   const handleSubscribe = async () => {
     setError('');
     try {
@@ -186,6 +192,7 @@ function App() {
             onAsk={handleAskQuestion}
             onConfirm={handleConfirmResponse}
             onConfirmSuggestion={handleConfirmSuggestion}
+            onClearHistory={handleClearHistory}
           />
         </div>
       </main>

@@ -126,7 +126,7 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
+function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClearHistory }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -219,7 +219,19 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
       </form>
 
       <div style={{ marginTop: 18 }}>
-        <h3>Conversation history</h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <h3 style={{ margin: 0 }}>Conversation history</h3>
+          {project.history?.length > 0 && (
+            <button
+              type="button"
+              className="secondary"
+              style={{ fontSize: '0.75rem', padding: '4px 12px' }}
+              onClick={() => onClearHistory(project.id)}
+            >
+              Start over
+            </button>
+          )}
+        </div>
         {project.history?.length ? (
           project.history.map((entry) => {
             const isLatestAi = entry.role === 'ai' && entry.id === latestAiId;

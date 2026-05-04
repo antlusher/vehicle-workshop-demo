@@ -91,6 +91,20 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   return res.json(toProject(rows[0], history));
 });
 
+router.post('/:projectId/clear', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+
+  await query('DELETE FROM project_history WHERE project_id = $1', [req.params.projectId]);
+  await query('DELETE FROM confirmed_suggestions WHERE project_id = $1', [req.params.projectId]);
+  await query('UPDATE projects SET updated_at = now() WHERE id = $1', [req.params.projectId]);
+
+  return res.json({ cleared: true });
+});
+
 router.post('/:projectId/close', requireAuth, async (req, res) => {
   const { rows } = await query(
     `UPDATE projects SET closed = true, active = false, updated_at = now()
