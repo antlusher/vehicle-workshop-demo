@@ -2,9 +2,11 @@
   {
     "id": "demo-user-1",
     "email": "demo@workshop.local",
-    "password": "demo123",
+    "password": "$2b$10$GQrYC6Yzzbu5VgxPw8Gpje4ViU0sAjwQ64JRnLldMWYUYMay3WDIi",
+    "role": "tech",
     "subscribed": true,
-    "token": "demo-token-123",
+    "sessionActive": false,
+    "token": null,
     "createdAt": "2026-05-03T12:00:00.000Z"
   }
 ]
