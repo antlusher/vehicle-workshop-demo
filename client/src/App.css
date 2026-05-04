@@ -88,6 +88,19 @@ label {
   margin-bottom: 6px;
 }
 
+.history-entry--composed {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  opacity: 0.75;
+}
+
+.composed-answers {
+  font-size: 0.85rem;
+  color: #6b7280;
+  white-space: pre-wrap;
+  margin: 4px 0;
+}
+
 .project-card .meta {
   color: #6b7280;
   font-size: 0.95rem;

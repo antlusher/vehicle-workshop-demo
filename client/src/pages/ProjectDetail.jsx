@@ -158,6 +158,8 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
   const aiEntries = project.history?.filter((e) => e.role === 'ai') ?? [];
   const latestAiId = aiEntries[aiEntries.length - 1]?.id ?? null;
 
+  const isComposedAnswer = (text) => text.startsWith('Diagnostic answers:');
+
   return (
     <div className="card">
       <h2 className="section-title">{project.registration || project.vin || 'Project'}</h2>
@@ -197,10 +199,10 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
         <h3>Conversation history</h3>
         {project.history?.length ? (
           project.history.map((entry) => {
-            const isConfirmed = entry.confirmed || confirmedIds[entry.id];
             const isLatestAi = entry.role === 'ai' && entry.id === latestAiId;
+            const composed = entry.role === 'user' && isComposedAnswer(entry.text);
             return (
-              <div key={entry.id} className="history-entry" style={{ borderLeft: isConfirmed ? '3px solid #16a34a' : undefined }}>
+              <div key={entry.id} className={`history-entry${composed ? ' history-entry--composed' : ''}`}>
                 <strong>{entry.role === 'user' ? 'You' : 'AI'}</strong>
                 {entry.role === 'ai' ? (
                   <AiResponse
@@ -212,26 +214,14 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion }) {
                     isLatestAi={isLatestAi}
                     isBusy={isBusy}
                   />
+                ) : composed ? (
+                  <p className="composed-answers">{entry.text}</p>
                 ) : (
                   <p>{entry.text}</p>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-                  <small>{new Date(entry.createdAt).toLocaleString()}</small>
-                  {entry.role === 'ai' && (
-                    isConfirmed ? (
-                      <small style={{ color: '#16a34a' }}>Confirmed correct</small>
-                    ) : (
-                      <button
-                        type="button"
-                        className="secondary"
-                        style={{ fontSize: '0.75rem', padding: '2px 10px' }}
-                        onClick={() => handleConfirmEntry(entry.id)}
-                      >
-                        Confirm correct
-                      </button>
-                    )
-                  )}
-                </div>
+                <small style={{ marginTop: 4, display: 'block', color: '#9ca3af' }}>
+                  {new Date(entry.createdAt).toLocaleString()}
+                </small>
               </div>
             );
           })
