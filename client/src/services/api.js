@@ -71,3 +71,7 @@ export async function closeProject(projectId, token) {
 export async function askAI(projectId, question, token) {
   return request('/api/ai/ask', { method: 'POST', body: { projectId, question } }, token);
 }
+
+export async function confirmAIResponse(historyId, token) {
+  return request(`/api/ai/confirm/${historyId}`, { method: 'POST' }, token);
+}

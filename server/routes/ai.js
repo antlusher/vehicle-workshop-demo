@@ -82,4 +82,26 @@ router.post('/ask', requireAuth, async (req, res) => {
   }
 });
 
+router.post('/confirm/:historyId', requireAuth, async (req, res) => {
+  const { historyId } = req.params;
+
+  const { rows } = await query(
+    `UPDATE project_history ph
+     SET confirmed = true
+     FROM projects p
+     WHERE ph.id = $1
+       AND ph.project_id = p.id
+       AND p.user_id = $2
+       AND ph.role = 'ai'
+     RETURNING ph.*`,
+    [historyId, req.user.id]
+  );
+
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Response not found' });
+  }
+
+  return res.json({ id: rows[0].id, confirmed: rows[0].confirmed });
+});
+
 module.exports = router;
