@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 
-const OPEN_ENDED = /^(which|what|how|describe|list|name|where|when|who)\b/i;
+const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
+const MULTI_OPTION = /,\s*or\b/i;
 
 function nodeText(node) {
   if (!node) return '';
@@ -14,7 +15,7 @@ function nodeText(node) {
 
 function questionType(text) {
   if (!text.endsWith('?')) return 'fix';
-  if (OPEN_ENDED.test(text)) return 'open';
+  if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text)) return 'open';
   return 'yesno';
 }
 

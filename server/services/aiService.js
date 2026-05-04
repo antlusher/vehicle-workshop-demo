@@ -21,6 +21,7 @@ function buildSystemPrompt(project) {
     '- Do NOT front-load multiple diagnostic branches in one response. Ask your initial questions first, then wait for the technician\'s answers before providing the next steps.',
     '- When asking diagnostic questions, write ONE question per bullet point. Never combine two questions into one bullet using "or". Split them.',
     '- Every yes/no diagnostic question MUST end with a question mark (?).',
+    '- Yes/no questions must be strictly binary — do NOT offer multiple options (e.g. "low, overfull, or normal") in a single bullet. If the answer has more than two possibilities, use a What/Which question instead so the technician can type their answer.',
     '- Open-ended questions that require a descriptive answer (starting with Which, What, How, Describe, List) must also end with a question mark (?).',
     '- Suggested actions and fixes must NOT end with a question mark.',
     '- Do NOT repeat questions at the bottom of the response that you already asked at the top.',
