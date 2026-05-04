@@ -53,8 +53,10 @@ function ProjectDetail({ project, onAsk }) {
       </div>
 
       <form onSubmit={handleSubmit}>
-        <label>Ask for repair guidance</label>
+        <label htmlFor="question">Ask for repair guidance</label>
         <textarea
+          id="question"
+          name="question"
           rows="4"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}

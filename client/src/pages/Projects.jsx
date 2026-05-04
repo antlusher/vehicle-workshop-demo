@@ -15,8 +15,10 @@ function Projects({ projects, onCreateProject, onSelectProject, onCloseProject, 
     <div className="card">
       <h2 className="section-title">Projects</h2>
       <form onSubmit={handleSubmit}>
-        <label>Registration or VIN</label>
+        <label htmlFor="identifier">Registration or VIN</label>
         <input
+          id="identifier"
+          name="identifier"
           value={identifier}
           onChange={(e) => setIdentifier(e.target.value)}
           placeholder="Enter registration or VIN"
