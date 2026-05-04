@@ -27,9 +27,8 @@ router.post('/register', async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
-
   try {
-    const user = await createUser(email, password);
+    await createUser(email, password);
     return res.status(201).json({ message: 'Account created. Please log in.' });
   } catch (error) {
     return res.status(409).json({ error: error.message });
@@ -41,7 +40,6 @@ router.post('/login', async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
-
   try {
     const user = await loginUser(email, password);
     return res.json(formatUserResponse(user));
@@ -51,22 +49,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (token) {
-    logoutUser(token);
+    await logoutUser(token);
   }
   return res.json({ message: 'Logged out' });
 });
 
-router.post('/subscribe', (req, res) => {
+router.post('/subscribe', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) {
     return res.status(401).json({ error: 'Authorization token is required' });
   }
-
   try {
-    const user = subscribeUser(token);
+    const user = await subscribeUser(token);
     sendSubscriptionConfirmation(user.email).catch((err) =>
       console.error('Failed to send subscription email:', err.message)
     );
@@ -81,15 +78,12 @@ router.post('/forgot-password', async (req, res) => {
   if (!email) {
     return res.status(400).json({ error: 'Email is required' });
   }
-
-  const resetToken = createPasswordResetToken(email);
+  const resetToken = await createPasswordResetToken(email);
   if (resetToken) {
     sendPasswordReset(email, resetToken).catch((err) =>
       console.error('Failed to send reset email:', err.message)
     );
   }
-
-  // Always return success to avoid revealing whether an account exists
   return res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
 });
 
@@ -98,7 +92,6 @@ router.post('/reset-password', async (req, res) => {
   if (!token || !password) {
     return res.status(400).json({ error: 'Token and new password are required' });
   }
-
   try {
     await resetPassword(token, password);
     return res.json({ message: 'Password reset successfully. Please log in.' });
@@ -107,9 +100,9 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  const user = findUserByToken(token);
+  const user = await findUserByToken(token);
   if (!user) {
     return res.status(401).json({ error: 'Invalid or expired session' });
   }
