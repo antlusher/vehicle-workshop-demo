@@ -32,6 +32,18 @@ export async function register(email, password) {
   return request('/api/auth/register', { method: 'POST', body: { email, password } });
 }
 
+export async function logout(token) {
+  return request('/api/auth/logout', { method: 'POST' }, token);
+}
+
+export async function forgotPassword(email) {
+  return request('/api/auth/forgot-password', { method: 'POST', body: { email } });
+}
+
+export async function resetPassword(token, password) {
+  return request('/api/auth/reset-password', { method: 'POST', body: { token, password } });
+}
+
 export async function subscribe(token) {
   return request('/api/auth/subscribe', { method: 'POST' }, token);
 }
