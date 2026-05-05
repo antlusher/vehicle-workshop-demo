@@ -30,6 +30,9 @@ export const getUser = (id, token) =>
 export const updateUser = (id, data, token) =>
   request(`/api/admin/users/${id}`, { method: 'PATCH', body: data }, token);
 
+export const forceLogout = (id, token) =>
+  request(`/api/admin/users/${id}/logout`, { method: 'POST' }, token);
+
 export const getAiRequests = (token, params = {}) => {
   const qs = new URLSearchParams(params).toString();
   return request(`/api/admin/ai-requests${qs ? '?' + qs : ''}`, {}, token);

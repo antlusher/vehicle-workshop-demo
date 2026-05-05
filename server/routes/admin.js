@@ -53,6 +53,11 @@ router.post('/users', async (req, res) => {
   }
 });
 
+router.post('/users/:id/logout', async (req, res) => {
+  await query('UPDATE users SET token = NULL, session_active = false WHERE id = $1', [req.params.id]);
+  return res.json({ loggedOut: true });
+});
+
 router.patch('/users/:id', async (req, res) => {
   try {
     const { role, subscribed } = req.body;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUsers, getUser, updateUser, createUser } from '../../services/adminApi';
+import { getUsers, getUser, updateUser, createUser, forceLogout } from '../../services/adminApi';
 
 function Badge({ value, trueLabel = 'Yes', falseLabel = 'No', trueClass = 'badge-green', falseClass = 'badge-grey' }) {
   return <span className={`badge ${value ? trueClass : falseClass}`}>{value ? trueLabel : falseLabel}</span>;
@@ -29,6 +29,17 @@ function UserDetailPanel({ userId, token, onClose, onUpdated }) {
     }
   };
 
+  const handleForceLogout = async () => {
+    setSaving(true);
+    try {
+      await forceLogout(userId, token);
+      setUser((u) => ({ ...u, session_active: false }));
+      onUpdated();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!user) return (
     <div className="detail-panel">
       <button className="detail-close" onClick={onClose}>✕</button>
@@ -45,6 +56,18 @@ function UserDetailPanel({ userId, token, onClose, onUpdated }) {
         <RoleBadge role={user.role} />
         <Badge value={user.subscribed} trueLabel="Subscribed" falseLabel="Unsubscribed" trueClass="badge-green" />
         <span className="detail-date">Joined {new Date(user.created_at).toLocaleDateString()}</span>
+      </div>
+
+      <div className="detail-actions">
+        {user.session_active && (
+          <button
+            disabled={saving}
+            onClick={handleForceLogout}
+            style={{ fontSize: '0.8rem', padding: '6px 14px', background: '#dc2626' }}
+          >
+            Force logout
+          </button>
+        )}
       </div>
 
       <div className="detail-actions">
