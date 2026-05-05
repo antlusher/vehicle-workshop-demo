@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 
@@ -78,37 +78,15 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
           <span>{children}</span>
           {type === 'yesno' && (
             <div className="yn-buttons">
-              <button
-                type="button"
-                className={`yn-btn yn-yes${answer === 'yes' ? ' active' : ''}`}
-                onClick={() => handleAnswer(itemText, 'yes')}
-              >
-                Yes
-              </button>
-              <button
-                type="button"
-                className={`yn-btn yn-no${answer === 'no' ? ' active' : ''}`}
-                onClick={() => handleAnswer(itemText, 'no')}
-              >
-                No
-              </button>
+              <button type="button" className={`yn-btn yn-yes${answer === 'yes' ? ' active' : ''}`} onClick={() => handleAnswer(itemText, 'yes')}>Yes</button>
+              <button type="button" className={`yn-btn yn-no${answer === 'no' ? ' active' : ''}`} onClick={() => handleAnswer(itemText, 'no')}>No</button>
             </div>
           )}
-          {type === 'open' && (
-            <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />
-          )}
+          {type === 'open' && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
           {type === 'fix' && (
-            isConfirmed ? (
-              <small className="suggestion-confirmed">✓ Confirmed fix</small>
-            ) : (
-              <button
-                type="button"
-                className="secondary suggestion-confirm-btn"
-                onClick={() => handleConfirm(itemText)}
-              >
-                Confirm fix
-              </button>
-            )
+            isConfirmed
+              ? <small className="suggestion-confirmed">✓ Confirmed fix</small>
+              : <button type="button" className="secondary suggestion-confirm-btn" onClick={() => handleConfirm(itemText)}>Confirm fix</button>
           )}
         </li>
       );
@@ -119,12 +97,7 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
     <div className="ai-response">
       <ReactMarkdown components={components}>{text}</ReactMarkdown>
       {isLatestAi && hasAnswers && !submitted && (
-        <button
-          type="button"
-          className="continue-btn"
-          disabled={isBusy}
-          onClick={handleContinue}
-        >
+        <button type="button" className="continue-btn" disabled={isBusy} onClick={handleContinue}>
           {isBusy ? 'Thinking...' : 'Continue diagnosis →'}
         </button>
       )}
@@ -139,29 +112,20 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
-  const [confirmedIds, setConfirmedIds] = useState({});
-
+  const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
   const isBusy = !!status;
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setError('');
-    setStatus('Thinking...');
-    try {
-      await onAsk(project.id, question.trim());
-      setQuestion('');
-      setStatus('');
-    } catch (err) {
-      setError(err.message);
-      setStatus('');
-    }
-  };
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [project?.history?.length, status]);
 
-  const handleContinue = useCallback(async (composedMessage) => {
+  const submitQuestion = useCallback(async (text) => {
     setError('');
     setStatus('Thinking...');
     try {
-      await onAsk(project.id, composedMessage);
+      await onAsk(project.id, text);
+      setQuestion('');
       setStatus('');
     } catch (err) {
       setError(err.message);
@@ -169,110 +133,131 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
     }
   }, [onAsk, project]);
 
-  const handleConfirmEntry = async (historyId) => {
-    try {
-      await onConfirm(historyId);
-      setConfirmedIds((prev) => ({ ...prev, [historyId]: true }));
-    } catch (err) {
-      console.error('Failed to confirm response:', err.message);
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (question.trim() && !isBusy) submitQuestion(question.trim());
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (question.trim() && !isBusy) submitQuestion(question.trim());
     }
   };
 
+  const handleContinue = useCallback(async (composedMessage) => {
+    await submitQuestion(composedMessage);
+  }, [submitQuestion]);
+
   if (!project) {
     return (
-      <div className="card">
-        <h2 className="section-title">Project Detail</h2>
-        <p>Select a project to load vehicle data and ask for repair guidance.</p>
+      <div className="chat-shell chat-shell--empty">
+        <p>Select a project to begin the diagnostic session.</p>
       </div>
     );
   }
 
   const aiEntries = project.history?.filter((e) => e.role === 'ai') ?? [];
   const latestAiId = aiEntries[aiEntries.length - 1]?.id ?? null;
+  const isComposed = (text) => text.startsWith('Diagnostic answers:');
 
-  const isComposedAnswer = (text) => text.startsWith('Diagnostic answers:');
+  const vehicleSummary = [project.make, project.model, project.year, project.engineCode, project.fuelType]
+    .filter(Boolean).join(' · ');
 
   return (
-    <div className="card">
-      <h2 className="section-title">{project.registration || project.vin || 'Project'}</h2>
-      <div style={{ marginBottom: 18 }}>
-        <strong>Make/Model</strong>
-        <p>{project.make || 'Unknown'} {project.model || ''}</p>
-        <strong>Year</strong>
-        <p>{project.year || 'Unknown'}</p>
-        <strong>Engine</strong>
-        <p>{project.engineCode || 'Unknown'}</p>
-        <strong>Fuel</strong>
-        <p>{project.fuelType || 'Unknown'}</p>
-        <strong>Data source</strong>
-        <p>{project.source || 'Unknown'}</p>
-      </div>
+    <div className="chat-shell">
 
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="question">Ask for repair guidance</label>
-        <textarea
-          id="question"
-          name="question"
-          rows="4"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. miss fire on cylinder 3"
-          required
-        />
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" disabled={!question.trim() || isBusy}>Ask AI</button>
-          <VoiceInput onResult={(t) => setQuestion(t)} />
+      <div className="chat-header">
+        <div className="chat-header-info">
+          <span className="chat-header-reg">{project.registration || project.vin || 'Project'}</span>
+          {vehicleSummary && <span className="chat-header-meta">{vehicleSummary}</span>}
         </div>
-        {status && <p>{status}</p>}
-        {error && <p className="error">{error}</p>}
-      </form>
-
-      <div style={{ marginTop: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-          <h3 style={{ margin: 0 }}>Conversation history</h3>
-          {project.history?.length > 0 && (
-            <button
-              type="button"
-              className="secondary"
-              style={{ fontSize: '0.75rem', padding: '4px 12px' }}
-              onClick={() => onClearHistory(project.id)}
-            >
-              Start over
-            </button>
-          )}
-        </div>
-        {project.history?.length ? (
-          project.history.map((entry) => {
-            const isLatestAi = entry.role === 'ai' && entry.id === latestAiId;
-            const composed = entry.role === 'user' && isComposedAnswer(entry.text);
-            return (
-              <div key={entry.id} className={`history-entry${composed ? ' history-entry--composed' : ''}`}>
-                <strong>{entry.role === 'user' ? 'You' : 'AI'}</strong>
-                {entry.role === 'ai' ? (
-                  <AiResponse
-                    text={entry.text}
-                    historyId={entry.id}
-                    projectId={project.id}
-                    onConfirmSuggestion={onConfirmSuggestion}
-                    onContinue={handleContinue}
-                    isLatestAi={isLatestAi}
-                    isBusy={isBusy}
-                  />
-                ) : composed ? (
-                  <p className="composed-answers">{entry.text}</p>
-                ) : (
-                  <p>{entry.text}</p>
-                )}
-                <small style={{ marginTop: 4, display: 'block', color: '#9ca3af' }}>
-                  {new Date(entry.createdAt).toLocaleString()}
-                </small>
-              </div>
-            );
-          })
-        ) : (
-          <p>No history yet for this project.</p>
+        {project.history?.length > 0 && (
+          <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
+            Start over
+          </button>
         )}
       </div>
+
+      <div className="chat-messages">
+        {!project.history?.length && !status && (
+          <p className="chat-empty">Ask a question to begin the diagnostic session.</p>
+        )}
+
+        {project.history?.map((entry) => {
+          const isLatestAi = entry.role === 'ai' && entry.id === latestAiId;
+          const composed = entry.role === 'user' && isComposed(entry.text);
+          const time = new Date(entry.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+          if (composed) {
+            return (
+              <div key={entry.id} className="chat-pill-row">
+                <span className="chat-pill">Diagnostic answers submitted</span>
+              </div>
+            );
+          }
+
+          if (entry.role === 'user') {
+            return (
+              <div key={entry.id} className="chat-row chat-row--user">
+                <div className="chat-bubble chat-bubble--user">
+                  <p>{entry.text}</p>
+                </div>
+                <small className="chat-time">{time}</small>
+              </div>
+            );
+          }
+
+          return (
+            <div key={entry.id} className="chat-row chat-row--ai">
+              <div className="chat-bubble chat-bubble--ai">
+                <AiResponse
+                  text={entry.text}
+                  historyId={entry.id}
+                  projectId={project.id}
+                  onConfirmSuggestion={onConfirmSuggestion}
+                  onContinue={handleContinue}
+                  isLatestAi={isLatestAi}
+                  isBusy={isBusy}
+                />
+              </div>
+              <small className="chat-time">{time}</small>
+            </div>
+          );
+        })}
+
+        {status && (
+          <div className="chat-row chat-row--ai">
+            <div className="chat-bubble chat-bubble--ai chat-bubble--thinking">
+              <span className="dot" /><span className="dot" /><span className="dot" />
+            </div>
+          </div>
+        )}
+
+        {error && <p className="error" style={{ padding: '0 4px' }}>{error}</p>}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="chat-input-bar">
+        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <textarea
+            ref={textareaRef}
+            id="question"
+            name="question"
+            rows="2"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask for repair guidance… (Enter to send, Shift+Enter for new line)"
+            disabled={isBusy}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+            <VoiceInput onResult={(t) => setQuestion(t)} />
+            <button type="submit" disabled={!question.trim() || isBusy}>Send</button>
+          </div>
+        </form>
+      </div>
+
     </div>
   );
 }

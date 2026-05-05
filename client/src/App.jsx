@@ -186,7 +186,7 @@ function App() {
             error={error}
           />
         </div>
-        <div className="panel panel-right">
+        <div className="panel-right">
           <ProjectDetail
             project={selectedProject}
             onAsk={handleAskQuestion}
