@@ -5,6 +5,7 @@ import * as api from '../services/api';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b/i;
+const COMPOUND = /\?\s*(if|when|please|and)\b/i;
 
 function nodeText(node) {
   if (!node) return '';
@@ -16,7 +17,7 @@ function nodeText(node) {
 
 function questionType(text) {
   if (!text.endsWith('?')) return 'fix';
-  if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text)) return 'open';
+  if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
   return 'yesno';
 }
 
