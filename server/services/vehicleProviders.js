@@ -4,6 +4,9 @@ const path = require('path');
 
 const REG_LOOKUP_API_URL = process.env.REG_LOOKUP_API_URL;
 const REG_LOOKUP_API_KEY = process.env.REG_LOOKUP_API_KEY;
+const UKVD_API_KEY = process.env.UKVD_API_KEY;
+const UKVD_PACKAGE_NAME = process.env.UKVD_PACKAGE_NAME;
+const UKVD_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2/lookup';
 const dummyDataPath = path.join(__dirname, '..', 'data', 'vehicles.json');
 
 const isVin = (value) => {
@@ -48,6 +51,134 @@ function normalizeVinData(result) {
   };
 }
 
+function normalizeUkvdData(data, inputReg, inputVin) {
+  const vi = data.VehicleDetails?.VehicleIdentification || {};
+  const vs = data.VehicleDetails?.VehicleStatus || {};
+  const vh = data.VehicleDetails?.VehicleHistory || {};
+  const dt = data.VehicleDetails?.DvlaTechnicalDetails || {};
+  const mi = data.ModelDetails?.ModelIdentification || {};
+  const bd = data.ModelDetails?.BodyDetails || {};
+  const pt = data.ModelDetails?.Powertrain || {};
+  const ice = pt.IceDetails || {};
+  const tx = pt.Transmission || {};
+  const perf = data.ModelDetails?.Performance || {};
+  const dim = data.ModelDetails?.Dimensions || {};
+  const wt = data.ModelDetails?.Weights || {};
+  const em = data.ModelDetails?.Emissions || {};
+  const vc = data.VehicleCodes || {};
+
+  const make = mi.Make || vi.DvlaMake || null;
+  const model = mi.Model || mi.Range || vi.DvlaModel || null;
+  const year = vi.YearOfManufacture ? String(vi.YearOfManufacture) : null;
+  const fuelType = pt.FuelType || vi.DvlaFuelType || null;
+  const bodyType = bd.BodyStyle || vi.DvlaBodyType || null;
+
+  const latestKeepers = vh.KeeperChangeList?.[0]?.NumberOfPreviousKeepers ?? null;
+  const dateFirstReg = vi.DateFirstRegisteredInUk
+    ? vi.DateFirstRegisteredInUk.split('T')[0]
+    : null;
+
+  const vehicleData = {
+    colour: vh.ColourDetails?.CurrentColour || null,
+    numberOfKeepers: latestKeepers,
+    dateFirstRegistered: dateFirstReg,
+    countryOfOrigin: mi.CountryOfOrigin || null,
+    series: mi.Series || null,
+    modelVariant: mi.ModelVariant || null,
+    isScrapped: vs.IsScrapped || false,
+    isExported: vs.IsExported || false,
+    ukvdId: data.VehicleDetails?.UkvdId || null,
+    uvc: vc.Uvc || null,
+    engine: {
+      description: ice.EngineDescription || null,
+      manufacturer: ice.EngineManufacturer || null,
+      capacityCc: ice.EngineCapacityCc || dt.EngineCapacityCc || null,
+      capacityLitres: ice.EngineCapacityLitres || null,
+      aspiration: ice.Aspiration || null,
+      cylinders: ice.NumberOfCylinders || null,
+      valveGear: ice.ValveGear || null,
+      valvesPerCylinder: ice.ValvesPerCylinder || null,
+    },
+    transmission: {
+      type: tx.TransmissionType || null,
+      gears: tx.NumberOfGears || null,
+      driveType: tx.DriveType || null,
+      drivingAxle: tx.DrivingAxle || null,
+    },
+    performance: {
+      powerBhp: perf.Power?.Bhp || null,
+      powerKw: perf.Power?.Kw || null,
+      torqueNm: perf.Torque?.Nm || null,
+      torqueLbft: perf.Torque?.LbFt || null,
+      maxSpeedMph: perf.Statistics?.MaxSpeedMph || null,
+      zeroToSixtyMph: perf.Statistics?.ZeroToSixtyMph || null,
+    },
+    economy: {
+      combinedMpg: perf.FuelEconomy?.CombinedMpg || null,
+      urbanMpg: perf.FuelEconomy?.UrbanColdMpg || null,
+      extraUrbanMpg: perf.FuelEconomy?.ExtraUrbanMpg || null,
+      combinedL100km: perf.FuelEconomy?.CombinedL100Km || null,
+    },
+    emissions: {
+      euroStatus: em.EuroStatus || null,
+      co2: em.ManufacturerCo2 || null,
+    },
+    body: {
+      style: bd.BodyStyle || vi.DvlaBodyType || null,
+      shape: bd.BodyShape || null,
+      cabType: bd.CabType || null,
+      wheelbaseType: bd.WheelbaseType || null,
+      numberOfDoors: bd.NumberOfDoors || null,
+      numberOfSeats: bd.NumberOfSeats || dt.NumberOfSeats || null,
+      payloadVolumeLitres: bd.PayloadVolumeLitres || null,
+      fuelTankLitres: bd.FuelTankCapacityLitres || null,
+    },
+    dimensions: {
+      lengthMm: dim.LengthMm || null,
+      widthMm: dim.WidthMm || null,
+      heightMm: dim.HeightMm || null,
+      wheelbaseMm: dim.WheelbaseLengthMm || null,
+    },
+    weights: {
+      kerbKg: wt.KerbWeightKg || null,
+      grossKg: wt.GrossVehicleWeightKg || dt.GrossWeightKg || null,
+      payloadKg: wt.PayloadWeightKg || null,
+    },
+  };
+
+  return {
+    vin: vi.Vin && vi.Vin !== 'Permission Required' ? vi.Vin : (inputVin || null),
+    make,
+    model,
+    year,
+    engineCode: ice.EngineDescription || null,
+    fuelType,
+    trim: mi.Series || null,
+    bodyType,
+    registration: vi.Vrm || inputReg || null,
+    source: 'ukvd',
+    vehicleData,
+  };
+}
+
+async function lookupByUkvd(params) {
+  if (!UKVD_API_KEY || !UKVD_PACKAGE_NAME) return null;
+  try {
+    const response = await axios.get(UKVD_BASE_URL, {
+      params: { ApiKey: UKVD_API_KEY, PackageName: UKVD_PACKAGE_NAME, ...params },
+      timeout: 8000,
+    });
+    const body = response.data || {};
+    const statusCode = body.ResponseInformation?.StatusCode ?? body.StatusCode;
+    if (statusCode !== 0 && !body.ResponseInformation?.IsSuccessStatusCode) return null;
+    const results = body.Results?.[0] || body.Results || body;
+    if (!results || (!results.VehicleDetails && !results.ModelDetails)) return null;
+    return results;
+  } catch {
+    return null;
+  }
+}
+
 async function lookupByVin(vin) {
   const cleanedVin = vin?.trim().toUpperCase();
   if (!cleanedVin) {
@@ -69,6 +200,9 @@ async function lookupByVin(vin) {
       source: 'dummy-vin',
     };
   }
+
+  const ukvdResult = await lookupByUkvd({ Vin: cleanedVin });
+  if (ukvdResult) return normalizeUkvdData(ukvdResult, null, cleanedVin);
 
   const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${encodeURIComponent(cleanedVin)}?format=json`;
   try {
@@ -96,6 +230,9 @@ async function lookupByReg(registration) {
   if (!cleaned) {
     throw new Error('Registration number is required for lookup');
   }
+
+  const ukvdResult = await lookupByUkvd({ Vrm: cleaned });
+  if (ukvdResult) return normalizeUkvdData(ukvdResult, cleaned, null);
 
   if (REG_LOOKUP_API_URL) {
     try {

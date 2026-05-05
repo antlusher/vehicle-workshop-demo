@@ -199,6 +199,109 @@ function QuickReference({ project, token }) {
   );
 }
 
+function VehicleInfoRow({ label, value }) {
+  if (value === null || value === undefined || value === '') return null;
+  return (
+    <div className="spec-row">
+      <span className="spec-label">{label}</span>
+      <span className="spec-value">{value}</span>
+    </div>
+  );
+}
+
+function VehicleInfo({ project }) {
+  const vd = project.vehicleData;
+  if (!vd) {
+    return <p className="specs-loading" style={{ fontStyle: 'normal' }}>No extended vehicle data available for this project.</p>;
+  }
+
+  const fmt = (val, unit) => (val != null ? `${val}${unit ? ' ' + unit : ''}` : null);
+
+  return (
+    <div className="specs-grid">
+      <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+        <h4 className="spec-card-title">Identity</h4>
+        <VehicleInfoRow label="Colour" value={vd.colour} />
+        <VehicleInfoRow label="First registered" value={vd.dateFirstRegistered} />
+        <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
+        <VehicleInfoRow label="Country of origin" value={vd.countryOfOrigin} />
+        <VehicleInfoRow label="Series / Gen" value={vd.series} />
+        <VehicleInfoRow label="Variant" value={vd.modelVariant} />
+        {vd.isScrapped && <VehicleInfoRow label="Status" value="SCRAPPED" />}
+        {vd.isExported && <VehicleInfoRow label="Status" value="EXPORTED" />}
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Engine</h4>
+        <VehicleInfoRow label="Description" value={vd.engine?.description} />
+        <VehicleInfoRow label="Manufacturer" value={vd.engine?.manufacturer} />
+        <VehicleInfoRow label="Capacity" value={vd.engine?.capacityLitres != null ? `${vd.engine.capacityLitres}L (${vd.engine.capacityCc}cc)` : fmt(vd.engine?.capacityCc, 'cc')} />
+        <VehicleInfoRow label="Cylinders" value={vd.engine?.cylinders} />
+        <VehicleInfoRow label="Aspiration" value={vd.engine?.aspiration} />
+        <VehicleInfoRow label="Valve gear" value={vd.engine?.valveGear} />
+        <VehicleInfoRow label="Valves / cyl" value={vd.engine?.valvesPerCylinder} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Transmission</h4>
+        <VehicleInfoRow label="Type" value={vd.transmission?.type} />
+        <VehicleInfoRow label="Gears" value={vd.transmission?.gears} />
+        <VehicleInfoRow label="Drive" value={vd.transmission?.driveType} />
+        <VehicleInfoRow label="Driving axle" value={vd.transmission?.drivingAxle} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Performance</h4>
+        <VehicleInfoRow label="Power" value={vd.performance?.powerBhp != null ? `${vd.performance.powerBhp} bhp / ${vd.performance.powerKw} kW` : null} />
+        <VehicleInfoRow label="Torque" value={vd.performance?.torqueNm != null ? `${vd.performance.torqueNm} Nm / ${vd.performance.torqueLbft} lb·ft` : null} />
+        <VehicleInfoRow label="0–60 mph" value={fmt(vd.performance?.zeroToSixtyMph, 's')} />
+        <VehicleInfoRow label="Top speed" value={fmt(vd.performance?.maxSpeedMph, 'mph')} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Fuel Economy</h4>
+        <VehicleInfoRow label="Combined" value={fmt(vd.economy?.combinedMpg, 'mpg')} />
+        <VehicleInfoRow label="Urban" value={fmt(vd.economy?.urbanMpg, 'mpg')} />
+        <VehicleInfoRow label="Extra-urban" value={fmt(vd.economy?.extraUrbanMpg, 'mpg')} />
+        <VehicleInfoRow label="Combined (l/100km)" value={fmt(vd.economy?.combinedL100km, 'L/100km')} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Emissions</h4>
+        <VehicleInfoRow label="Euro status" value={vd.emissions?.euroStatus} />
+        <VehicleInfoRow label="CO2" value={fmt(vd.emissions?.co2, 'g/km')} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Body</h4>
+        <VehicleInfoRow label="Style" value={vd.body?.style} />
+        <VehicleInfoRow label="Shape" value={vd.body?.shape} />
+        <VehicleInfoRow label="Cab type" value={vd.body?.cabType} />
+        <VehicleInfoRow label="Wheelbase" value={vd.body?.wheelbaseType} />
+        <VehicleInfoRow label="Doors" value={vd.body?.numberOfDoors} />
+        <VehicleInfoRow label="Seats" value={vd.body?.numberOfSeats} />
+        <VehicleInfoRow label="Payload volume" value={fmt(vd.body?.payloadVolumeLitres, 'L')} />
+        <VehicleInfoRow label="Fuel tank" value={fmt(vd.body?.fuelTankLitres, 'L')} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Weights</h4>
+        <VehicleInfoRow label="Kerb" value={fmt(vd.weights?.kerbKg, 'kg')} />
+        <VehicleInfoRow label="Gross" value={fmt(vd.weights?.grossKg, 'kg')} />
+        <VehicleInfoRow label="Payload" value={fmt(vd.weights?.payloadKg, 'kg')} />
+      </div>
+
+      <div className="spec-card">
+        <h4 className="spec-card-title">Dimensions</h4>
+        <VehicleInfoRow label="Length" value={fmt(vd.dimensions?.lengthMm, 'mm')} />
+        <VehicleInfoRow label="Width" value={fmt(vd.dimensions?.widthMm, 'mm')} />
+        <VehicleInfoRow label="Height" value={fmt(vd.dimensions?.heightMm, 'mm')} />
+        <VehicleInfoRow label="Wheelbase" value={fmt(vd.dimensions?.wheelbaseMm, 'mm')} />
+      </div>
+    </div>
+  );
+}
+
 function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClearHistory, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
@@ -273,12 +376,14 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
 
       <div className="chat-tabs">
         <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
+        <button type="button" className={`chat-tab${tab === 'vehicle' ? ' active' : ''}`} onClick={() => setTab('vehicle')}>Vehicle Info</button>
         <button type="button" className={`chat-tab${tab === 'specs' ? ' active' : ''}`} onClick={() => setTab('specs')}>Quick Reference</button>
       </div>
 
+      {tab === 'vehicle' && <VehicleInfo project={project} />}
       {tab === 'specs' && <QuickReference project={project} token={token} />}
 
-      <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none' }}>
+      <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (
           <p className="chat-empty">Ask a question to begin the diagnostic session.</p>
         )}

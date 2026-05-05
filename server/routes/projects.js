@@ -33,6 +33,7 @@ function toProject(row, history = []) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     specs: row.specs || null,
+    vehicleData: row.vehicle_data || null,
     history: history.map((h) => ({
       id: h.id,
       role: h.role,
@@ -67,11 +68,12 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const vehicleData = await lookupVehicle(identifier);
     const { rows } = await query(
-      `INSERT INTO projects (user_id, registration, vin, make, model, year, engine_code, fuel_type, trim, body_type, source, active, closed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,false) RETURNING *`,
+      `INSERT INTO projects (user_id, registration, vin, make, model, year, engine_code, fuel_type, trim, body_type, source, vehicle_data, active, closed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,false) RETURNING *`,
       [req.user.id, vehicleData.registration, vehicleData.vin, vehicleData.make, vehicleData.model,
        vehicleData.year, vehicleData.engineCode, vehicleData.fuelType, vehicleData.trim,
-       vehicleData.bodyType, vehicleData.source]
+       vehicleData.bodyType, vehicleData.source,
+       vehicleData.vehicleData ? JSON.stringify(vehicleData.vehicleData) : null]
     );
     return res.json(toProject(rows[0], []));
   } catch (error) {
