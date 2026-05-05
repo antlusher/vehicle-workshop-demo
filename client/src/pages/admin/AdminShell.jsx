@@ -2,15 +2,13 @@ import { useState } from 'react';
 import Dashboard from './Dashboard';
 import Users from './Users';
 import Projects from './Projects';
-import AiRequests from './AiRequests';
-import KnowledgeBase from './KnowledgeBase';
+import AiKnowledge from './AiKnowledge';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'users', label: 'Users' },
   { id: 'projects', label: 'Projects' },
-  { id: 'ai', label: 'AI Requests' },
-  { id: 'kb', label: 'Knowledge Base' },
+  { id: 'ai', label: 'AI & Knowledge' },
 ];
 
 export default function AdminShell({ token, userEmail, onExit }) {
@@ -46,8 +44,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
         {page === 'dashboard' && <Dashboard token={token} />}
         {page === 'users' && <Users token={token} currentUserEmail={userEmail} />}
         {page === 'projects' && <Projects token={token} />}
-        {page === 'ai' && <AiRequests token={token} />}
-        {page === 'kb' && <KnowledgeBase token={token} />}
+        {page === 'ai' && <AiKnowledge token={token} />}
       </main>
     </div>
   );

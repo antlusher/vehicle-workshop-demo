@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getDashboard, getAiStats, getLearningStats, estimateCost } from '../../services/adminApi';
+import { getDashboard, getAiStats, estimateCost } from '../../services/adminApi';
 
 function StatCard({ label, value, sub }) {
   return (
@@ -11,23 +11,14 @@ function StatCard({ label, value, sub }) {
   );
 }
 
-const CATEGORY_LABELS = {
-  common_fix: 'Common Fix',
-  dtc_code: 'DTC Code',
-  vehicle_note: 'Vehicle Note',
-  service_interval: 'Service Interval',
-  general: 'General',
-};
-
 export default function Dashboard({ token }) {
   const [stats, setStats] = useState(null);
   const [aiStats, setAiStats] = useState([]);
-  const [learning, setLearning] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getDashboard(token), getAiStats(token), getLearningStats(token)])
-      .then(([s, ai, l]) => { setStats(s); setAiStats(ai); setLearning(l); })
+    Promise.all([getDashboard(token), getAiStats(token)])
+      .then(([s, ai]) => { setStats(s); setAiStats(ai); })
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -35,7 +26,6 @@ export default function Dashboard({ token }) {
 
   const totalTokens30d = aiStats.reduce((sum, r) => sum + r.input_tokens + r.output_tokens, 0);
   const estCost30d = aiStats.reduce((sum, r) => sum + parseFloat(estimateCost(r.input_tokens, r.output_tokens)), 0);
-  const totalKnowledge = (learning?.kb?.total ?? 0) + (learning?.confirmedFixes?.total ?? 0);
 
   return (
     <div>
@@ -49,79 +39,6 @@ export default function Dashboard({ token }) {
         <StatCard label="New projects (7d)" value={stats.projects.new_this_week} />
         <StatCard label="AI requests (7d)" value={stats.aiRequests.this_week} sub={`${stats.aiRequests.total} total`} />
         <StatCard label="Tokens (30d)" value={totalTokens30d.toLocaleString()} sub={`~$${estCost30d.toFixed(2)} est.`} />
-      </div>
-
-      <h3 className="admin-section-title">AI Learning &amp; Knowledge</h3>
-      <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-        <StatCard label="Total knowledge items" value={totalKnowledge} sub="KB + confirmed fixes" />
-        <StatCard label="Knowledge base entries" value={learning?.kb?.total ?? 0} sub={learning?.kb?.added_this_week ? `+${learning.kb.added_this_week} this week` : null} />
-        <StatCard label="Confirmed technician fixes" value={learning?.confirmedFixes?.total ?? 0} />
-        <StatCard label="Vehicles with confirmed fixes" value={learning?.confirmedFixes?.unique_vehicles ?? 0} />
-      </div>
-
-      <div className="admin-split" style={{ gap: 24, marginTop: 8 }}>
-        <div style={{ flex: 1 }}>
-          <h4 className="detail-section" style={{ marginTop: 0 }}>Knowledge base by category</h4>
-          {learning?.kb?.byCategory?.length > 0 ? (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead><tr><th>Category</th><th>Entries</th></tr></thead>
-                <tbody>
-                  {learning.kb.byCategory.map((row) => (
-                    <tr key={row.category}>
-                      <td>{CATEGORY_LABELS[row.category] || row.category}</td>
-                      <td>{row.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>No knowledge base entries yet.</p>
-          )}
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <h4 className="detail-section" style={{ marginTop: 0 }}>Top confirmed fixes</h4>
-          {learning?.topFixes?.length > 0 ? (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead><tr><th>Vehicle</th><th>Fix</th><th>Confirmed</th></tr></thead>
-                <tbody>
-                  {learning.topFixes.map((fix, i) => (
-                    <tr key={i}>
-                      <td style={{ whiteSpace: 'nowrap' }}>{[fix.make, fix.model].filter(Boolean).join(' ') || '—'}</td>
-                      <td className="admin-cell-truncate" title={fix.text}>{fix.text}</td>
-                      <td>{fix.count}×</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>No confirmed fixes recorded yet.</p>
-          )}
-        </div>
-
-        {learning?.recentKb?.length > 0 && (
-          <div style={{ flex: 1 }}>
-            <h4 className="detail-section" style={{ marginTop: 0 }}>Recent KB additions</h4>
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead><tr><th>Title</th><th>Category</th><th>Added</th></tr></thead>
-                <tbody>
-                  {learning.recentKb.map((entry, i) => (
-                    <tr key={i}>
-                      <td className="admin-cell-truncate" title={entry.title}>{entry.title}</td>
-                      <td>{CATEGORY_LABELS[entry.category] || entry.category}</td>
-                      <td style={{ whiteSpace: 'nowrap' }}>{new Date(entry.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
 
       {aiStats.length > 0 && (
