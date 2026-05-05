@@ -4,7 +4,7 @@ import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
-const MULTI_OPTION = /,\s*or\b/i;
+const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
 const COMPOUND = /\?\s*(if|when|please|and)\b/i;
 
 function nodeText(node) {
