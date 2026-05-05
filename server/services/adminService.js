@@ -188,6 +188,24 @@ async function deleteKnowledgeBaseEntry(id) {
   await query('DELETE FROM knowledge_base WHERE id = $1', [id]);
 }
 
+async function getProjectConversation(projectId) {
+  const [proj, hist] = await Promise.all([
+    query(
+      `SELECT p.*, u.email AS user_email
+       FROM projects p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = $1`,
+      [projectId]
+    ),
+    query(
+      'SELECT id, role, text, confirmed, created_at FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
+      [projectId]
+    ),
+  ]);
+  if (!proj.rows.length) return null;
+  return { project: proj.rows[0], history: hist.rows };
+}
+
 module.exports = {
   getDashboardStats,
   listUsers,
@@ -195,6 +213,7 @@ module.exports = {
   updateUser,
   listAiRequests,
   getAiStats,
+  getProjectConversation,
   listKnowledgeBase,
   createKnowledgeBaseEntry,
   updateKnowledgeBaseEntry,

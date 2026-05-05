@@ -41,6 +41,9 @@ export const getAiRequests = (token, params = {}) => {
 export const getAiStats = (token) =>
   request('/api/admin/ai-requests/stats', {}, token);
 
+export const getConversation = (projectId, token) =>
+  request(`/api/admin/projects/${projectId}/conversation`, {}, token);
+
 export const getKnowledgeBase = (token, params = {}) => {
   const qs = new URLSearchParams(params).toString();
   return request(`/api/admin/knowledge-base${qs ? '?' + qs : ''}`, {}, token);

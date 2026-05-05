@@ -723,6 +723,52 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .tab-toggle button.active { background: white; color: #0f172a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .tab-toggle button:hover:not(.active):not(:disabled) { background: #e2e8f0; }
 
+/* ── Admin conversation viewer ── */
+.convo-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: calc(100vh - 260px);
+  padding-right: 4px;
+}
+
+.convo-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.convo-entry--user { align-items: flex-end; }
+.convo-entry--ai   { align-items: flex-start; }
+
+.convo-bubble {
+  padding: 8px 12px;
+  border-radius: 14px;
+  max-width: 90%;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.convo-bubble--user {
+  background: #2563eb;
+  color: white;
+  border-bottom-right-radius: 3px;
+}
+.convo-bubble--ai {
+  background: #f1f5f9;
+  color: #1e293b;
+  border-bottom-left-radius: 3px;
+  max-width: 100%;
+  width: 100%;
+}
+
+.convo-ai-prose p { margin: 0 0 6px; }
+.convo-ai-prose ul, .convo-ai-prose ol { margin: 0 0 6px; padding-left: 18px; }
+.convo-ai-prose li { margin-bottom: 2px; }
+.convo-ai-prose h1, .convo-ai-prose h2, .convo-ai-prose h3 { font-size: 0.9rem; margin: 8px 0 4px; }
+.convo-ai-prose strong { font-weight: 700; }
+
+.convo-pill-row { display: flex; justify-content: center; margin: 2px 0; }
+
 /* ── Active user highlight ── */
 .user-active-pill {
   background: #dcfce7;

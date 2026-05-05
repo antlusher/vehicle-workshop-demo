@@ -83,6 +83,13 @@ router.get('/ai-requests/stats', async (req, res) => {
   return res.json(stats);
 });
 
+// Conversations
+router.get('/projects/:projectId/conversation', async (req, res) => {
+  const convo = await admin.getProjectConversation(req.params.projectId);
+  if (!convo) return res.status(404).json({ error: 'Project not found' });
+  return res.json(convo);
+});
+
 // Knowledge base
 router.get('/knowledge-base', async (req, res) => {
   const { category, make, search } = req.query;
