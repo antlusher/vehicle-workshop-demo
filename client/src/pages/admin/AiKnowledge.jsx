@@ -5,6 +5,7 @@ import {
   getLearningStats,
   getKnowledgeBase, createKbEntry, updateKbEntry, deleteKbEntry,
 } from '../../services/adminApi';
+import { getEngines, getTransmissions } from '../../services/registryApi';
 
 // ── Shared ────────────────────────────────────────────────────────────────────
 
@@ -290,9 +291,9 @@ function RequestLog({ token }) {
 // ── Knowledge Base sub-tab ────────────────────────────────────────────────────
 
 const CATEGORIES = ['Common Fix', 'DTC Code', 'Vehicle Note', 'Service Interval', 'General'];
-const EMPTY_FORM = { category: 'Common Fix', make: '', model: '', year_from: '', year_to: '', fault_code: '', title: '', content: '', source: '' };
+const EMPTY_FORM = { category: 'Common Fix', make: '', model: '', year_from: '', year_to: '', fault_code: '', title: '', content: '', source: '', engine_id: '', transmission_id: '' };
 
-function KbForm({ initial, onSave, onCancel }) {
+function KbForm({ initial, engines, transmissions, onSave, onCancel }) {
   const [form, setForm] = useState(initial || EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -304,6 +305,12 @@ function KbForm({ initial, onSave, onCancel }) {
     setSaving(true); setError('');
     try { await onSave(form); } catch (err) { setError(err.message); setSaving(false); }
   };
+
+  const scopeHint = form.engine_id
+    ? `Scoped to engine — applies to all vehicles with this engine regardless of make/model`
+    : form.make
+    ? `Scoped to ${[form.make, form.model].filter(Boolean).join(' ')}`
+    : 'Universal — applies to all vehicles';
 
   return (
     <form className="kb-form" onSubmit={handleSubmit}>
@@ -323,9 +330,27 @@ function KbForm({ initial, onSave, onCancel }) {
           <input value={form.source} onChange={(e) => set('source', e.target.value)} placeholder="e.g. Manufacturer TSB" />
         </div>
       </div>
+
+      <div className="kb-form-row">
+        <div className="kb-form-group" style={{ flex: 2 }}>
+          <label>Engine (cross-make scope)</label>
+          <select value={form.engine_id} onChange={(e) => set('engine_id', e.target.value)}>
+            <option value="">— Not engine-specific —</option>
+            {(engines || []).map((e) => <option key={e.id} value={e.id}>{e.code}{e.name ? ` — ${e.name}` : ''}</option>)}
+          </select>
+        </div>
+        <div className="kb-form-group" style={{ flex: 2 }}>
+          <label>Transmission (cross-make scope)</label>
+          <select value={form.transmission_id} onChange={(e) => set('transmission_id', e.target.value)}>
+            <option value="">— Not transmission-specific —</option>
+            {(transmissions || []).map((t) => <option key={t.id} value={t.id}>{t.code}{t.name ? ` — ${t.name}` : ''}</option>)}
+          </select>
+        </div>
+      </div>
+
       <div className="kb-form-row">
         <div className="kb-form-group">
-          <label>Make</label>
+          <label>Make <span style={{ color: '#9ca3af', fontWeight: 400 }}>(leave blank for engine-scoped or universal)</span></label>
           <input value={form.make} onChange={(e) => set('make', e.target.value)} placeholder="e.g. Ford" />
         </div>
         <div className="kb-form-group">
@@ -341,6 +366,9 @@ function KbForm({ initial, onSave, onCancel }) {
           <input value={form.year_to} onChange={(e) => set('year_to', e.target.value)} placeholder="e.g. 2020" />
         </div>
       </div>
+
+      <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: '#6b7280' }}>Scope: {scopeHint}</p>
+
       <div className="kb-form-group">
         <label>Title</label>
         <input value={form.title} onChange={(e) => set('title', e.target.value)} placeholder="Short description of the fix or note" required />
@@ -360,6 +388,8 @@ function KbForm({ initial, onSave, onCancel }) {
 
 function KnowledgeBaseTab({ token }) {
   const [entries, setEntries] = useState([]);
+  const [engines, setEngines] = useState([]);
+  const [transmissions, setTransmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState('');
@@ -367,7 +397,11 @@ function KnowledgeBaseTab({ token }) {
   const [editingId, setEditingId] = useState(null);
 
   const load = (params = {}) => getKnowledgeBase(token, params).then(setEntries).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [token]);
+  useEffect(() => {
+    Promise.all([getKnowledgeBase(token), getEngines(token), getTransmissions(token)])
+      .then(([kb, e, t]) => { setEntries(kb); setEngines(e); setTransmissions(t); })
+      .finally(() => setLoading(false));
+  }, [token]);
 
   const handleSearch = () => {
     const params = {};
@@ -388,7 +422,7 @@ function KnowledgeBaseTab({ token }) {
       {showForm && (
         <div className="kb-form-wrap">
           <h3 className="admin-section-title">New entry</h3>
-          <KbForm onSave={async (form) => { await createKbEntry(form, token); setShowForm(false); load(); }} onCancel={() => setShowForm(false)} />
+          <KbForm engines={engines} transmissions={transmissions} onSave={async (form) => { await createKbEntry(form, token); setShowForm(false); load(); }} onCancel={() => setShowForm(false)} />
         </div>
       )}
 
@@ -396,7 +430,8 @@ function KnowledgeBaseTab({ token }) {
         <div className="kb-form-wrap">
           <h3 className="admin-section-title">Edit entry</h3>
           <KbForm
-            initial={{ category: editingEntry.category, make: editingEntry.make || '', model: editingEntry.model || '', year_from: editingEntry.year_from || '', year_to: editingEntry.year_to || '', fault_code: editingEntry.fault_code || '', title: editingEntry.title, content: editingEntry.content, source: editingEntry.source || '' }}
+            engines={engines} transmissions={transmissions}
+            initial={{ category: editingEntry.category, make: editingEntry.make || '', model: editingEntry.model || '', year_from: editingEntry.year_from || '', year_to: editingEntry.year_to || '', fault_code: editingEntry.fault_code || '', title: editingEntry.title, content: editingEntry.content, source: editingEntry.source || '', engine_id: editingEntry.engine_id || '', transmission_id: editingEntry.transmission_id || '' }}
             onSave={async (form) => { await updateKbEntry(editingId, form, token); setEditingId(null); load(); }}
             onCancel={() => setEditingId(null)}
           />
@@ -417,13 +452,21 @@ function KnowledgeBaseTab({ token }) {
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
-              <tr><th>Category</th><th>Vehicle</th><th>Fault code</th><th>Title</th><th>Source</th><th>Updated</th><th></th></tr>
+              <tr><th>Category</th><th>Scope</th><th>Fault code</th><th>Title</th><th>Source</th><th>Updated</th><th></th></tr>
             </thead>
             <tbody>
-              {entries.map((e) => (
+              {entries.map((e) => {
+                const engineLabel = e.engine_id ? engines.find((eng) => eng.id === e.engine_id)?.code : null;
+                const txLabel = e.transmission_id ? transmissions.find((t) => t.id === e.transmission_id)?.code : null;
+                const scopeLabel = engineLabel
+                  ? <span className="badge badge-blue">{engineLabel} engine</span>
+                  : txLabel
+                  ? <span className="badge badge-blue">{txLabel} tx</span>
+                  : [e.make, e.model, e.year_from && `${e.year_from}${e.year_to ? '–' + e.year_to : '+'}`].filter(Boolean).join(' ') || <span style={{ color: '#9ca3af' }}>Universal</span>;
+                return (
                 <tr key={e.id}>
                   <td><span className="badge badge-blue">{e.category}</span></td>
-                  <td>{[e.make, e.model, e.year_from && `${e.year_from}${e.year_to ? '–' + e.year_to : '+'}`].filter(Boolean).join(' ') || <span style={{ color: '#9ca3af' }}>Any</span>}</td>
+                  <td>{scopeLabel}</td>
                   <td>{e.fault_code || <span style={{ color: '#9ca3af' }}>—</span>}</td>
                   <td>{e.title}</td>
                   <td style={{ color: '#6b7280', fontSize: '0.85rem' }}>{e.source || '—'}</td>
@@ -435,7 +478,8 @@ function KnowledgeBaseTab({ token }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {!entries.length && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No entries yet. Add your first knowledge base entry above.</td></tr>}
             </tbody>
           </table>

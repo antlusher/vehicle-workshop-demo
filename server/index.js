@@ -7,6 +7,7 @@ const vehiclesRouter = require('./routes/vehicles');
 const projectsRouter = require('./routes/projects');
 const aiRouter = require('./routes/ai');
 const adminRouter = require('./routes/admin');
+const registryRouter = require('./routes/registry');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -19,6 +20,7 @@ app.use('/api/vehicles', vehiclesRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/registry', registryRouter);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vehicle Workshop API is running' });

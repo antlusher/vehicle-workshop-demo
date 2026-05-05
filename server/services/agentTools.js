@@ -1,6 +1,18 @@
 const axios = require('axios');
 const { query } = require('./db');
 
+async function resolveEngineId(engine_code) {
+  if (!engine_code) return null;
+  const { rows } = await query('SELECT id FROM engines WHERE LOWER(code) = LOWER($1)', [engine_code]);
+  return rows[0]?.id || null;
+}
+
+async function resolveTransmissionId(transmission_code) {
+  if (!transmission_code) return null;
+  const { rows } = await query('SELECT id FROM transmissions WHERE LOWER(code) = LOWER($1)', [transmission_code]);
+  return rows[0]?.id || null;
+}
+
 async function getVehicleSpecs({ make, model, year, engine_code }) {
   const { rows } = await query(
     `SELECT * FROM vehicles
@@ -27,30 +39,42 @@ async function getVehicleSpecs({ make, model, year, engine_code }) {
   return { message: `No detailed specs found for ${make} ${model} ${year || ''}. Use general knowledge for this vehicle.` };
 }
 
-async function searchKnowledgeBase({ make, model, year, symptom }) {
+async function searchKnowledgeBase({ make, model, year, symptom, engine_code, transmission_code }) {
+  const engineId = await resolveEngineId(engine_code);
+  const transmissionId = await resolveTransmissionId(transmission_code);
+
   const [csRows, kbRows] = await Promise.all([
     query(
       `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
               COUNT(*) OVER (PARTITION BY cs.text) as frequency
        FROM confirmed_suggestions cs
        JOIN projects p ON cs.project_id = p.id
-       WHERE LOWER(p.make) = LOWER($1)
-         AND LOWER(p.model) = LOWER($2)
-         AND ($3::varchar IS NULL OR p.year = $3)
-         AND cs.text ILIKE $4
+       LEFT JOIN vehicle_types vt ON p.vehicle_type_id = vt.id
+       WHERE (
+         ($1::uuid IS NOT NULL AND vt.engine_id = $1)
+         OR (LOWER(p.make) = LOWER($2) AND LOWER(p.model) = LOWER($3))
+       )
+       AND ($4::varchar IS NULL OR p.year = $4)
+       AND cs.text ILIKE $5
        ORDER BY frequency DESC
        LIMIT 5`,
-      [make, model, year || null, `%${symptom}%`]
+      [engineId, make, model, year || null, `%${symptom}%`]
     ),
     query(
-      `SELECT title, content, category, fault_code, source
+      `SELECT title, content, category, fault_code, source,
+              CASE WHEN ($1::uuid IS NOT NULL AND engine_id = $1) THEN 0
+                   WHEN ($2::uuid IS NOT NULL AND transmission_id = $2) THEN 0
+                   ELSE 1 END as relevance
        FROM knowledge_base
-       WHERE ($1::varchar IS NULL OR LOWER(make) = LOWER($1))
-         AND ($2::varchar IS NULL OR LOWER(model) = LOWER($2))
-         AND (title ILIKE $3 OR content ILIKE $3)
-       ORDER BY updated_at DESC
+       WHERE (
+         ($1::uuid IS NOT NULL AND engine_id = $1)
+         OR ($2::uuid IS NOT NULL AND transmission_id = $2)
+         OR (($3::varchar IS NULL OR LOWER(make) = LOWER($3)) AND ($4::varchar IS NULL OR LOWER(model) = LOWER($4)))
+       )
+       AND (title ILIKE $5 OR content ILIKE $5)
+       ORDER BY relevance, updated_at DESC
        LIMIT 5`,
-      [make || null, model || null, `%${symptom}%`]
+      [engineId, transmissionId, make || null, model || null, `%${symptom}%`]
     ),
   ]);
 
@@ -79,18 +103,23 @@ async function searchKnowledgeBase({ make, model, year, symptom }) {
   return { results };
 }
 
-async function getCommonFixes({ make, model, year }) {
+async function getCommonFixes({ make, model, year, engine_code, transmission_code }) {
+  const engineId = await resolveEngineId(engine_code);
+
   const { rows } = await query(
     `SELECT cs.text, COUNT(*) as confirmed_count, p.make, p.model, p.year
      FROM confirmed_suggestions cs
      JOIN projects p ON cs.project_id = p.id
-     WHERE LOWER(p.make) = LOWER($1)
-       AND LOWER(p.model) = LOWER($2)
-       AND ($3::varchar IS NULL OR p.year = $3)
+     LEFT JOIN vehicle_types vt ON p.vehicle_type_id = vt.id
+     WHERE (
+       ($1::uuid IS NOT NULL AND vt.engine_id = $1)
+       OR (LOWER(p.make) = LOWER($2) AND LOWER(p.model) = LOWER($3))
+     )
+     AND ($4::varchar IS NULL OR p.year = $4)
      GROUP BY cs.text, p.make, p.model, p.year
      ORDER BY confirmed_count DESC
      LIMIT 5`,
-    [make, model, year || null]
+    [engineId, make, model, year || null]
   );
 
   if (!rows.length) {
@@ -141,7 +170,7 @@ const toolDefinitions = [
   },
   {
     name: 'search_knowledge_base',
-    description: 'Search the workshop knowledge base for confirmed fixes from other technicians for this vehicle and symptom.',
+    description: 'Search the workshop knowledge base for confirmed fixes from other technicians for this vehicle and symptom. Matches by engine code across all makes sharing the same engine (e.g. R9M in Renault, Nissan, Fiat, Mercedes).',
     input_schema: {
       type: 'object',
       properties: {
@@ -149,19 +178,23 @@ const toolDefinitions = [
         model: { type: 'string' },
         year: { type: 'string' },
         symptom: { type: 'string', description: 'The symptom or fault description to search for' },
+        engine_code: { type: 'string', description: 'Engine code to cross-reference fixes from all vehicles sharing this engine' },
+        transmission_code: { type: 'string', description: 'Transmission code to cross-reference fixes from all vehicles sharing this transmission' },
       },
       required: ['make', 'model', 'symptom'],
     },
   },
   {
     name: 'get_common_fixes',
-    description: 'Get the most commonly confirmed fixes for this vehicle across all technicians in the workshop network.',
+    description: 'Get the most commonly confirmed fixes for this vehicle across all technicians in the workshop network. Pass engine_code to include fixes from all makes sharing the same engine.',
     input_schema: {
       type: 'object',
       properties: {
         make: { type: 'string' },
         model: { type: 'string' },
         year: { type: 'string' },
+        engine_code: { type: 'string', description: 'Engine code to find fixes across all vehicles with this engine' },
+        transmission_code: { type: 'string', description: 'Transmission code to find fixes across all vehicles with this transmission' },
       },
       required: ['make', 'model'],
     },
