@@ -188,6 +188,34 @@ async function deleteKnowledgeBaseEntry(id) {
   await query('DELETE FROM knowledge_base WHERE id = $1', [id]);
 }
 
+async function getLearningStats() {
+  const [kbTotal, kbByCategory, confirmedStats, topFixes, recentKb] = await Promise.all([
+    query(`SELECT
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE created_at > now() - interval '7 days')::int AS added_this_week
+      FROM knowledge_base`),
+    query(`SELECT category, COUNT(*)::int AS count FROM knowledge_base GROUP BY category ORDER BY count DESC`),
+    query(`SELECT
+      COUNT(*)::int AS total,
+      COUNT(DISTINCT project_id)::int AS unique_vehicles
+      FROM confirmed_suggestions`),
+    query(`SELECT cs.text, COUNT(*)::int AS count, p.make, p.model
+      FROM confirmed_suggestions cs
+      JOIN projects p ON cs.project_id = p.id
+      GROUP BY cs.text, p.make, p.model
+      ORDER BY count DESC
+      LIMIT 5`),
+    query(`SELECT title, category, created_at FROM knowledge_base ORDER BY created_at DESC LIMIT 5`),
+  ]);
+
+  return {
+    kb: { ...kbTotal.rows[0], byCategory: kbByCategory.rows },
+    confirmedFixes: confirmedStats.rows[0],
+    topFixes: topFixes.rows,
+    recentKb: recentKb.rows,
+  };
+}
+
 async function getProjectConversation(projectId) {
   const [proj, hist] = await Promise.all([
     query(
@@ -213,6 +241,7 @@ module.exports = {
   updateUser,
   listAiRequests,
   getAiStats,
+  getLearningStats,
   getProjectConversation,
   listKnowledgeBase,
   createKnowledgeBaseEntry,

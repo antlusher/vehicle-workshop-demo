@@ -90,6 +90,12 @@ router.get('/projects/:projectId/conversation', async (req, res) => {
   return res.json(convo);
 });
 
+// Learning stats
+router.get('/learning', async (req, res) => {
+  const data = await admin.getLearningStats();
+  return res.json(data);
+});
+
 // Knowledge base
 router.get('/knowledge-base', async (req, res) => {
   const { category, make, search } = req.query;
