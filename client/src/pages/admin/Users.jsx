@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUsers, getUser, updateUser } from '../../services/adminApi';
+import { getUsers, getUser, updateUser, createUser } from '../../services/adminApi';
 
 function Badge({ value, trueLabel = 'Yes', falseLabel = 'No', trueClass = 'badge-green', falseClass = 'badge-grey' }) {
   return <span className={`badge ${value ? trueClass : falseClass}`}>{value ? trueLabel : falseLabel}</span>;
@@ -128,11 +128,73 @@ function UserDetailPanel({ userId, token, onClose, onUpdated }) {
   );
 }
 
+function CreateUserForm({ token, onCreated, onCancel }) {
+  const [form, setForm] = useState({ email: '', password: '', role: 'tech', subscribed: false });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.email || !form.password) { setError('Email and password are required'); return; }
+    setSaving(true); setError('');
+    try {
+      await createUser(form, token);
+      onCreated();
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="kb-form-wrap">
+      <h3 className="admin-section-title" style={{ marginTop: 0 }}>New user</h3>
+      <form className="kb-form" onSubmit={handleSubmit}>
+        <div className="kb-form-row">
+          <div className="kb-form-group">
+            <label>Email</label>
+            <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="user@example.com" required />
+          </div>
+          <div className="kb-form-group">
+            <label>Password</label>
+            <input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} placeholder="Temporary password" required />
+          </div>
+          <div className="kb-form-group">
+            <label>Role</label>
+            <select value={form.role} onChange={(e) => set('role', e.target.value)}>
+              <option value="tech">Tech</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div className="kb-form-group" style={{ justifyContent: 'flex-end', paddingBottom: 2 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={form.subscribed}
+                onChange={(e) => set('subscribed', e.target.checked)}
+                style={{ width: 'auto', marginBottom: 0 }}
+              />
+              Subscribed
+            </label>
+          </div>
+        </div>
+        {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+        <div className="kb-form-actions">
+          <button type="submit" disabled={saving}>{saving ? 'Creating...' : 'Create user'}</button>
+          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function Users({ token }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = () => getUsers(token).then(setUsers).finally(() => setLoading(false));
 
@@ -155,7 +217,16 @@ export default function Users({ token }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <button onClick={() => { setShowCreate(true); setSelectedId(null); }} style={{ marginLeft: 'auto' }}>+ Add user</button>
         </div>
+
+        {showCreate && (
+          <CreateUserForm
+            token={token}
+            onCreated={() => { setShowCreate(false); load(); }}
+            onCancel={() => setShowCreate(false)}
+          />
+        )}
 
         <div className="admin-table-wrap">
           <table className="admin-table">

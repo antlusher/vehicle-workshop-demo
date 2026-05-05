@@ -1,5 +1,6 @@
 const express = require('express');
-const { findUserByToken } = require('../services/authService');
+const { findUserByToken, createUser } = require('../services/authService');
+const { query } = require('../services/db');
 const admin = require('../services/adminService');
 
 const router = express.Router();
@@ -38,6 +39,18 @@ router.get('/users/:id', async (req, res) => {
   const user = await admin.getUser(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found' });
   return res.json(user);
+});
+
+router.post('/users', async (req, res) => {
+  const { email, password, role = 'tech', subscribed = false } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  try {
+    const user = await createUser(email, password);
+    await query('UPDATE users SET role = $1, subscribed = $2 WHERE id = $3', [role, subscribed, user.id]);
+    return res.status(201).json({ ...user, role, subscribed });
+  } catch (err) {
+    return res.status(409).json({ error: err.message });
+  }
 });
 
 router.patch('/users/:id', async (req, res) => {

@@ -21,6 +21,9 @@ export const getDashboard = (token) =>
 export const getUsers = (token) =>
   request('/api/admin/users?limit=200', {}, token);
 
+export const createUser = (data, token) =>
+  request('/api/admin/users', { method: 'POST', body: data }, token);
+
 export const getUser = (id, token) =>
   request(`/api/admin/users/${id}`, {}, token);
 
