@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
@@ -20,6 +20,21 @@ function questionType(text) {
   return 'yesno';
 }
 
+function YesNoButtons({ onAnswered }) {
+  const [answer, setAnswer] = useState(null);
+  const handle = (val) => {
+    const next = answer === val ? null : val;
+    setAnswer(next);
+    onAnswered(next);
+  };
+  return (
+    <div className="yn-buttons">
+      <button type="button" className={`yn-btn yn-yes${answer === 'yes' ? ' active' : ''}`} onClick={() => handle('yes')}>Yes</button>
+      <button type="button" className={`yn-btn yn-no${answer === 'no' ? ' active' : ''}`} onClick={() => handle('no')}>No</button>
+    </div>
+  );
+}
+
 function OpenAnswerInput({ itemText, onAnswer }) {
   const [value, setValue] = useState('');
   return (
@@ -34,27 +49,32 @@ function OpenAnswerInput({ itemText, onAnswer }) {
   );
 }
 
-function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
-  const [confirmed, setConfirmed] = useState({});
-  const [answers, setAnswers] = useState({});
-  const [submitted, setSubmitted] = useState(false);
+function ConfirmFixButton({ itemText, onConfirm }) {
+  const [confirmed, setConfirmed] = useState(false);
+  const handle = async () => {
+    setConfirmed(true);
+    try { await onConfirm(itemText); } catch { setConfirmed(false); }
+  };
+  if (confirmed) return <small className="suggestion-confirmed">✓ Confirmed fix</small>;
+  return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>Confirm fix</button>;
+}
 
-  const handleAnswer = useCallback((key, answer) => {
-    setAnswers((prev) => ({ ...prev, [key]: prev[key] === answer ? null : answer }));
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
+  const [hasAnswers, setHasAnswers] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const answersRef = useRef({});
+
+  const handleAnswer = useCallback((key, value) => {
+    answersRef.current[key] = value;
+    setHasAnswers(Object.values(answersRef.current).some((v) => v !== null && v !== ''));
   }, []);
 
-  const handleConfirm = useCallback(async (suggestionText) => {
-    const key = suggestionText.trim();
-    setConfirmed((prev) => ({ ...prev, [key]: true }));
-    try {
-      await onConfirmSuggestion(projectId, historyId, key);
-    } catch {
-      setConfirmed((prev) => ({ ...prev, [key]: false }));
-    }
+  const handleConfirm = useCallback(async (itemText) => {
+    await onConfirmSuggestion(projectId, historyId, itemText);
   }, [projectId, historyId, onConfirmSuggestion]);
 
   const handleContinue = useCallback(async () => {
-    const answered = Object.entries(answers).filter(([, v]) => v !== null && v !== '');
+    const answered = Object.entries(answersRef.current).filter(([, v]) => v !== null && v !== '');
     if (!answered.length) return;
     setSubmitted(true);
     const lines = answered.map(([q, a]) => {
@@ -63,36 +83,22 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
     });
     const message = `Diagnostic answers:\n${lines.join('\n')}\n\nBased on these answers, what is the next diagnostic step?`;
     await onContinue(message);
-  }, [answers, onContinue]);
+  }, [onContinue]);
 
-  const hasAnswers = Object.values(answers).some((v) => v !== null && v !== '');
-
-  const components = {
+  const components = useMemo(() => ({
     li({ children }) {
       const itemText = nodeText(children).trim();
       const type = questionType(itemText);
-      const answer = answers[itemText];
-      const isConfirmed = confirmed[itemText];
-
       return (
         <li className={`ai-suggestion${type === 'open' ? ' ai-suggestion--open' : ''}`}>
           <span>{children}</span>
-          {type === 'yesno' && (
-            <div className="yn-buttons">
-              <button type="button" className={`yn-btn yn-yes${answer === 'yes' ? ' active' : ''}`} onClick={() => handleAnswer(itemText, 'yes')}>Yes</button>
-              <button type="button" className={`yn-btn yn-no${answer === 'no' ? ' active' : ''}`} onClick={() => handleAnswer(itemText, 'no')}>No</button>
-            </div>
-          )}
+          {type === 'yesno' && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
           {type === 'open' && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
-          {type === 'fix' && (
-            isConfirmed
-              ? <small className="suggestion-confirmed">✓ Confirmed fix</small>
-              : <button type="button" className="secondary suggestion-confirm-btn" onClick={() => handleConfirm(itemText)}>Confirm fix</button>
-          )}
+          {type === 'fix' && <ConfirmFixButton itemText={itemText} onConfirm={handleConfirm} />}
         </li>
       );
     },
-  };
+  }), [handleAnswer, handleConfirm]);
 
   return (
     <div className="ai-response">
