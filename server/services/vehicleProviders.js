@@ -91,6 +91,7 @@ function normalizeUkvdData(data, inputReg, inputVin) {
     uvc: vc.Uvc || null,
     engine: {
       description: ice.EngineDescription || null,
+      engineNumber: dt.EngineNumber || null,
       manufacturer: ice.EngineManufacturer || null,
       capacityCc: ice.EngineCapacityCc || dt.EngineCapacityCc || null,
       capacityLitres: ice.EngineCapacityLitres || null,
@@ -151,7 +152,7 @@ function normalizeUkvdData(data, inputReg, inputVin) {
     make,
     model,
     year,
-    engineCode: ice.EngineDescription || null,
+    engineCode: dt.EngineNumber || ice.EngineDescription || null,
     fuelType,
     trim: mi.Series || null,
     bodyType,
