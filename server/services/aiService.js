@@ -121,4 +121,42 @@ async function generateRepairAdvice(project, history = [], question) {
   return runAgentLoop(client, project, history, question);
 }
 
-module.exports = { generateRepairAdvice };
+async function generateVehicleSpecs(project) {
+  if (!client) return null;
+
+  const vehicle = [project.year, project.make, project.model, project.engineCode, project.fuelType, project.trim]
+    .filter(Boolean).join(' ');
+
+  const prompt = `You are a vehicle technical data specialist. Provide accurate workshop specifications for: ${vehicle}
+
+Return ONLY valid JSON matching this exact structure — no extra text, no markdown fences:
+{
+  "engineOil": { "grade": "", "capacity": "", "spec": "" },
+  "coolant": { "type": "", "capacity": "", "mixRatio": "" },
+  "brakeFluid": { "spec": "" },
+  "transmission": { "type": "", "capacity": "" },
+  "wheelTorque": { "nm": "", "lbft": "", "pattern": "" },
+  "tyrePressures": { "front": "", "rear": "", "unit": "bar" },
+  "serviceIntervals": { "oil": "", "airFilter": "", "timingBelt": "" },
+  "notes": []
+}
+
+Use empty string for anything you are not confident about for this specific vehicle. Keep notes to 3 max — vehicle-specific warnings or critical tips only.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const text = response.content.find((b) => b.type === 'text')?.text || '';
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { generateRepairAdvice, generateVehicleSpecs };

@@ -142,6 +142,97 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   color: #6b7280;
 }
 
+/* ── Tabs ── */
+.chat-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+  background: white;
+}
+
+.chat-tab {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chat-tab:hover:not(.active) {
+  background: #f9fafb;
+  color: #374151;
+}
+
+.chat-tab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+  background: white;
+}
+
+/* ── Quick Reference ── */
+.specs-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-content: start;
+}
+
+.spec-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.spec-card-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 0.875rem;
+}
+
+.spec-row:last-child { border-bottom: none; }
+
+.spec-label { color: #6b7280; flex-shrink: 0; }
+.spec-value { font-weight: 600; color: #111827; text-align: right; }
+
+.spec-notes {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.spec-notes li { margin-bottom: 4px; }
+
+.specs-loading {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  font-style: italic;
+}
+
 /* ── Messages ── */
 .chat-messages {
   flex: 1;

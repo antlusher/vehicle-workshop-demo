@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
+import * as api from '../services/api';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b/i;
@@ -108,10 +109,94 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClearHistory }) {
+function SpecRow({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="spec-row">
+      <span className="spec-label">{label}</span>
+      <span className="spec-value">{value}</span>
+    </div>
+  );
+}
+
+function SpecCard({ title, children }) {
+  return (
+    <div className="spec-card">
+      <h4 className="spec-card-title">{title}</h4>
+      {children}
+    </div>
+  );
+}
+
+function QuickReference({ project, token }) {
+  const [specs, setSpecs] = useState(project.specs || null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (specs) return;
+    setLoading(true);
+    setError('');
+    api.fetchProjectSpecs(project.id, token)
+      .then(setSpecs)
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [project.id]);
+
+  if (loading) return <p className="specs-loading">Generating vehicle specs…</p>;
+  if (error) return <p className="error" style={{ padding: 16 }}>{error}</p>;
+  if (!specs) return null;
+
+  const s = specs;
+  return (
+    <div className="specs-grid">
+      <SpecCard title="Engine Oil">
+        <SpecRow label="Grade" value={s.engineOil?.grade} />
+        <SpecRow label="Capacity" value={s.engineOil?.capacity} />
+        <SpecRow label="Spec" value={s.engineOil?.spec} />
+      </SpecCard>
+      <SpecCard title="Coolant">
+        <SpecRow label="Type" value={s.coolant?.type} />
+        <SpecRow label="Capacity" value={s.coolant?.capacity} />
+        <SpecRow label="Mix ratio" value={s.coolant?.mixRatio} />
+      </SpecCard>
+      <SpecCard title="Brake Fluid">
+        <SpecRow label="Spec" value={s.brakeFluid?.spec} />
+      </SpecCard>
+      <SpecCard title="Transmission">
+        <SpecRow label="Fluid type" value={s.transmission?.type} />
+        <SpecRow label="Capacity" value={s.transmission?.capacity} />
+      </SpecCard>
+      <SpecCard title="Wheel Torque">
+        <SpecRow label="Nm" value={s.wheelTorque?.nm} />
+        <SpecRow label="lb·ft" value={s.wheelTorque?.lbft} />
+        <SpecRow label="Pattern" value={s.wheelTorque?.pattern} />
+      </SpecCard>
+      <SpecCard title="Tyre Pressures">
+        <SpecRow label="Front" value={s.tyrePressures?.front ? `${s.tyrePressures.front} ${s.tyrePressures.unit || 'bar'}` : null} />
+        <SpecRow label="Rear" value={s.tyrePressures?.rear ? `${s.tyrePressures.rear} ${s.tyrePressures.unit || 'bar'}` : null} />
+      </SpecCard>
+      <SpecCard title="Service Intervals">
+        <SpecRow label="Oil change" value={s.serviceIntervals?.oil} />
+        <SpecRow label="Air filter" value={s.serviceIntervals?.airFilter} />
+        <SpecRow label="Timing belt" value={s.serviceIntervals?.timingBelt} />
+      </SpecCard>
+      {s.notes?.length > 0 && (
+        <SpecCard title="Notes">
+          <ul className="spec-notes">
+            {s.notes.map((n, i) => <li key={i}>{n}</li>)}
+          </ul>
+        </SpecCard>
+      )}
+    </div>
+  );
+}
+
+function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClearHistory, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [tab, setTab] = useState('diagnosis');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
@@ -172,14 +257,21 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
           <span className="chat-header-reg">{project.registration || project.vin || 'Project'}</span>
           {vehicleSummary && <span className="chat-header-meta">{vehicleSummary}</span>}
         </div>
-        {project.history?.length > 0 && (
+        {tab === 'diagnosis' && project.history?.length > 0 && (
           <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
             Start over
           </button>
         )}
       </div>
 
-      <div className="chat-messages">
+      <div className="chat-tabs">
+        <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
+        <button type="button" className={`chat-tab${tab === 'specs' ? ' active' : ''}`} onClick={() => setTab('specs')}>Quick Reference</button>
+      </div>
+
+      {tab === 'specs' && <QuickReference project={project} token={token} />}
+
+      <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none' }}>
         {!project.history?.length && !status && (
           <p className="chat-empty">Ask a question to begin the diagnostic session.</p>
         )}
@@ -238,7 +330,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input-bar">
+      {tab === 'diagnosis' && <div className="chat-input-bar">
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <textarea
             ref={textareaRef}

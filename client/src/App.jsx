@@ -193,6 +193,7 @@ function App() {
             onConfirm={handleConfirmResponse}
             onConfirmSuggestion={handleConfirmSuggestion}
             onClearHistory={handleClearHistory}
+            token={token}
           />
         </div>
       </main>

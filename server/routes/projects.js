@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../services/db');
 const { lookupVehicle } = require('../services/vehicleProviders');
 const { findUserByToken } = require('../services/authService');
+const { generateVehicleSpecs } = require('../services/aiService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -31,6 +32,7 @@ function toProject(row, history = []) {
     closed: row.closed,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    specs: row.specs || null,
     history: history.map((h) => ({
       id: h.id,
       role: h.role,
@@ -89,6 +91,29 @@ router.get('/:projectId', requireAuth, async (req, res) => {
     [rows[0].id]
   );
   return res.json(toProject(rows[0], history));
+});
+
+router.post('/:projectId/specs', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+
+  const project = rows[0];
+
+  if (project.specs) return res.json(project.specs);
+
+  const specs = await generateVehicleSpecs({
+    make: project.make, model: project.model, year: project.year,
+    engineCode: project.engine_code, fuelType: project.fuel_type, trim: project.trim,
+  });
+
+  if (!specs) return res.status(500).json({ error: 'Could not generate specs' });
+
+  await query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2', [JSON.stringify(specs), project.id]);
+
+  return res.json(specs);
 });
 
 router.post('/:projectId/clear', requireAuth, async (req, res) => {

@@ -72,6 +72,10 @@ export async function clearProjectHistory(projectId, token) {
   return request(`/api/projects/${projectId}/clear`, { method: 'POST' }, token);
 }
 
+export async function fetchProjectSpecs(projectId, token) {
+  return request(`/api/projects/${projectId}/specs`, { method: 'POST' }, token);
+}
+
 export async function askAI(projectId, question, token) {
   return request('/api/ai/ask', { method: 'POST', body: { projectId, question } }, token);
 }
