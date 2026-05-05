@@ -28,34 +28,55 @@ async function getVehicleSpecs({ make, model, year, engine_code }) {
 }
 
 async function searchKnowledgeBase({ make, model, year, symptom }) {
-  const { rows } = await query(
-    `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
-            COUNT(*) OVER (PARTITION BY cs.text) as frequency
-     FROM confirmed_suggestions cs
-     JOIN projects p ON cs.project_id = p.id
-     WHERE LOWER(p.make) = LOWER($1)
-       AND LOWER(p.model) = LOWER($2)
-       AND ($3::varchar IS NULL OR p.year = $3)
-       AND cs.text ILIKE $4
-     ORDER BY frequency DESC
-     LIMIT 5`,
-    [make, model, year || null, `%${symptom}%`]
-  );
+  const [csRows, kbRows] = await Promise.all([
+    query(
+      `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
+              COUNT(*) OVER (PARTITION BY cs.text) as frequency
+       FROM confirmed_suggestions cs
+       JOIN projects p ON cs.project_id = p.id
+       WHERE LOWER(p.make) = LOWER($1)
+         AND LOWER(p.model) = LOWER($2)
+         AND ($3::varchar IS NULL OR p.year = $3)
+         AND cs.text ILIKE $4
+       ORDER BY frequency DESC
+       LIMIT 5`,
+      [make, model, year || null, `%${symptom}%`]
+    ),
+    query(
+      `SELECT title, content, category, fault_code, source
+       FROM knowledge_base
+       WHERE ($1::varchar IS NULL OR LOWER(make) = LOWER($1))
+         AND ($2::varchar IS NULL OR LOWER(model) = LOWER($2))
+         AND (title ILIKE $3 OR content ILIKE $3)
+       ORDER BY updated_at DESC
+       LIMIT 5`,
+      [make || null, model || null, `%${symptom}%`]
+    ),
+  ]);
 
-  if (!rows.length) {
-    return { message: 'No confirmed fixes found in the knowledge base for this vehicle and symptom yet.' };
+  const results = [];
+  if (csRows.rows.length) {
+    results.push(...csRows.rows.map((r) => ({
+      source: 'confirmed_fix',
+      answer: r.text,
+      make: r.make, model: r.model, year: r.year,
+      confirmedCount: parseInt(r.frequency),
+    })));
+  }
+  if (kbRows.rows.length) {
+    results.push(...kbRows.rows.map((r) => ({
+      source: r.source || 'knowledge_base',
+      title: r.title,
+      answer: r.content,
+      category: r.category,
+      faultCode: r.fault_code,
+    })));
   }
 
-  return {
-    confirmedFixes: rows.map((r) => ({
-      answer: r.text,
-      make: r.make,
-      model: r.model,
-      year: r.year,
-      engineCode: r.engine_code,
-      confirmedCount: parseInt(r.frequency),
-    })),
-  };
+  if (!results.length) {
+    return { message: 'No confirmed fixes found in the knowledge base for this vehicle and symptom yet.' };
+  }
+  return { results };
 }
 
 async function getCommonFixes({ make, model, year }) {

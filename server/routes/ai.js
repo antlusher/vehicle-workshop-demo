@@ -32,14 +32,17 @@ router.post('/ask', requireAuth, async (req, res) => {
   );
   const history = historyRows.map((h) => ({ role: h.role, text: h.text }));
 
+  const startMs = Date.now();
   try {
-    const answer = await generateRepairAdvice(
+    const result = await generateRepairAdvice(
       { make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
         registration: project.registration, vin: project.vin },
       history,
       question
     );
+    const { answer, inputTokens, outputTokens } = result;
+    const durationMs = Date.now() - startMs;
 
     await query(
       'INSERT INTO project_history (project_id, role, text) VALUES ($1, $2, $3)',
@@ -50,6 +53,13 @@ router.post('/ask', requireAuth, async (req, res) => {
       [projectId, 'ai', answer]
     );
     await query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId]);
+    query(
+      `INSERT INTO ai_requests (user_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [req.user.id, projectId,
+       question.slice(0, 200), answer.slice(0, 200),
+       inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs]
+    ).catch(() => {});
 
     const { rows: updatedHistory } = await query(
       'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
@@ -76,7 +86,7 @@ router.post('/ask', requireAuth, async (req, res) => {
       })),
     };
 
-    return res.json({ project: updatedProject, answer });
+    return res.json({ project: updatedProject, answer: answer });
   } catch (error) {
     return res.status(500).json({ error: 'AI request failed' });
   }

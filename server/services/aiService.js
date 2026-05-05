@@ -98,7 +98,11 @@ async function runAgentLoop(client, project, history, question) {
   }
 
   const textBlock = response.content.find((b) => b.type === 'text');
-  return textBlock?.text || 'No response generated.';
+  return {
+    answer: textBlock?.text || 'No response generated.',
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+  };
 }
 
 function demoFallback(project, question) {
@@ -117,7 +121,7 @@ function demoFallback(project, question) {
 
 async function generateRepairAdvice(project, history = [], question) {
   if (!client) {
-    return demoFallback(project, question);
+    return { answer: demoFallback(project, question), inputTokens: 0, outputTokens: 0 };
   }
   return runAgentLoop(client, project, history, question);
 }

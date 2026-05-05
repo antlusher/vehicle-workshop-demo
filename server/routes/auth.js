@@ -2,6 +2,7 @@ const express = require('express');
 const {
   createUser,
   loginUser,
+  logLogin,
   logoutUser,
   subscribeUser,
   findUserByToken,
@@ -42,6 +43,7 @@ router.post('/login', async (req, res) => {
   }
   try {
     const user = await loginUser(email, password);
+    logLogin(user.id, req.ip, req.headers['user-agent']);
     return res.json(formatUserResponse(user));
   } catch (error) {
     const isConcurrent = error.message.includes('already active');

@@ -77,6 +77,13 @@ async function loginUser(email, password) {
   return toUser(rows[0]);
 }
 
+async function logLogin(userId, ipAddress, userAgent) {
+  await query(
+    'INSERT INTO login_history (user_id, ip_address, user_agent) VALUES ($1, $2, $3)',
+    [userId, ipAddress || null, userAgent || null]
+  ).catch(() => {});
+}
+
 async function logoutUser(token) {
   await query(
     'UPDATE users SET token = NULL, session_active = false WHERE token = $1',
@@ -126,6 +133,7 @@ module.exports = {
   findUserByToken,
   createUser,
   loginUser,
+  logLogin,
   logoutUser,
   subscribeUser,
   createPasswordResetToken,
