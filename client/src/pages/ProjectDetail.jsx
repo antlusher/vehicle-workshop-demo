@@ -340,7 +340,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask for repair guidance… (Enter to send, Shift+Enter for new line)"
+            placeholder="Ask for repair guidance... (Enter to send, Shift+Enter for new line)"
             disabled={isBusy}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
