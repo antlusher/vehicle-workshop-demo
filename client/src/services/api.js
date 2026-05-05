@@ -19,6 +19,10 @@ async function request(path, options = {}, token = null) {
 
   const data = await response.json();
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('auth:logout'));
+    }
     throw new Error(data.error || data.message || 'Request failed');
   }
   return data;

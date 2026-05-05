@@ -14,6 +14,19 @@ function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const handleForcedLogout = () => {
+      setToken(null);
+      setUser(null);
+      setProjects([]);
+      setSelectedProject(null);
+      setError('Your session has expired. Please log in again.');
+      setStatus('idle');
+    };
+    window.addEventListener('auth:logout', handleForcedLogout);
+    return () => window.removeEventListener('auth:logout', handleForcedLogout);
+  }, []);
+
+  useEffect(() => {
     if (!token) {
       setStatus('idle');
       return;
