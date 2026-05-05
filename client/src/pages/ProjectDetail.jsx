@@ -19,6 +19,20 @@ function questionType(text) {
   return 'yesno';
 }
 
+function OpenAnswerInput({ itemText, onAnswer }) {
+  const [value, setValue] = useState('');
+  return (
+    <input
+      className="open-answer-input"
+      type="text"
+      placeholder="Type your answer..."
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onAnswer(itemText, value.trim() || null)}
+    />
+  );
+}
+
 function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
   const [confirmed, setConfirmed] = useState({});
   const [answers, setAnswers] = useState({});
@@ -81,13 +95,7 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
             </div>
           )}
           {type === 'open' && (
-            <input
-              className="open-answer-input"
-              type="text"
-              placeholder="Type your answer..."
-              value={answer || ''}
-              onChange={(e) => handleAnswer(itemText, e.target.value || null)}
-            />
+            <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />
           )}
           {type === 'fix' && (
             isConfirmed ? (
