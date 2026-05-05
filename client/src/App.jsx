@@ -3,11 +3,13 @@ import * as api from './services/api';
 import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
+import AdminShell from './pages/admin/AdminShell';
 import './App.css';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [user, setUser] = useState(null);
+  const [adminView, setAdminView] = useState(false);
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [status, setStatus] = useState('loading');
@@ -67,6 +69,7 @@ function App() {
     setUser(null);
     setProjects([]);
     setSelectedProject(null);
+    setAdminView(false);
     setError('');
   };
 
@@ -174,6 +177,16 @@ function App() {
     );
   }
 
+  if (adminView && user?.role === 'admin') {
+    return (
+      <AdminShell
+        token={token}
+        userEmail={user.email}
+        onExit={() => setAdminView(false)}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -181,7 +194,14 @@ function App() {
           <h1>Vehicle Workshop</h1>
           <p>{user?.email}</p>
         </div>
-        <button className="secondary" onClick={handleLogout}>Logout</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {user?.role === 'admin' && (
+            <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
+              Admin
+            </button>
+          )}
+          <button className="secondary" onClick={handleLogout}>Logout</button>
+        </div>
       </header>
       {user?.demoMode && (
         <div className="demo-banner">
