@@ -330,25 +330,27 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
         <div ref={messagesEndRef} />
       </div>
 
-      {tab === 'diagnosis' && <div className="chat-input-bar">
-        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <textarea
-            ref={textareaRef}
-            id="question"
-            name="question"
-            rows="2"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask for repair guidance... (Enter to send, Shift+Enter for new line)"
-            disabled={isBusy}
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
-            <VoiceInput onResult={(t) => setQuestion(t)} />
-            <button type="submit" disabled={!question.trim() || isBusy}>Send</button>
-          </div>
-        </form>
-      </div>
+      {tab === 'diagnosis' && (
+        <div className="chat-input-bar">
+          <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            <textarea
+              ref={textareaRef}
+              id="question"
+              name="question"
+              rows="2"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask for repair guidance... (Enter to send, Shift+Enter for new line)"
+              disabled={isBusy}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+              <VoiceInput onResult={(t) => setQuestion(t)} />
+              <button type="submit" disabled={!question.trim() || isBusy}>Send</button>
+            </div>
+          </form>
+        </div>
+      )}
 
     </div>
   );
