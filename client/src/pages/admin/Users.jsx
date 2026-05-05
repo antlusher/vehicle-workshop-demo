@@ -247,7 +247,9 @@ export default function Users({ token }) {
                   className={`admin-table-row${selectedId === u.id ? ' admin-table-row--active' : ''}`}
                   onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}
                 >
-                  <td>{u.email}</td>
+                  <td>
+                    <span className={u.session_active ? 'user-active-pill' : ''}>{u.email}</span>
+                  </td>
                   <td><RoleBadge role={u.role} /></td>
                   <td><Badge value={u.subscribed} trueLabel="Yes" falseLabel="No" /></td>
                   <td>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>

@@ -5,6 +5,7 @@ async function getDashboardStats() {
     query(`SELECT
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE subscribed) ::int AS subscribed,
+      COUNT(*) FILTER (WHERE session_active) ::int AS active_now,
       COUNT(*) FILTER (WHERE created_at > now() - interval '7 days') ::int AS new_this_week
       FROM users`),
     query(`SELECT

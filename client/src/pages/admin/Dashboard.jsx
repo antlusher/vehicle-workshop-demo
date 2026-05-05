@@ -33,6 +33,7 @@ export default function Dashboard({ token }) {
 
       <div className="stat-grid">
         <StatCard label="Total users" value={stats.users.total} sub={`${stats.users.subscribed} subscribed`} />
+        <StatCard label="Currently logged in" value={stats.users.active_now} />
         <StatCard label="New users (7d)" value={stats.users.new_this_week} />
         <StatCard label="Total projects" value={stats.projects.total} sub={`${stats.projects.closed} closed`} />
         <StatCard label="New projects (7d)" value={stats.projects.new_this_week} />
