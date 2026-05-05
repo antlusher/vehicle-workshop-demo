@@ -23,7 +23,7 @@ async function run() {
         ) AS question_text
       FROM project_history ph
       JOIN projects p ON p.id = ph.project_id
-      WHERE ph.role = 'assistant'
+      WHERE ph.role = 'ai'
       ORDER BY ph.created_at ASC
     `);
 
