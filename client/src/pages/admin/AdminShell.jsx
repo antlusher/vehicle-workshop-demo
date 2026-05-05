@@ -42,7 +42,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
 
       <main className="admin-content">
         {page === 'dashboard' && <Dashboard token={token} />}
-        {page === 'users' && <Users token={token} />}
+        {page === 'users' && <Users token={token} currentUserEmail={userEmail} />}
         {page === 'ai' && <AiRequests token={token} />}
         {page === 'kb' && <KnowledgeBase token={token} />}
       </main>

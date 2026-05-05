@@ -10,7 +10,7 @@ function RoleBadge({ role }) {
   return <span className={`badge ${cls}`}>{role}</span>;
 }
 
-function UserDetailPanel({ userId, token, onClose, onUpdated }) {
+function UserDetailPanel({ userId, token, onClose, onUpdated, currentUserEmail }) {
   const [user, setUser] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -59,7 +59,7 @@ function UserDetailPanel({ userId, token, onClose, onUpdated }) {
       </div>
 
       <div className="detail-actions">
-        {user.session_active && (
+        {user.session_active && user.email !== currentUserEmail && (
           <button
             disabled={saving}
             onClick={handleForceLogout}
@@ -212,7 +212,7 @@ function CreateUserForm({ token, onCreated, onCancel }) {
   );
 }
 
-export default function Users({ token }) {
+export default function Users({ token, currentUserEmail }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -291,6 +291,7 @@ export default function Users({ token }) {
           token={token}
           onClose={() => setSelectedId(null)}
           onUpdated={load}
+          currentUserEmail={currentUserEmail}
         />
       )}
     </div>
