@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import Dashboard from './Dashboard';
 import Users from './Users';
+import Projects from './Projects';
 import AiRequests from './AiRequests';
 import KnowledgeBase from './KnowledgeBase';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'users', label: 'Users' },
+  { id: 'projects', label: 'Projects' },
   { id: 'ai', label: 'AI Requests' },
   { id: 'kb', label: 'Knowledge Base' },
 ];
@@ -43,6 +45,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
       <main className="admin-content">
         {page === 'dashboard' && <Dashboard token={token} />}
         {page === 'users' && <Users token={token} currentUserEmail={userEmail} />}
+        {page === 'projects' && <Projects token={token} />}
         {page === 'ai' && <AiRequests token={token} />}
         {page === 'kb' && <KnowledgeBase token={token} />}
       </main>

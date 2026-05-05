@@ -96,6 +96,14 @@ router.get('/learning', async (req, res) => {
   return res.json(data);
 });
 
+// Projects
+router.get('/projects', async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const offset = parseInt(req.query.offset) || 0;
+  const projects = await admin.listProjects({ limit, offset });
+  return res.json(projects);
+});
+
 // Knowledge base
 router.get('/knowledge-base', async (req, res) => {
   const { category, make, search } = req.query;

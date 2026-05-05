@@ -47,6 +47,9 @@ export const getConversation = (projectId, token) =>
 export const getLearningStats = (token) =>
   request('/api/admin/learning', {}, token);
 
+export const getProjects = (token) =>
+  request('/api/admin/projects', {}, token);
+
 export const getKnowledgeBase = (token, params = {}) => {
   const qs = new URLSearchParams(params).toString();
   return request(`/api/admin/knowledge-base${qs ? '?' + qs : ''}`, {}, token);

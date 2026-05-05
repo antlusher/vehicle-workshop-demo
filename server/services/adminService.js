@@ -188,6 +188,22 @@ async function deleteKnowledgeBaseEntry(id) {
   await query('DELETE FROM knowledge_base WHERE id = $1', [id]);
 }
 
+async function listProjects({ limit = 100, offset = 0 } = {}) {
+  const { rows } = await query(
+    `SELECT
+      p.id, p.registration, p.vin, p.make, p.model, p.year, p.source, p.closed, p.created_at,
+      u.email AS user_email,
+      (SELECT COUNT(*)::int FROM project_history WHERE project_id = p.id) AS message_count,
+      (SELECT COUNT(*)::int FROM ai_requests WHERE project_id = p.id) AS ai_request_count
+     FROM projects p
+     JOIN users u ON u.id = p.user_id
+     ORDER BY p.created_at DESC
+     LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return rows;
+}
+
 async function getLearningStats() {
   const [kbTotal, kbByCategory, confirmedStats, topFixes, recentKb] = await Promise.all([
     query(`SELECT
@@ -236,6 +252,7 @@ async function getProjectConversation(projectId) {
 
 module.exports = {
   getDashboardStats,
+  listProjects,
   listUsers,
   getUser,
   updateUser,
