@@ -7,7 +7,14 @@ const REG_LOOKUP_API_KEY = process.env.REG_LOOKUP_API_KEY;
 const UKVD_API_KEY = process.env.UKVD_API_KEY;
 const UKVD_PACKAGE_NAME = process.env.UKVD_PACKAGE_NAME;
 const UKVD_BASE_URL = 'https://uk.api.vehicledataglobal.com/r2/lookup';
+const DVLA_API_KEY = process.env.DVLA_API_KEY;
+const DVLA_VES_URL = 'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles';
 const dummyDataPath = path.join(__dirname, '..', 'data', 'vehicles.json');
+
+function titleCase(str) {
+  if (!str) return null;
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
 
 const isVin = (value) => {
   if (!value) return false;
@@ -226,14 +233,73 @@ async function lookupByVin(vin) {
   }
 }
 
+async function lookupByDvla(registration) {
+  if (!DVLA_API_KEY) return null;
+  try {
+    const { data } = await axios.post(
+      DVLA_VES_URL,
+      { registrationNumber: registration },
+      { headers: { 'x-api-key': DVLA_API_KEY, 'Content-Type': 'application/json' }, timeout: 8000 }
+    );
+    if (!data || data.errors?.length) return null;
+    return {
+      vin: null,
+      make: titleCase(data.make),
+      model: null,
+      year: data.yearOfManufacture ? String(data.yearOfManufacture) : null,
+      engineCode: null,
+      fuelType: titleCase(data.fuelType),
+      trim: null,
+      bodyType: data.wheelplan ? titleCase(data.wheelplan) : null,
+      registration,
+      source: 'dvla',
+      vehicleData: {
+        colour: titleCase(data.colour),
+        taxStatus: data.taxStatus || null,
+        taxDueDate: data.taxDueDate || null,
+        motStatus: data.motStatus || null,
+        motExpiryDate: data.motExpiryDate || null,
+        markedForExport: data.markedForExport || false,
+        dateOfLastV5CIssued: data.dateOfLastV5CIssued || null,
+        monthOfFirstRegistration: data.monthOfFirstRegistration || null,
+        engineCapacityCc: data.engineCapacity || null,
+        co2Emissions: data.co2Emissions || null,
+        typeApproval: data.typeApproval || null,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function lookupByReg(registration) {
   const cleaned = registration?.trim().toUpperCase();
   if (!cleaned) {
     throw new Error('Registration number is required for lookup');
   }
 
-  const ukvdResult = await lookupByUkvd({ Vrm: cleaned });
-  if (ukvdResult) return normalizeUkvdData(ukvdResult, cleaned, null);
+  // Run UKVD and DVLA in parallel — UKVD is primary, DVLA supplements with MOT/tax data
+  const [ukvdResult, dvlaResult] = await Promise.all([
+    lookupByUkvd({ Vrm: cleaned }),
+    lookupByDvla(cleaned),
+  ]);
+
+  if (ukvdResult) {
+    const normalized = normalizeUkvdData(ukvdResult, cleaned, null);
+    if (dvlaResult?.vehicleData) {
+      normalized.vehicleData = {
+        ...normalized.vehicleData,
+        taxStatus: dvlaResult.vehicleData.taxStatus,
+        taxDueDate: dvlaResult.vehicleData.taxDueDate,
+        motStatus: dvlaResult.vehicleData.motStatus,
+        motExpiryDate: dvlaResult.vehicleData.motExpiryDate,
+        dateOfLastV5CIssued: normalized.vehicleData?.dateOfLastV5CIssued || dvlaResult.vehicleData.dateOfLastV5CIssued,
+      };
+    }
+    return normalized;
+  }
+
+  if (dvlaResult) return dvlaResult;
 
   if (REG_LOOKUP_API_URL) {
     try {
