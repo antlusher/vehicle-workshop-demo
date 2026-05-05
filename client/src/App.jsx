@@ -124,16 +124,17 @@ function App() {
     }
   };
 
-  const handleConfirmResponse = async (historyId) => {
-    await api.confirmAIResponse(historyId, token);
-    if (selectedProject) {
-      const updated = await api.getProject(selectedProject.id, token);
-      setSelectedProject(updated);
-    }
-  };
-
   const handleConfirmSuggestion = async (projectId, historyId, text) => {
-    await api.confirmSuggestion(projectId, historyId, text, token);
+    const result = await api.confirmSuggestion(projectId, historyId, text, token);
+    setSelectedProject((prev) => {
+      if (!prev || prev.id !== projectId) return prev;
+      const already = prev.confirmedFixes?.some((f) => f.text === text);
+      if (already) return prev;
+      return {
+        ...prev,
+        confirmedFixes: [...(prev.confirmedFixes || []), { id: result.id, text, createdAt: new Date().toISOString() }],
+      };
+    });
   };
 
   const handleClearHistory = async (projectId) => {
@@ -223,7 +224,6 @@ function App() {
           <ProjectDetail
             project={selectedProject}
             onAsk={handleAskQuestion}
-            onConfirm={handleConfirmResponse}
             onConfirmSuggestion={handleConfirmSuggestion}
             onClearHistory={handleClearHistory}
             token={token}

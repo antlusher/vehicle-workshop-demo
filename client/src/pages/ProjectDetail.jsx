@@ -6,6 +6,7 @@ import * as api from '../services/api';
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
 const COMPOUND = /\?\s*(if|when|please|and)\b/i;
+const DIAGNOSTIC_VERB = /^(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|confirm that|see if|determine|evaluate)\b/i;
 
 function nodeText(node) {
   if (!node) return '';
@@ -16,7 +17,10 @@ function nodeText(node) {
 }
 
 function questionType(text) {
-  if (!text.endsWith('?')) return 'fix';
+  if (!text.endsWith('?')) {
+    if (DIAGNOSTIC_VERB.test(text)) return 'step';
+    return 'fix';
+  }
   if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
   return 'yesno';
 }
@@ -50,17 +54,17 @@ function OpenAnswerInput({ itemText, onAnswer }) {
   );
 }
 
-function ConfirmFixButton({ itemText, onConfirm }) {
-  const [confirmed, setConfirmed] = useState(false);
+function ConfirmFixButton({ itemText, onConfirm, initialConfirmed }) {
+  const [confirmed, setConfirmed] = useState(initialConfirmed || false);
   const handle = async () => {
     setConfirmed(true);
     try { await onConfirm(itemText); } catch { setConfirmed(false); }
   };
-  if (confirmed) return <small className="suggestion-confirmed">✓ Confirmed fix</small>;
-  return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>Confirm fix</button>;
+  if (confirmed) return <small className="suggestion-confirmed">✓ This fixed it</small>;
+  return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>This fixed it</button>;
 }
 
-function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy }) {
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts }) {
   const [hasAnswers, setHasAnswers] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const answersRef = useRef({});
@@ -95,11 +99,17 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
           <span>{children}</span>
           {type === 'yesno' && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
           {type === 'open' && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
-          {type === 'fix' && <ConfirmFixButton itemText={itemText} onConfirm={handleConfirm} />}
+          {type === 'fix' && (
+            <ConfirmFixButton
+              itemText={itemText}
+              onConfirm={handleConfirm}
+              initialConfirmed={confirmedTexts?.has(itemText)}
+            />
+          )}
         </li>
       );
     },
-  }), [handleAnswer, handleConfirm]);
+  }), [handleAnswer, handleConfirm, confirmedTexts]);
 
   return (
     <div className="ai-response">
@@ -302,7 +312,7 @@ function VehicleInfo({ project }) {
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClearHistory, token }) {
+function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -310,6 +320,11 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
+
+  const confirmedTexts = useMemo(
+    () => new Set((project?.confirmedFixes || []).map((f) => f.text)),
+    [project?.confirmedFixes]
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -423,6 +438,7 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
                   onContinue={handleContinue}
                   isLatestAi={isLatestAi}
                   isBusy={isBusy}
+                  confirmedTexts={confirmedTexts}
                 />
               </div>
               <small className="chat-time">{time}</small>
@@ -441,6 +457,17 @@ function ProjectDetail({ project, onAsk, onConfirm, onConfirmSuggestion, onClear
         {error && <p className="error" style={{ padding: '0 4px' }}>{error}</p>}
         <div ref={messagesEndRef} />
       </div>
+
+      {tab === 'diagnosis' && confirmedTexts.size > 0 && (
+        <div className="confirmed-fixes-bar">
+          <strong>Confirmed fixes on this vehicle ({confirmedTexts.size}):</strong>
+          <ul>
+            {project.confirmedFixes.map((f) => (
+              <li key={f.id}>{f.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {tab === 'diagnosis' && (
         <div className="chat-input-bar">

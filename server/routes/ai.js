@@ -61,10 +61,10 @@ router.post('/ask', requireAuth, async (req, res) => {
        inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs]
     ).catch(() => {});
 
-    const { rows: updatedHistory } = await query(
-      'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
-      [projectId]
-    );
+    const [{ rows: updatedHistory }, { rows: confirmedFixes }] = await Promise.all([
+      query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
+      query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
+    ]);
     const updatedProject = {
       ...project,
       id: project.id,
@@ -81,6 +81,7 @@ router.post('/ask', requireAuth, async (req, res) => {
       source: project.source,
       active: project.active,
       closed: project.closed,
+      confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
       history: updatedHistory.map((h) => ({
         id: h.id, role: h.role, text: h.text, confirmed: h.confirmed, createdAt: h.created_at,
       })),
@@ -104,34 +105,18 @@ router.post('/confirm-suggestion', requireAuth, async (req, res) => {
   );
   if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
+  const { rows: existing } = await query(
+    'SELECT id FROM confirmed_suggestions WHERE project_id = $1 AND text = $2',
+    [projectId, text]
+  );
+  if (existing.length) return res.json({ confirmed: true, id: existing[0].id });
+
   const { rows } = await query(
     'INSERT INTO confirmed_suggestions (project_id, history_id, text) VALUES ($1, $2, $3) RETURNING *',
     [projectId, historyId || null, text]
   );
 
-  return res.json({ id: rows[0].id, confirmed: true });
-});
-
-router.post('/confirm/:historyId', requireAuth, async (req, res) => {
-  const { historyId } = req.params;
-
-  const { rows } = await query(
-    `UPDATE project_history ph
-     SET confirmed = true
-     FROM projects p
-     WHERE ph.id = $1
-       AND ph.project_id = p.id
-       AND p.user_id = $2
-       AND ph.role = 'ai'
-     RETURNING ph.*`,
-    [historyId, req.user.id]
-  );
-
-  if (!rows.length) {
-    return res.status(404).json({ error: 'Response not found' });
-  }
-
-  return res.json({ id: rows[0].id, confirmed: rows[0].confirmed });
+  return res.json({ confirmed: true, id: rows[0].id });
 });
 
 module.exports = router;

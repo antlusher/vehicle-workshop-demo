@@ -393,6 +393,27 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   white-space: nowrap;
   flex-shrink: 0;
   margin-top: 1px;
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+.suggestion-confirm-btn:hover {
+  background: #bbf7d0;
+}
+
+.confirmed-fixes-bar {
+  background: #f0fdf4;
+  border-top: 1px solid #bbf7d0;
+  padding: 10px 16px;
+  font-size: 0.82rem;
+  color: #15803d;
+}
+.confirmed-fixes-bar ul {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+}
+.confirmed-fixes-bar li {
+  margin: 2px 0;
 }
 
 .suggestion-confirmed {

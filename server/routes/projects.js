@@ -14,7 +14,7 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-function toProject(row, history = []) {
+function toProject(row, history = [], confirmedFixes = []) {
   return {
     id: row.id,
     userId: row.user_id,
@@ -34,6 +34,7 @@ function toProject(row, history = []) {
     updatedAt: row.updated_at,
     specs: row.specs || null,
     vehicleData: row.vehicle_data || null,
+    confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
     history: history.map((h) => ({
       id: h.id,
       role: h.role,
@@ -50,11 +51,11 @@ router.get('/', requireAuth, async (req, res) => {
     [req.user.id]
   );
   const projects = await Promise.all(rows.map(async (row) => {
-    const { rows: history } = await query(
-      'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
-      [row.id]
-    );
-    return toProject(row, history);
+    const [{ rows: history }, { rows: confirmedFixes }] = await Promise.all([
+      query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [row.id]),
+      query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [row.id]),
+    ]);
+    return toProject(row, history, confirmedFixes);
   }));
   return res.json(projects);
 });
@@ -88,11 +89,11 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
-  const { rows: history } = await query(
-    'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
-    [rows[0].id]
-  );
-  return res.json(toProject(rows[0], history));
+  const [{ rows: history }, { rows: confirmedFixes }] = await Promise.all([
+    query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [rows[0].id]),
+    query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [rows[0].id]),
+  ]);
+  return res.json(toProject(rows[0], history, confirmedFixes));
 });
 
 router.post('/:projectId/specs', requireAuth, async (req, res) => {
