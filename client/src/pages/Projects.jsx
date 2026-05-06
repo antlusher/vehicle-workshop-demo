@@ -5,8 +5,9 @@ function Projects({ projects, onCreateProject, onSelectProject, onCloseProject, 
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (identifier.trim()) {
-      await onCreateProject(identifier.trim());
+    const cleaned = identifier.trim().toUpperCase().replace(/\s+/g, '');
+    if (cleaned) {
+      await onCreateProject(cleaned);
       setIdentifier('');
     }
   };

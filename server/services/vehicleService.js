@@ -6,7 +6,8 @@ const { query } = require('./db');
  * Returns the vehicles row.
  */
 async function findOrCreateVehicle(vehicleData) {
-  const { vin, registration, make, model, year, engineCode, fuelType, trim, bodyType, source } = vehicleData;
+  const { vin, make, model, year, engineCode, fuelType, trim, bodyType, source } = vehicleData;
+  const registration = vehicleData.registration?.trim().toUpperCase().replace(/\s+/g, '') || null;
 
   // 1. Match by VIN — the definitive physical car identifier
   if (vin) {
@@ -68,13 +69,14 @@ async function findOrCreateVehicle(vehicleData) {
  * If the vehicle has a different current registration, close it out (private plate transfer).
  */
 async function upsertRegistration(vehicleId, registration) {
+  const normalised = registration.trim().toUpperCase().replace(/\s+/g, '');
   const { rows: existing } = await query(
     'SELECT * FROM vehicle_registrations WHERE vehicle_id = $1 AND assigned_to IS NULL',
     [vehicleId]
   );
 
   if (existing.length) {
-    if (existing[0].registration.toUpperCase() === registration.toUpperCase()) return; // unchanged
+    if (existing[0].registration === normalised) return; // unchanged
     // Close the old registration — plate has moved
     await query(
       'UPDATE vehicle_registrations SET assigned_to = now() WHERE id = $1',
@@ -84,7 +86,7 @@ async function upsertRegistration(vehicleId, registration) {
 
   await query(
     'INSERT INTO vehicle_registrations (vehicle_id, registration) VALUES ($1, $2)',
-    [vehicleId, registration.toUpperCase()]
+    [vehicleId, normalised]
   );
 }
 

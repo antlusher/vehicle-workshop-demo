@@ -273,7 +273,7 @@ async function lookupByDvla(registration) {
 }
 
 async function lookupByReg(registration) {
-  const cleaned = registration?.trim().toUpperCase();
+  const cleaned = registration?.trim().toUpperCase().replace(/\s+/g, '');
   if (!cleaned) {
     throw new Error('Registration number is required for lookup');
   }
