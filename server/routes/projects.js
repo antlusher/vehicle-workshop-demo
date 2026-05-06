@@ -88,7 +88,22 @@ router.post('/', requireAuth, async (req, res) => {
     );
 
     const vehicleHistory = vehicle.id ? await getVehicleHistory(vehicle.id) : null;
-    return res.json(toProject(rows[0], [], [], vehicleHistory));
+    const project = rows[0];
+
+    // Generate specs in the background — don't block the response
+    if (vehicleData.make && vehicleData.model && vehicleData.year) {
+      generateVehicleSpecs({
+        make: vehicleData.make, model: vehicleData.model, year: vehicleData.year,
+        engineCode: vehicleData.engineCode, fuelType: vehicleData.fuelType, trim: vehicleData.trim,
+      }).then((specs) => {
+        if (specs) {
+          query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2',
+            [JSON.stringify(specs), project.id]);
+        }
+      }).catch(() => {});
+    }
+
+    return res.json(toProject(project, [], [], vehicleHistory));
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Unable to create project' });
   }
