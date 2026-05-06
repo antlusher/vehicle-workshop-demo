@@ -312,6 +312,75 @@ function VehicleInfo({ project }) {
   );
 }
 
+function VehicleHistoryTab({ history, currentProjectId }) {
+  if (!history) return <div className="chat-messages"><p className="chat-empty">No vehicle history available.</p></div>;
+
+  const { confirmedFixes, jobTimeline, registrationHistory } = history;
+
+  return (
+    <div className="vehicle-history-tab">
+      {jobTimeline.length > 1 && (
+        <div className="vh-section">
+          <h4 className="vh-heading">Jobs on this vehicle ({jobTimeline.length})</h4>
+          <div className="vh-timeline">
+            {jobTimeline.map((job, i) => (
+              <div key={job.id} className={`vh-job${job.id === currentProjectId ? ' vh-job--current' : ''}`}>
+                <div className="vh-job-dot" />
+                <div className="vh-job-body">
+                  <span className="vh-job-reg">{job.registration || '—'}</span>
+                  <span className="vh-job-date">{new Date(job.openedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                  <span className="vh-job-meta">
+                    {job.id === currentProjectId ? 'Current job' : job.closed ? 'Closed' : 'Open'}
+                    {job.confirmedFixCount > 0 && ` · ${job.confirmedFixCount} fix${job.confirmedFixCount > 1 ? 'es' : ''} confirmed`}
+                    {job.aiMessageCount > 0 && ` · ${job.aiMessageCount} AI response${job.aiMessageCount > 1 ? 's' : ''}`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {confirmedFixes.length > 0 && (
+        <div className="vh-section">
+          <h4 className="vh-heading">All confirmed fixes on this vehicle ({confirmedFixes.length})</h4>
+          <p className="vh-sub">Fixes confirmed across all workshops. The AI uses this data when diagnosing.</p>
+          <ul className="vh-fixes">
+            {confirmedFixes.map((fix) => (
+              <li key={fix.id} className={`vh-fix${fix.jobId === currentProjectId ? ' vh-fix--mine' : ''}`}>
+                <span className="vh-fix-text">{fix.text}</span>
+                <span className="vh-fix-date">{new Date(fix.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                {fix.jobId === currentProjectId && <span className="vh-fix-tag">This job</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {registrationHistory.length > 1 && (
+        <div className="vh-section">
+          <h4 className="vh-heading">Registration history</h4>
+          <ul className="vh-regs">
+            {registrationHistory.map((r, i) => (
+              <li key={i} className="vh-reg">
+                <strong>{r.registration}</strong>
+                <span>{new Date(r.assignedFrom).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}</span>
+                <span>{r.assignedTo ? `→ ${new Date(r.assignedTo).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : '(current)'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {confirmedFixes.length === 0 && jobTimeline.length <= 1 && (
+        <div className="chat-messages">
+          <p className="chat-empty">No history from other workshops yet. As this vehicle is worked on across workshops, confirmed fixes will appear here and inform the AI.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
@@ -393,10 +462,19 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, to
         <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
         <button type="button" className={`chat-tab${tab === 'vehicle' ? ' active' : ''}`} onClick={() => setTab('vehicle')}>Vehicle Info</button>
         <button type="button" className={`chat-tab${tab === 'specs' ? ' active' : ''}`} onClick={() => setTab('specs')}>Quick Reference</button>
+        {project.vehicleId && (
+          <button type="button" className={`chat-tab${tab === 'history' ? ' active' : ''}${(project.vehicleHistory?.confirmedFixes?.length ?? 0) > 0 ? ' chat-tab--alert' : ''}`} onClick={() => setTab('history')}>
+            Vehicle History
+            {(project.vehicleHistory?.jobTimeline?.length ?? 0) > 1 && (
+              <span className="chat-tab-badge">{project.vehicleHistory.jobTimeline.length}</span>
+            )}
+          </button>
+        )}
       </div>
 
       {tab === 'vehicle' && <VehicleInfo project={project} />}
       {tab === 'specs' && <QuickReference project={project} token={token} />}
+      {tab === 'history' && <VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} />}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (

@@ -2,6 +2,7 @@ const express = require('express');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { generateRepairAdvice } = require('../services/aiService');
+const { getVehicleHistory } = require('../services/vehicleService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -26,20 +27,27 @@ router.post('/ask', requireAuth, async (req, res) => {
   if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = projectRows[0];
-  const { rows: historyRows } = await query(
-    'SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC',
-    [projectId]
+  const [historyResult, vehicleHistory] = await Promise.all([
+    query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
+    project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+  ]);
+  const history = historyResult.rows.map((h) => ({ role: h.role, text: h.text }));
+
+  // Cross-workshop confirmed fixes: all fixes on this vehicle excluding current project
+  const crossWorkshopFixes = (vehicleHistory?.confirmedFixes || []).filter(
+    (f) => f.jobId !== projectId
   );
-  const history = historyRows.map((h) => ({ role: h.role, text: h.text }));
 
   const startMs = Date.now();
   try {
     const result = await generateRepairAdvice(
       { make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
-        registration: project.registration, vin: project.vin },
+        registration: project.registration_snapshot || project.registration,
+        vin: project.vin },
       history,
-      question
+      question,
+      crossWorkshopFixes
     );
     const { answer, inputTokens, outputTokens } = result;
     const durationMs = Date.now() - startMs;

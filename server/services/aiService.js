@@ -8,7 +8,7 @@ function createClient() {
 
 const client = createClient();
 
-function buildSystemPrompt(project) {
+function buildSystemPrompt(project, crossWorkshopFixes = []) {
   const lines = [
     'You are an expert automotive diagnostic assistant for professional vehicle repair technicians.',
     'You have access to a workshop knowledge base and vehicle database via tools.',
@@ -41,6 +41,17 @@ function buildSystemPrompt(project) {
   if (project.fuelType) lines.push(`Fuel type: ${project.fuelType}`);
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
 
+  if (crossWorkshopFixes.length > 0) {
+    lines.push('');
+    lines.push('Confirmed repairs on this vehicle from other workshops:');
+    crossWorkshopFixes.forEach((fix) => {
+      const date = new Date(fix.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+      lines.push(`- ${fix.text} (confirmed ${date})`);
+    });
+    lines.push('');
+    lines.push('Use this history to: avoid re-diagnosing already-confirmed fixes, identify recurring faults, and understand what has already been attempted. If a previous fix matches the current symptom, investigate whether the repair failed, was incomplete, or if a related fault has developed.');
+  }
+
   return lines.join('\n');
 }
 
@@ -53,9 +64,9 @@ function buildMessages(history, question) {
   return messages;
 }
 
-async function runAgentLoop(client, project, history, question) {
+async function runAgentLoop(client, project, history, question, crossWorkshopFixes = []) {
   const messages = buildMessages(history, question);
-  const systemPrompt = buildSystemPrompt(project);
+  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes);
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -119,11 +130,11 @@ function demoFallback(project, question) {
   ].join('\n');
 }
 
-async function generateRepairAdvice(project, history = [], question) {
+async function generateRepairAdvice(project, history = [], question, crossWorkshopFixes = []) {
   if (!client) {
     return { answer: demoFallback(project, question), inputTokens: 0, outputTokens: 0 };
   }
-  return runAgentLoop(client, project, history, question);
+  return runAgentLoop(client, project, history, question, crossWorkshopFixes);
 }
 
 async function generateVehicleSpecs(project) {
