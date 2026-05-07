@@ -610,9 +610,9 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
         )}
       </div>
 
-      {tab === 'vehicle' && <VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} />}
-      {tab === 'specs' && <QuickReference project={project} token={token} />}
-      {tab === 'history' && <VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} />}
+      {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
+      {tab === 'specs' && <div className="tab-pane"><QuickReference project={project} token={token} /></div>}
+      {tab === 'history' && <div className="tab-pane"><VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} /></div>}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (

@@ -175,10 +175,15 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   background: white;
 }
 
-/* ── Quick Reference ── */
-.specs-grid {
+/* ── Tab content pane (fills remaining height, scrolls) ── */
+.tab-pane {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+}
+
+/* ── Quick Reference ── */
+.specs-grid {
   padding: 16px;
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -434,8 +439,6 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 
 /* ── Vehicle History tab ── */
 .vehicle-history-tab {
-  flex: 1;
-  overflow-y: auto;
   padding: 16px;
   display: flex;
   flex-direction: column;
