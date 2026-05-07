@@ -78,7 +78,7 @@ function Login({ onLogin, error }) {
           {error && <p className="error">{error}</p>}
         </form>
 
-        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {/* <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
           {mode === 'login' && (
             <>
               <p>
@@ -97,7 +97,7 @@ function Login({ onLogin, error }) {
               <button className="secondary" type="button" onClick={() => switchMode('login')}>Sign in</button>
             </p>
           )}
-        </div>
+        </div> */}
       </div>
     </div>
   );
