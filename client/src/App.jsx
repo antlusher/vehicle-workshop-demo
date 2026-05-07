@@ -90,6 +90,23 @@ function App() {
     }
   };
 
+  const handleCreateProjectManual = async (manualData) => {
+    setError('');
+    try {
+      const project = await api.createProjectManual(manualData, token);
+      setProjects((current) => [project, ...current]);
+      setSelectedProject(project);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleUpdateVehicle = async (projectId, data) => {
+    const updated = await api.updateProjectVehicle(projectId, data, token);
+    setSelectedProject(updated);
+    setProjects((current) => current.map((p) => p.id === projectId ? { ...p, ...updated } : p));
+  };
+
   const handleSelectProject = async (projectId) => {
     setError('');
     try {
@@ -214,6 +231,7 @@ function App() {
           <Projects
             projects={projects}
             onCreateProject={handleCreateProject}
+            onCreateProjectManual={handleCreateProjectManual}
             onSelectProject={handleSelectProject}
             onCloseProject={handleCloseProject}
             selectedProject={selectedProject}
@@ -226,6 +244,7 @@ function App() {
             onAsk={handleAskQuestion}
             onConfirmSuggestion={handleConfirmSuggestion}
             onClearHistory={handleClearHistory}
+            onUpdateVehicle={handleUpdateVehicle}
             token={token}
           />
         </div>

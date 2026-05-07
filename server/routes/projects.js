@@ -64,13 +64,31 @@ router.get('/', requireAuth, async (req, res) => {
 });
 
 router.post('/', requireAuth, async (req, res) => {
-  const { identifier } = req.body;
-  if (!identifier) {
-    return res.status(400).json({ error: 'Vehicle registration or VIN is required' });
+  const { identifier, manualData } = req.body;
+  if (!identifier && !manualData) {
+    return res.status(400).json({ error: 'Vehicle registration, VIN, or manual vehicle data is required' });
   }
 
   try {
-    const vehicleData = await lookupVehicle(identifier);
+    let vehicleData;
+    if (manualData) {
+      const reg = manualData.registration?.trim().toUpperCase().replace(/\s+/g, '') || null;
+      vehicleData = {
+        vin: manualData.vin?.trim().toUpperCase() || null,
+        make: manualData.make?.trim() || null,
+        model: manualData.model?.trim() || null,
+        year: manualData.year?.toString().trim() || null,
+        engineCode: manualData.engineCode?.trim() || null,
+        fuelType: manualData.fuelType?.trim() || null,
+        trim: manualData.trim?.trim() || null,
+        bodyType: manualData.bodyType?.trim() || null,
+        registration: reg,
+        source: 'manual',
+        vehicleData: null,
+      };
+    } else {
+      vehicleData = await lookupVehicle(identifier);
+    }
 
     // Find or create the canonical vehicle record
     const vehicle = await findOrCreateVehicle(vehicleData);
@@ -124,6 +142,57 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   ]);
 
   return res.json(toProject(project, history, confirmedFixes, vehicleHistory));
+});
+
+router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  const project = rows[0];
+
+  const { vin, make, model, year, engineCode, fuelType, trim, bodyType, registration } = req.body;
+  const reg = registration?.trim().toUpperCase().replace(/\s+/g, '') || null;
+  const cleanVin = vin?.trim().toUpperCase() || null;
+
+  const { rows: updated } = await query(
+    `UPDATE projects SET
+       vin=$1, make=$2, model=$3, year=$4, engine_code=$5,
+       fuel_type=$6, trim=$7, body_type=$8, registration=$9,
+       specs=NULL, updated_at=now()
+     WHERE id=$10 RETURNING *`,
+    [cleanVin, make || null, model || null, year || null, engineCode || null,
+     fuelType || null, trim || null, bodyType || null, reg, project.id]
+  );
+
+  if (project.vehicle_id) {
+    await query(
+      `UPDATE vehicles SET vin=$1, make=$2, model=$3, year=$4, engine_code=$5,
+         fuel_type=$6, trim=$7, body_type=$8, updated_at=now() WHERE id=$9`,
+      [cleanVin, make || null, model || null, year || null, engineCode || null,
+       fuelType || null, trim || null, bodyType || null, project.vehicle_id]
+    );
+    if (reg) {
+      const { upsertRegistration } = require('../services/vehicleService');
+      await upsertRegistration(project.vehicle_id, reg);
+    }
+  }
+
+  // Regenerate specs in background since vehicle data changed
+  if (make && model && year) {
+    generateVehicleSpecs({ make, model, year, engineCode, fuelType, trim })
+      .then((specs) => {
+        if (specs) query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2', [JSON.stringify(specs), project.id]);
+      }).catch(() => {});
+  }
+
+  const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory] = await Promise.all([
+    query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
+    query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
+    project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+  ]);
+  return res.json(toProject(updated[0], history, confirmedFixes, vehicleHistory));
 });
 
 router.post('/:projectId/specs', requireAuth, async (req, res) => {

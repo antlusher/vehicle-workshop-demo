@@ -1,10 +1,17 @@
 import { useState } from 'react';
 
-function Projects({ projects, onCreateProject, onSelectProject, onCloseProject, selectedProject, error }) {
-  const [identifier, setIdentifier] = useState('');
+const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Plug-in Hybrid', 'LPG', 'Other'];
+const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
+const EMPTY_MANUAL = { registration: '', vin: '', make: '', model: '', year: '', engineCode: '', fuelType: '', trim: '', bodyType: '' };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+function Projects({ projects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, selectedProject, error }) {
+  const [identifier, setIdentifier] = useState('');
+  const [manual, setManual] = useState(false);
+  const [form, setForm] = useState(EMPTY_MANUAL);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleLookupSubmit = async (e) => {
+    e.preventDefault();
     const cleaned = identifier.trim().toUpperCase().replace(/\s+/g, '');
     if (cleaned) {
       await onCreateProject(cleaned);
@@ -12,20 +19,87 @@ function Projects({ projects, onCreateProject, onSelectProject, onCloseProject, 
     }
   };
 
+  const handleManualSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.registration && !form.vin && !form.make) return;
+    await onCreateProjectManual(form);
+    setForm(EMPTY_MANUAL);
+  };
+
   return (
     <div className="card">
       <h2 className="section-title">Projects</h2>
-      <form onSubmit={handleSubmit}>
-        <label htmlFor="identifier">Registration or VIN</label>
-        <input
-          id="identifier"
-          name="identifier"
-          value={identifier}
-          onChange={(e) => setIdentifier(e.target.value)}
-          placeholder="Enter registration or VIN"
-        />
-        <button type="submit">Create project</button>
-      </form>
+
+      {!manual ? (
+        <form onSubmit={handleLookupSubmit}>
+          <label htmlFor="identifier">Registration or VIN</label>
+          <input
+            id="identifier"
+            name="identifier"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="Enter registration or VIN"
+          />
+          <button type="submit">Create project</button>
+          <button type="button" className="secondary" style={{ marginTop: 6, fontSize: '0.8rem' }} onClick={() => setManual(true)}>
+            Enter vehicle details manually
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={handleManualSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
+            <div>
+              <label>Registration</label>
+              <input value={form.registration} onChange={(e) => set('registration', e.target.value)} placeholder="e.g. AB12 CDE" />
+            </div>
+            <div>
+              <label>VIN</label>
+              <input value={form.vin} onChange={(e) => set('vin', e.target.value)} placeholder="17-char VIN" />
+            </div>
+            <div>
+              <label>Make</label>
+              <input value={form.make} onChange={(e) => set('make', e.target.value)} placeholder="e.g. Ford" />
+            </div>
+            <div>
+              <label>Model</label>
+              <input value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="e.g. Focus" />
+            </div>
+            <div>
+              <label>Year</label>
+              <input value={form.year} onChange={(e) => set('year', e.target.value)} placeholder="e.g. 2019" maxLength={4} />
+            </div>
+            <div>
+              <label>Engine code</label>
+              <input value={form.engineCode} onChange={(e) => set('engineCode', e.target.value)} placeholder="e.g. R9M" />
+            </div>
+            <div>
+              <label>Fuel type</label>
+              <select value={form.fuelType} onChange={(e) => set('fuelType', e.target.value)}>
+                <option value="">— Select —</option>
+                {FUEL_TYPES.map((f) => <option key={f}>{f}</option>)}
+              </select>
+            </div>
+            <div>
+              <label>Body type</label>
+              <select value={form.bodyType} onChange={(e) => set('bodyType', e.target.value)}>
+                <option value="">— Select —</option>
+                {BODY_TYPES.map((b) => <option key={b}>{b}</option>)}
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label>Trim / variant</label>
+              <input value={form.trim} onChange={(e) => set('trim', e.target.value)} placeholder="e.g. ST-Line, Titanium" />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button type="submit">Create project</button>
+            <button type="button" className="secondary" onClick={() => { setManual(false); setForm(EMPTY_MANUAL); }}>
+              Back to lookup
+            </button>
+          </div>
+        </form>
+      )}
+
       {error && <p className="error">{error}</p>}
       <div style={{ marginTop: 16 }}>
         {projects.length === 0 ? (

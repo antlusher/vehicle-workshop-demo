@@ -64,6 +64,14 @@ export async function createProject(identifier, token) {
   return request('/api/projects', { method: 'POST', body: { identifier } }, token);
 }
 
+export async function createProjectManual(manualData, token) {
+  return request('/api/projects', { method: 'POST', body: { manualData } }, token);
+}
+
+export async function updateProjectVehicle(projectId, data, token) {
+  return request(`/api/projects/${projectId}/vehicle`, { method: 'PATCH', body: data }, token);
+}
+
 export async function getProject(projectId, token) {
   return request(`/api/projects/${projectId}`, { method: 'GET' }, token);
 }

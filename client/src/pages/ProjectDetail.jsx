@@ -219,16 +219,123 @@ function VehicleInfoRow({ label, value }) {
   );
 }
 
-function VehicleInfo({ project }) {
+const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Plug-in Hybrid', 'LPG', 'Other'];
+const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
+
+function VehicleEditForm({ project, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    registration: project.registration || '',
+    vin: project.vin || '',
+    make: project.make || '',
+    model: project.model || '',
+    year: project.year || '',
+    engineCode: project.engineCode || '',
+    fuelType: project.fuelType || '',
+    trim: project.trim || '',
+    bodyType: project.bodyType || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true); setError('');
+    try { await onSave(form); } catch (err) { setError(err.message); setSaving(false); }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} style={{ padding: 16 }}>
+      <h4 style={{ margin: '0 0 12px', fontSize: '0.95rem' }}>Edit vehicle details</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Registration</label>
+          <input value={form.registration} onChange={(e) => set('registration', e.target.value)} placeholder="e.g. AB12 CDE" />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>VIN</label>
+          <input value={form.vin} onChange={(e) => set('vin', e.target.value)} placeholder="17-char VIN" />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Make</label>
+          <input value={form.make} onChange={(e) => set('make', e.target.value)} placeholder="e.g. Ford" />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Model</label>
+          <input value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="e.g. Focus" />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Year</label>
+          <input value={form.year} onChange={(e) => set('year', e.target.value)} placeholder="e.g. 2019" maxLength={4} />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Engine code</label>
+          <input value={form.engineCode} onChange={(e) => set('engineCode', e.target.value)} placeholder="e.g. R9M" />
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Fuel type</label>
+          <select value={form.fuelType} onChange={(e) => set('fuelType', e.target.value)}>
+            <option value="">— Select —</option>
+            {FUEL_TYPES.map((f) => <option key={f}>{f}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Body type</label>
+          <select value={form.bodyType} onChange={(e) => set('bodyType', e.target.value)}>
+            <option value="">— Select —</option>
+            {BODY_TYPES.map((b) => <option key={b}>{b}</option>)}
+          </select>
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Trim / variant</label>
+          <input value={form.trim} onChange={(e) => set('trim', e.target.value)} placeholder="e.g. ST-Line, Titanium" />
+        </div>
+      </div>
+      {error && <p className="error" style={{ marginTop: 8 }}>{error}</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+        <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function VehicleInfo({ project, onUpdateVehicle }) {
+  const [editing, setEditing] = useState(false);
   const vd = project.vehicleData;
+
+  const handleSave = async (data) => {
+    await onUpdateVehicle(project.id, data);
+    setEditing(false);
+  };
+
+  const editBtn = (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+      <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => setEditing(true)}>
+        Edit vehicle details
+      </button>
+    </div>
+  );
+
+  if (editing) {
+    return <VehicleEditForm project={project} onSave={handleSave} onCancel={() => setEditing(false)} />;
+  }
+
   if (!vd) {
-    return <p className="specs-loading" style={{ fontStyle: 'normal' }}>No extended vehicle data available for this project.</p>;
+    return (
+      <div>
+        {editBtn}
+        <p style={{ padding: '12px 16px', color: '#6b7280' }}>No extended vehicle data available. Use Edit to add details manually.</p>
+      </div>
+    );
   }
 
   const fmt = (val, unit) => (val != null ? `${val}${unit ? ' ' + unit : ''}` : null);
 
   return (
-    <div className="specs-grid">
+    <div>
+      {editBtn}
+      <div className="specs-grid">
       <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
         <h4 className="spec-card-title">Identity</h4>
         <VehicleInfoRow label="Colour" value={vd.colour} />
@@ -309,6 +416,7 @@ function VehicleInfo({ project }) {
         <VehicleInfoRow label="Wheelbase" value={fmt(vd.dimensions?.wheelbaseMm, 'mm')} />
       </div>
     </div>
+    </div>
   );
 }
 
@@ -381,7 +489,7 @@ function VehicleHistoryTab({ history, currentProjectId }) {
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, token }) {
+function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -472,7 +580,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, to
         )}
       </div>
 
-      {tab === 'vehicle' && <VehicleInfo project={project} />}
+      {tab === 'vehicle' && <VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} />}
       {tab === 'specs' && <QuickReference project={project} token={token} />}
       {tab === 'history' && <VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} />}
 
