@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
+import * as reportsApi from '../services/reportsApi';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
@@ -450,6 +451,194 @@ function VehicleInfo({ project, onUpdateVehicle }) {
   );
 }
 
+function ReportTab({ project, token }) {
+  const [report, setReport] = useState(null);
+  const [images, setImages] = useState([]);
+  const [form, setForm] = useState({ diagnosis: '', workCarriedOut: '', technicianNotes: '', costParts: '', costLabour: '', costTotal: '' });
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef(null);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    Promise.all([reportsApi.getReport(project.id, token), reportsApi.getImages(project.id, token)])
+      .then(([r, imgs]) => {
+        setImages(imgs);
+        if (r) {
+          setReport(r);
+          setForm({
+            diagnosis: r.diagnosis || '',
+            workCarriedOut: r.workCarriedOut || '',
+            technicianNotes: r.technicianNotes || '',
+            costParts: r.costParts != null ? String(r.costParts) : '',
+            costLabour: r.costLabour != null ? String(r.costLabour) : '',
+            costTotal: r.costTotal != null ? String(r.costTotal) : '',
+          });
+        }
+      })
+      .catch(() => {});
+  }, [project.id]);
+
+  const handleCostChange = (k, v) => {
+    const updated = { ...form, [k]: v };
+    const parts = parseFloat(updated.costParts) || 0;
+    const labour = parseFloat(updated.costLabour) || 0;
+    if (parts || labour) updated.costTotal = (parts + labour).toFixed(2);
+    setForm(updated);
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      const r = await reportsApi.saveReport(project.id, {
+        diagnosis: form.diagnosis,
+        workCarriedOut: form.workCarriedOut,
+        technicianNotes: form.technicianNotes,
+        costParts: form.costParts ? parseFloat(form.costParts) : null,
+        costLabour: form.costLabour ? parseFloat(form.costLabour) : null,
+        costTotal: form.costTotal ? parseFloat(form.costTotal) : null,
+      }, token);
+      setReport(r); setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const handlePublish = async () => {
+    setPublishing(true); setError('');
+    try {
+      const r = report?.status === 'published'
+        ? await reportsApi.unpublishReport(project.id, token)
+        : await reportsApi.publishReport(project.id, token);
+      setReport(r);
+    } catch (err) { setError(err.message); }
+    finally { setPublishing(false); }
+  };
+
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true); setError('');
+    try {
+      const uploaded = await reportsApi.uploadImages(project.id, files, token);
+      setImages((imgs) => [...imgs, ...uploaded]);
+    } catch (err) { setError(err.message); }
+    finally { setUploading(false); e.target.value = ''; }
+  };
+
+  const handleDeleteImage = async (imageId) => {
+    try {
+      await reportsApi.deleteImage(project.id, imageId, token);
+      setImages((imgs) => imgs.filter((i) => i.id !== imageId));
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleCaptionBlur = async (imageId, caption) => {
+    try {
+      await reportsApi.updateImageCaption(project.id, imageId, caption, token);
+    } catch (_) {}
+  };
+
+  const isPublished = report?.status === 'published';
+
+  return (
+    <div className="report-tab">
+      <div className="report-status-bar">
+        <span className={`report-badge ${isPublished ? 'report-badge--published' : 'report-badge--draft'}`}>
+          {isPublished ? 'Published to customer' : 'Draft — not visible to customer'}
+        </span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleSave} disabled={saving} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
+            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save report'}
+          </button>
+          <button
+            onClick={handlePublish} disabled={publishing || !report}
+            className={isPublished ? 'secondary' : ''}
+            style={{ fontSize: '0.8rem', padding: '5px 14px' }}
+            title={!report ? 'Save the report first' : ''}
+          >
+            {publishing ? '…' : isPublished ? 'Unpublish' : 'Publish to customer'}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="error" style={{ margin: '0 16px 8px' }}>{error}</p>}
+
+      <div className="report-form">
+        <div className="report-section">
+          <label className="report-label">Diagnosis</label>
+          <p className="report-hint">What was found — the root cause of the problem</p>
+          <textarea rows={4} value={form.diagnosis} onChange={(e) => set('diagnosis', e.target.value)}
+            placeholder="e.g. Faulty EGR valve causing rough idle and P0401 fault code. Carbon build-up on inlet manifold." />
+        </div>
+
+        <div className="report-section">
+          <label className="report-label">Work carried out</label>
+          <p className="report-hint">Step-by-step description of what was done</p>
+          <textarea rows={5} value={form.workCarriedOut} onChange={(e) => set('workCarriedOut', e.target.value)}
+            placeholder="e.g. 1. Removed and cleaned EGR valve&#10;2. Decarbonised inlet manifold&#10;3. Replaced EGR gasket&#10;4. Reset fault codes and road tested" />
+        </div>
+
+        <div className="report-section">
+          <label className="report-label">Technician notes</label>
+          <p className="report-hint">Recommendations, observations, or anything else for the customer</p>
+          <textarea rows={3} value={form.technicianNotes} onChange={(e) => set('technicianNotes', e.target.value)}
+            placeholder="e.g. Recommend timing belt replacement at next service — showing wear." />
+        </div>
+
+        <div className="report-section">
+          <label className="report-label">Costs</label>
+          <div className="report-costs">
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Parts (£)</label>
+              <input type="number" min="0" step="0.01" value={form.costParts}
+                onChange={(e) => handleCostChange('costParts', e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Labour (£)</label>
+              <input type="number" min="0" step="0.01" value={form.costLabour}
+                onChange={(e) => handleCostChange('costLabour', e.target.value)} placeholder="0.00" />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Total (£)</label>
+              <input type="number" min="0" step="0.01" value={form.costTotal}
+                onChange={(e) => set('costTotal', e.target.value)} placeholder="0.00"
+                style={{ fontWeight: 700, background: '#f0fdf4' }} />
+            </div>
+          </div>
+        </div>
+
+        <div className="report-section">
+          <label className="report-label">Job photos</label>
+          <p className="report-hint">Photos visible to the customer in their report</p>
+          <div className="report-images">
+            {images.map((img) => (
+              <div key={img.id} className="report-image-card">
+                <img src={reportsApi.imageUrl(img.filename)} alt={img.caption || 'Job photo'} />
+                <input
+                  defaultValue={img.caption}
+                  placeholder="Add caption…"
+                  onBlur={(e) => handleCaptionBlur(img.id, e.target.value)}
+                  style={{ fontSize: '0.75rem', padding: '4px 6px', marginTop: 4 }}
+                />
+                <button className="secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#fee2e2', color: '#b91c1c', marginTop: 4 }}
+                  onClick={() => handleDeleteImage(img.id)}>Remove</button>
+              </div>
+            ))}
+            <div className="report-image-upload" onClick={() => fileRef.current?.click()}>
+              {uploading ? <span>Uploading…</span> : <><span className="report-upload-icon">+</span><span>Add photos</span></>}
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VehicleHistoryTab({ history, currentProjectId }) {
   if (!history) return <div className="chat-messages"><p className="chat-empty">No vehicle history available.</p></div>;
 
@@ -608,11 +797,13 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
             )}
           </button>
         )}
+        <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
       </div>
 
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
       {tab === 'specs' && <div className="tab-pane"><QuickReference project={project} token={token} /></div>}
       {tab === 'history' && <div className="tab-pane"><VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} /></div>}
+      {tab === 'report' && <div className="tab-pane"><ReportTab project={project} token={token} /></div>}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (

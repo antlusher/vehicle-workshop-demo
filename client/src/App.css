@@ -914,3 +914,338 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   font-weight: 600;
   font-size: 0.85rem;
 }
+
+/* ── Report Tab ── */
+.report-tab {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.report-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.report-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.report-badge--draft { background: #fef3c7; color: #92400e; }
+.report-badge--published { background: #dcfce7; color: #15803d; }
+
+.report-status-bar-actions { display: flex; gap: 8px; margin-left: auto; }
+
+.report-form { display: flex; flex-direction: column; gap: 16px; }
+
+.report-section { display: flex; flex-direction: column; gap: 6px; }
+
+.report-label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+
+.report-hint { font-size: 0.72rem; color: #9ca3af; margin-top: 2px; }
+
+.report-costs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.report-cost-group { display: flex; flex-direction: column; gap: 4px; }
+.report-cost-group label { font-size: 0.78rem; font-weight: 600; color: #374151; }
+.report-cost-group input { padding: 8px 10px; font-size: 0.875rem; }
+.report-cost-total {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.report-images { display: flex; flex-direction: column; gap: 12px; }
+
+.report-image-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 2px dashed #d1d5db;
+  border-radius: 10px;
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.report-upload-icon { font-size: 1.4rem; }
+
+.report-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.report-image-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+
+.report-image-card img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  display: block;
+}
+
+.report-image-card-body { padding: 6px 8px; }
+
+.report-image-caption {
+  font-size: 0.75rem;
+  padding: 4px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 4px;
+}
+
+.report-image-delete {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* ── Customer Portal ── */
+.cp-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.cp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  height: 58px;
+  background: #1e293b;
+  color: white;
+  flex-shrink: 0;
+}
+
+.cp-brand { display: flex; align-items: center; gap: 10px; }
+.cp-brand-name { font-weight: 700; font-size: 1rem; color: white; }
+.cp-brand-sub {
+  font-size: 0.72rem;
+  background: #2563eb;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cp-header-right { display: flex; align-items: center; gap: 12px; }
+.cp-user-email { font-size: 0.8rem; color: #94a3b8; }
+
+.cp-main {
+  flex: 1;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 24px;
+  box-sizing: border-box;
+}
+
+.cp-page-title { font-size: 1.4rem; font-weight: 700; color: #0f172a; margin: 0 0 24px; }
+
+.cp-vehicle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.cp-vehicle-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.05);
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #111827;
+}
+
+.cp-vehicle-card:hover { box-shadow: 0 6px 20px rgba(15,23,42,0.12); border-color: #93c5fd; background: white; }
+
+.cp-vehicle-reg { font-size: 1.25rem; font-weight: 800; color: #0f172a; letter-spacing: 0.03em; }
+.cp-vehicle-info { font-size: 0.875rem; color: #6b7280; }
+.cp-vehicle-jobs { font-size: 0.8rem; color: #2563eb; font-weight: 600; margin-top: 4px; }
+.cp-vehicle-arrow { font-size: 0.8rem; color: #94a3b8; margin-top: auto; padding-top: 8px; }
+
+.cp-vehicle-header { margin-bottom: 24px; }
+.cp-vehicle-title { font-size: 1.4rem; font-weight: 800; color: #0f172a; margin: 0 0 4px; }
+.cp-vehicle-meta { font-size: 0.9rem; color: #6b7280; margin: 0; }
+
+.cp-job-list { display: flex; flex-direction: column; gap: 12px; }
+
+.cp-job-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  text-align: left;
+  box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #111827;
+  width: 100%;
+}
+
+.cp-job-card:hover { box-shadow: 0 4px 16px rgba(15,23,42,0.1); border-color: #93c5fd; background: white; }
+
+.cp-job-date { font-size: 0.8rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+.cp-job-summary { font-size: 0.9rem; color: #374151; margin: 0; line-height: 1.5; }
+.cp-job-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 4px; }
+.cp-job-cost { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
+.cp-job-arrow { font-size: 0.8rem; color: #2563eb; font-weight: 600; }
+
+.cp-detail { display: flex; flex-direction: column; gap: 0; }
+
+.cp-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.cp-detail-title { font-size: 1.3rem; font-weight: 800; color: #0f172a; margin: 0 0 6px; }
+.cp-detail-meta { font-size: 0.875rem; color: #6b7280; margin: 0; }
+
+.cp-status-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-radius: 20px;
+  background: #dcfce7;
+  color: #15803d;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cp-back {
+  background: transparent;
+  color: #6b7280;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 24px;
+  display: inline-block;
+}
+.cp-back:hover { color: #111827; background: transparent; }
+
+.cp-report-section {
+  border-top: 1px solid #f1f5f9;
+  padding: 20px 0;
+}
+
+.cp-report-section--note { background: transparent; }
+
+.cp-section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin: 0 0 10px;
+}
+
+.cp-section-text { font-size: 0.9375rem; color: #1e293b; line-height: 1.7; margin: 0; }
+
+.cp-fixes { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.cp-fix {
+  font-size: 0.9rem;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 500;
+}
+
+.cp-costs { display: flex; flex-direction: column; gap: 0; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+
+.cp-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  color: #374151;
+  border-bottom: 1px solid #f1f5f9;
+  background: white;
+}
+
+.cp-cost-row:last-child { border-bottom: none; }
+
+.cp-cost-row--total {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.cp-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.cp-photo {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+}
+
+.cp-photo img { width: 100%; height: 140px; object-fit: cover; display: block; }
+
+.cp-photo-caption { padding: 6px 10px; font-size: 0.78rem; color: #6b7280; margin: 0; background: white; }
+
+.cp-published-at {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid #f1f5f9;
+  margin-top: 8px;
+}
+
+.cp-loading { text-align: center; padding: 48px; color: #9ca3af; font-size: 0.9rem; }
+.cp-error { color: #b91c1c; padding: 24px; text-align: center; }
+.cp-empty { color: #9ca3af; font-size: 0.9rem; padding: 32px 0; }

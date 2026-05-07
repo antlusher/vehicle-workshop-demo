@@ -217,4 +217,102 @@ function makeChunk(text) {
   return { title, content: text, category: 'General', make: '', model: '', year_from: '', year_to: '', fault_code: '', source: '', engine_id: '', transmission_id: '', included: true };
 }
 
+// ── Customer management ──────────────────────────────────────────────────────
+
+router.get('/customers', async (req, res) => {
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.created_at,
+            COUNT(cv.id) as vehicle_count
+     FROM users u
+     LEFT JOIN customer_vehicles cv ON cv.customer_id = u.id
+     WHERE u.role = 'customer'
+     GROUP BY u.id
+     ORDER BY u.created_at DESC`
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id, email: r.email, createdAt: r.created_at,
+    vehicleCount: parseInt(r.vehicle_count) || 0,
+  })));
+});
+
+router.post('/customers', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  try {
+    const bcrypt = require('bcrypt');
+    const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+    if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+    const hashed = await bcrypt.hash(password, 10);
+    const { rows } = await query(
+      `INSERT INTO users (email, password, role, subscribed) VALUES ($1,$2,'customer',true) RETURNING id, email, created_at`,
+      [email, hashed]
+    );
+    return res.status(201).json({ id: rows[0].id, email: rows[0].email, createdAt: rows[0].created_at, vehicleCount: 0 });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/customers/:id/vehicles', async (req, res) => {
+  const { rows } = await query(
+    `SELECT v.id, v.registration, v.make, v.model, v.year, cv.created_at as linked_at
+     FROM customer_vehicles cv JOIN vehicles v ON v.id = cv.vehicle_id
+     WHERE cv.customer_id = $1 ORDER BY cv.created_at DESC`,
+    [req.params.id]
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id, registration: r.registration, make: r.make,
+    model: r.model, year: r.year, linkedAt: r.linked_at,
+  })));
+});
+
+router.post('/customers/:id/vehicles', async (req, res) => {
+  const { registration } = req.body;
+  if (!registration) return res.status(400).json({ error: 'Registration is required' });
+  const cleaned = registration.trim().toUpperCase().replace(/\s+/g, '');
+  const { rows: vr } = await query(
+    `SELECT v.* FROM vehicles v
+     JOIN vehicle_registrations vr ON vr.vehicle_id = v.id
+     WHERE vr.registration = $1 AND vr.assigned_to IS NULL
+     LIMIT 1`,
+    [cleaned]
+  );
+  if (!vr.length) {
+    // Fallback: match by vehicles.registration directly
+    const { rows: vd } = await query('SELECT * FROM vehicles WHERE registration = $1 LIMIT 1', [cleaned]);
+    if (!vd.length) return res.status(404).json({ error: 'Vehicle not found — create a project for this registration first' });
+    vr.push(vd[0]);
+  }
+  const vehicle = vr[0];
+  try {
+    await query('INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2)', [req.params.id, vehicle.id]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Vehicle already linked to this customer' });
+    throw err;
+  }
+  return res.json({ id: vehicle.id, registration: cleaned, make: vehicle.make, model: vehicle.model, year: vehicle.year });
+});
+
+router.delete('/customers/:id/vehicles/:vehicleId', async (req, res) => {
+  await query('DELETE FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2', [req.params.id, req.params.vehicleId]);
+  return res.json({ deleted: true });
+});
+
+// Search vehicles for customer linking
+router.get('/vehicles/search', async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.length < 2) return res.json([]);
+  const term = q.trim().toUpperCase().replace(/\s+/g, '');
+  const { rows } = await query(
+    `SELECT DISTINCT v.id, v.registration, v.make, v.model, v.year
+     FROM vehicles v
+     LEFT JOIN vehicle_registrations vr ON vr.vehicle_id = v.id
+     WHERE v.registration ILIKE $1 OR vr.registration ILIKE $1
+        OR v.make ILIKE $2 OR v.model ILIKE $2
+     LIMIT 10`,
+    [`${term}%`, `%${q.trim()}%`]
+  );
+  return res.json(rows);
+});
+
 module.exports = router;

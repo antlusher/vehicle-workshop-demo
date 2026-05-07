@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
+import CustomerPortal from './pages/CustomerPortal';
 import './App.css';
 
 function App() {
@@ -193,6 +194,10 @@ function App() {
         </section>
       </div>
     );
+  }
+
+  if (user?.role === 'customer') {
+    return <CustomerPortal user={user} token={token} onLogout={handleLogout} />;
   }
 
   if (adminView && user?.role === 'admin') {
