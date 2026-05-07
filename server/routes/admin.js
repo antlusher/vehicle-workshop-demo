@@ -219,24 +219,30 @@ function makeChunk(text) {
 
 // ── Customer management ──────────────────────────────────────────────────────
 
+function formatCustomer(r) {
+  return {
+    id: r.id, email: r.email, name: r.name || '', phone: r.phone || '',
+    addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
+    city: r.city || '', postcode: r.postcode || '',
+    createdAt: r.created_at, vehicleCount: parseInt(r.vehicle_count) || 0,
+  };
+}
+
 router.get('/customers', async (req, res) => {
   const { rows } = await query(
-    `SELECT u.id, u.email, u.created_at,
-            COUNT(cv.id) as vehicle_count
+    `SELECT u.id, u.email, u.name, u.phone, u.address_line1, u.address_line2,
+            u.city, u.postcode, u.created_at, COUNT(cv.id) as vehicle_count
      FROM users u
      LEFT JOIN customer_vehicles cv ON cv.customer_id = u.id
      WHERE u.role = 'customer'
      GROUP BY u.id
      ORDER BY u.created_at DESC`
   );
-  return res.json(rows.map((r) => ({
-    id: r.id, email: r.email, createdAt: r.created_at,
-    vehicleCount: parseInt(r.vehicle_count) || 0,
-  })));
+  return res.json(rows.map(formatCustomer));
 });
 
 router.post('/customers', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, name, phone, addressLine1, addressLine2, city, postcode } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   try {
     const bcrypt = require('bcrypt');
@@ -244,13 +250,35 @@ router.post('/customers', async (req, res) => {
     if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
     const hashed = await bcrypt.hash(password, 10);
     const { rows } = await query(
-      `INSERT INTO users (email, password, role, subscribed) VALUES ($1,$2,'customer',true) RETURNING id, email, created_at`,
-      [email, hashed]
+      `INSERT INTO users (email, password, role, subscribed, name, phone, address_line1, address_line2, city, postcode)
+       VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7,$8)
+       RETURNING id, email, name, phone, address_line1, address_line2, city, postcode, created_at`,
+      [email, hashed, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null]
     );
-    return res.status(201).json({ id: rows[0].id, email: rows[0].email, createdAt: rows[0].created_at, vehicleCount: 0 });
+    return res.status(201).json({ ...formatCustomer(rows[0]), vehicleCount: 0 });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+});
+
+router.patch('/customers/:id', async (req, res) => {
+  const { name, phone, addressLine1, addressLine2, city, postcode, email } = req.body;
+  const { rows } = await query(
+    `UPDATE users SET
+       name = COALESCE($1, name),
+       phone = COALESCE($2, phone),
+       address_line1 = COALESCE($3, address_line1),
+       address_line2 = COALESCE($4, address_line2),
+       city = COALESCE($5, city),
+       postcode = COALESCE($6, postcode),
+       email = COALESCE($7, email)
+     WHERE id = $8 AND role = 'customer'
+     RETURNING id, email, name, phone, address_line1, address_line2, city, postcode, created_at`,
+    [name ?? null, phone ?? null, addressLine1 ?? null, addressLine2 ?? null,
+     city ?? null, postcode ?? null, email ?? null, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+  return res.json(formatCustomer(rows[0]));
 });
 
 router.get('/customers/:id/vehicles', async (req, res) => {

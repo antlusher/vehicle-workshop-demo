@@ -23,3 +23,5 @@ export const linkVehicle = (customerId, registration, token) =>
   request(`/api/admin/customers/${customerId}/vehicles`, { method: 'POST', body: { registration } }, token);
 export const unlinkVehicle = (customerId, vehicleId, token) =>
   request(`/api/admin/customers/${customerId}/vehicles/${vehicleId}`, { method: 'DELETE' }, token);
+export const updateCustomer = (customerId, data, token) =>
+  request(`/api/admin/customers/${customerId}`, { method: 'PATCH', body: data }, token);

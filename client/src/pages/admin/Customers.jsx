@@ -1,27 +1,38 @@
 import { useState, useEffect } from 'react';
-import { getCustomers, createCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
+import { getCustomers, createCustomer, updateCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
 
-function CustomerDetail({ customer, token, onClose }) {
+const EMPTY_DETAILS = { name: '', phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '', email: '' };
+
+function CustomerDetail({ customer, token, onClose, onUpdated }) {
   const [vehicles, setVehicles] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [reg, setReg] = useState('');
   const [linking, setLinking] = useState(false);
-  const [error, setError] = useState('');
+  const [linkError, setLinkError] = useState('');
+
+  const [details, setDetails] = useState({
+    name: customer.name || '', phone: customer.phone || '', email: customer.email || '',
+    addressLine1: customer.addressLine1 || '', addressLine2: customer.addressLine2 || '',
+    city: customer.city || '', postcode: customer.postcode || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [savedOk, setSavedOk] = useState(false);
 
   const loadVehicles = () =>
-    getCustomerVehicles(customer.id, token).then(setVehicles).finally(() => setLoading(false));
+    getCustomerVehicles(customer.id, token).then(setVehicles).finally(() => setLoadingVehicles(false));
 
   useEffect(() => { loadVehicles(); }, [customer.id]);
 
   const handleLink = async (e) => {
     e.preventDefault();
     if (!reg.trim()) return;
-    setLinking(true); setError('');
+    setLinking(true); setLinkError('');
     try {
       await linkVehicle(customer.id, reg.trim(), token);
       setReg('');
       loadVehicles();
-    } catch (err) { setError(err.message); }
+    } catch (err) { setLinkError(err.message); }
     finally { setLinking(false); }
   };
 
@@ -31,16 +42,73 @@ function CustomerDetail({ customer, token, onClose }) {
     setVehicles((vs) => vs.filter((v) => v.id !== vehicleId));
   };
 
+  const handleSaveDetails = async (e) => {
+    e.preventDefault();
+    setSaving(true); setSaveError(''); setSavedOk(false);
+    try {
+      const updated = await updateCustomer(customer.id, details, token);
+      onUpdated(updated);
+      setSavedOk(true);
+      setTimeout(() => setSavedOk(false), 2000);
+    } catch (err) { setSaveError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const field = (key) => ({
+    value: details[key],
+    onChange: (e) => setDetails((d) => ({ ...d, [key]: e.target.value })),
+  });
+
   return (
     <div className="detail-panel">
       <button className="detail-close" onClick={onClose}>✕</button>
-      <h3 className="detail-title">{customer.email}</h3>
+      <h3 className="detail-title">{customer.name || customer.email}</h3>
       <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: 20 }}>
         Customer since {new Date(customer.createdAt).toLocaleDateString()}
       </p>
 
-      <h4 className="detail-section">Linked vehicles</h4>
-      {loading ? <p className="admin-loading">Loading…</p> : (
+      <h4 className="detail-section">Personal details</h4>
+      <form onSubmit={handleSaveDetails} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="kb-form-row">
+          <div className="kb-form-group">
+            <label>Full name</label>
+            <input placeholder="Jane Smith" {...field('name')} />
+          </div>
+          <div className="kb-form-group">
+            <label>Phone</label>
+            <input type="tel" placeholder="07700 900000" {...field('phone')} />
+          </div>
+        </div>
+        <div className="kb-form-group">
+          <label>Email</label>
+          <input type="email" {...field('email')} />
+        </div>
+        <div className="kb-form-group">
+          <label>Address line 1</label>
+          <input placeholder="123 High Street" {...field('addressLine1')} />
+        </div>
+        <div className="kb-form-group">
+          <label>Address line 2</label>
+          <input placeholder="Apartment, suite, etc." {...field('addressLine2')} />
+        </div>
+        <div className="kb-form-row">
+          <div className="kb-form-group">
+            <label>Town / City</label>
+            <input placeholder="London" {...field('city')} />
+          </div>
+          <div className="kb-form-group">
+            <label>Postcode</label>
+            <input placeholder="SW1A 1AA" {...field('postcode')} />
+          </div>
+        </div>
+        {saveError && <p className="error" style={{ margin: 0 }}>{saveError}</p>}
+        <button type="submit" disabled={saving} style={{ alignSelf: 'flex-start', fontSize: '0.85rem' }}>
+          {saving ? 'Saving…' : savedOk ? 'Saved ✓' : 'Save details'}
+        </button>
+      </form>
+
+      <h4 className="detail-section" style={{ marginTop: 24 }}>Linked vehicles</h4>
+      {loadingVehicles ? <p className="admin-loading">Loading…</p> : (
         <>
           {vehicles.length === 0 ? (
             <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>No vehicles linked yet.</p>
@@ -70,7 +138,7 @@ function CustomerDetail({ customer, token, onClose }) {
               {linking ? 'Linking…' : 'Link vehicle'}
             </button>
           </form>
-          {error && <p className="error" style={{ marginTop: 8 }}>{error}</p>}
+          {linkError && <p className="error" style={{ marginTop: 8 }}>{linkError}</p>}
           <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 6 }}>
             The vehicle must have been looked up or created in Ask Bob first.
           </p>
@@ -85,7 +153,7 @@ export default function Customers({ token }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '', ...EMPTY_DETAILS });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -99,11 +167,18 @@ export default function Customers({ token }) {
     try {
       const c = await createCustomer(form, token);
       setCustomers((cs) => [c, ...cs]);
-      setForm({ email: '', password: '' });
+      setForm({ email: '', password: '', ...EMPTY_DETAILS });
       setShowCreate(false);
     } catch (err) { setCreateError(err.message); }
     finally { setCreating(false); }
   };
+
+  const handleUpdated = (updated) => {
+    setCustomers((cs) => cs.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
+    setSelected((prev) => prev ? { ...prev, ...updated } : prev);
+  };
+
+  const f = (key) => ({ value: form[key], onChange: (e) => setForm((s) => ({ ...s, [key]: e.target.value })) });
 
   return (
     <div>
@@ -115,15 +190,43 @@ export default function Customers({ token }) {
       {showCreate && (
         <div className="kb-form-wrap" style={{ marginBottom: 20 }}>
           <h3 className="admin-section-title" style={{ marginTop: 0 }}>Create customer account</h3>
-          <form onSubmit={handleCreate}>
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="kb-form-row">
               <div className="kb-form-group">
-                <label>Email</label>
-                <input type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="customer@example.com" required />
+                <label>Full name</label>
+                <input placeholder="Jane Smith" {...f('name')} />
               </div>
               <div className="kb-form-group">
-                <label>Password</label>
-                <input type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Temporary password" required />
+                <label>Phone</label>
+                <input type="tel" placeholder="07700 900000" {...f('phone')} />
+              </div>
+            </div>
+            <div className="kb-form-row">
+              <div className="kb-form-group">
+                <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
+                <input type="email" required {...f('email')} placeholder="customer@example.com" />
+              </div>
+              <div className="kb-form-group">
+                <label>Password <span style={{ color: '#b91c1c' }}>*</span></label>
+                <input type="password" required {...f('password')} placeholder="Temporary password" />
+              </div>
+            </div>
+            <div className="kb-form-group">
+              <label>Address line 1</label>
+              <input placeholder="123 High Street" {...f('addressLine1')} />
+            </div>
+            <div className="kb-form-group">
+              <label>Address line 2</label>
+              <input placeholder="Apartment, suite, etc." {...f('addressLine2')} />
+            </div>
+            <div className="kb-form-row">
+              <div className="kb-form-group">
+                <label>Town / City</label>
+                <input placeholder="London" {...f('city')} />
+              </div>
+              <div className="kb-form-group">
+                <label>Postcode</label>
+                <input placeholder="SW1A 1AA" {...f('postcode')} />
               </div>
             </div>
             {createError && <p className="error">{createError}</p>}
@@ -140,12 +243,14 @@ export default function Customers({ token }) {
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Email</th><th>Vehicles</th><th>Created</th><th></th></tr>
+                  <tr><th>Name</th><th>Email</th><th>Phone</th><th>Vehicles</th><th>Created</th><th></th></tr>
                 </thead>
                 <tbody>
                   {customers.map((c) => (
                     <tr key={c.id} className={`admin-table-row${selected?.id === c.id ? ' admin-table-row--active' : ''}`}>
+                      <td>{c.name || <span style={{ color: '#9ca3af' }}>—</span>}</td>
                       <td>{c.email}</td>
+                      <td style={{ color: c.phone ? '#1e293b' : '#9ca3af' }}>{c.phone || '—'}</td>
                       <td>{c.vehicleCount}</td>
                       <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', color: '#9ca3af' }}>{new Date(c.createdAt).toLocaleDateString()}</td>
                       <td>
@@ -157,14 +262,20 @@ export default function Customers({ token }) {
                     </tr>
                   ))}
                   {!customers.length && (
-                    <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No customer accounts yet.</td></tr>
+                    <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No customer accounts yet.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           )}
         </div>
-        {selected && <CustomerDetail customer={selected} token={token} onClose={() => setSelected(null)} />}
+        {selected && (
+          <CustomerDetail
+            customer={selected} token={token}
+            onClose={() => setSelected(null)}
+            onUpdated={handleUpdated}
+          />
+        )}
       </div>
     </div>
   );
