@@ -20,7 +20,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
     <div className="admin-shell">
       <header className="admin-header">
         <div className="admin-header-left">
-          <span className="admin-brand">Vehicle Workshop</span>
+          <span className="admin-brand">Ask Bob</span>
           <span className="admin-brand-sub">Admin</span>
         </div>
         <nav className="admin-nav">

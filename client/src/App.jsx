@@ -182,7 +182,7 @@ function App() {
     return (
       <div className="app-shell">
         <header className="app-header">
-          <h1>Vehicle Workshop</h1>
+          <h1>Ask Bob</h1>
           <button onClick={handleLogout}>Logout</button>
         </header>
         <section className="card">
@@ -209,7 +209,7 @@ function App() {
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <h1>Vehicle Workshop</h1>
+          <h1>Ask Bob</h1>
           <p>{user?.email}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
