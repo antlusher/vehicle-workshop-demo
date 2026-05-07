@@ -1,7 +1,11 @@
 const express = require('express');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
 const { findUserByToken, createUser } = require('../services/authService');
 const { query } = require('../services/db');
 const admin = require('../services/adminService');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router = express.Router();
 
@@ -134,5 +138,83 @@ router.delete('/knowledge-base/:id', async (req, res) => {
   await admin.deleteKnowledgeBaseEntry(req.params.id);
   return res.json({ deleted: true });
 });
+
+// PDF knowledge import
+router.post('/knowledge/parse-pdf', upload.single('pdf'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
+  try {
+    const { text } = await pdfParse(req.file.buffer);
+    const chunks = chunkPdfText(text);
+    return res.json({ chunks });
+  } catch (err) {
+    return res.status(422).json({ error: 'Could not parse PDF: ' + err.message });
+  }
+});
+
+router.post('/knowledge/import-chunks', async (req, res) => {
+  const { chunks } = req.body;
+  if (!Array.isArray(chunks) || !chunks.length) {
+    return res.status(400).json({ error: 'chunks array is required' });
+  }
+  const saved = [];
+  for (const chunk of chunks) {
+    if (!chunk.title?.trim() || !chunk.content?.trim()) continue;
+    const { rows } = await query(
+      `INSERT INTO knowledge_base
+         (category, make, model, year_from, year_to, fault_code, title, content, source, engine_id, transmission_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [
+        chunk.category || 'General',
+        chunk.make || null,
+        chunk.model || null,
+        chunk.year_from || null,
+        chunk.year_to || null,
+        chunk.fault_code || null,
+        chunk.title.trim(),
+        chunk.content.trim(),
+        chunk.source || null,
+        chunk.engine_id || null,
+        chunk.transmission_id || null,
+        req.admin.id,
+      ]
+    );
+    saved.push(rows[0].id);
+  }
+  return res.json({ imported: saved.length });
+});
+
+function chunkPdfText(text) {
+  // Normalise line endings, collapse 3+ newlines to 2
+  const normalised = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  const paragraphs = normalised.split('\n\n').map((p) => p.trim()).filter(Boolean);
+
+  const chunks = [];
+  let buffer = '';
+
+  for (const para of paragraphs) {
+    // Skip page-number-only lines and very short noise
+    if (/^\d+$/.test(para) || para.length < 40) continue;
+
+    if (buffer.length === 0) {
+      buffer = para;
+    } else if (buffer.length + para.length < 1200) {
+      buffer += '\n\n' + para;
+    } else {
+      chunks.push(makeChunk(buffer));
+      buffer = para;
+    }
+  }
+  if (buffer.length >= 40) chunks.push(makeChunk(buffer));
+
+  return chunks;
+}
+
+function makeChunk(text) {
+  const lines = text.split('\n');
+  // First line is the title if it's short enough, otherwise truncate
+  const firstLine = lines[0].trim();
+  const title = firstLine.length <= 120 ? firstLine : firstLine.slice(0, 117) + '…';
+  return { title, content: text, category: 'General', make: '', model: '', year_from: '', year_to: '', fault_code: '', source: '', engine_id: '', transmission_id: '', included: true };
+}
 
 module.exports = router;

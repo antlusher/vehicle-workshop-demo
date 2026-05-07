@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   getAiRequests, getAiStats, getConversation, estimateCost,
   getLearningStats,
   getKnowledgeBase, createKbEntry, updateKbEntry, deleteKbEntry,
+  parsePdf, importPdfChunks,
 } from '../../services/adminApi';
 import { getEngines, getTransmissions } from '../../services/registryApi';
 
@@ -386,6 +387,160 @@ function KbForm({ initial, engines, transmissions, onSave, onCancel }) {
   );
 }
 
+// ── PDF Import sub-tab ────────────────────────────────────────────────────────
+
+function PdfImport({ token }) {
+  const fileRef = useRef(null);
+  const [chunks, setChunks] = useState([]);
+  const [engines, setEngines] = useState([]);
+  const [transmissions, setTransmissions] = useState([]);
+  const [globalScope, setGlobalScope] = useState({ category: 'General', make: '', model: '', engine_id: '', transmission_id: '', source: '' });
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState('');
+  const [imported, setImported] = useState(null);
+  const setG = (k, v) => setGlobalScope((s) => ({ ...s, [k]: v }));
+  const setChunk = (i, k, v) => setChunks((cs) => cs.map((c, idx) => idx === i ? { ...c, [k]: v } : c));
+
+  useEffect(() => {
+    Promise.all([getEngines(token), getTransmissions(token)])
+      .then(([e, t]) => { setEngines(e); setTransmissions(t); });
+  }, [token]);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(''); setChunks([]); setImported(null); setLoading(true);
+    try {
+      const { chunks: parsed } = await parsePdf(file, token);
+      setChunks(parsed.map((c) => ({ ...c, included: true })));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const applyGlobalScope = () => {
+    setChunks((cs) => cs.map((c) => ({
+      ...c,
+      category: globalScope.category || c.category,
+      make: globalScope.make !== undefined ? globalScope.make : c.make,
+      model: globalScope.model !== undefined ? globalScope.model : c.model,
+      engine_id: globalScope.engine_id !== undefined ? globalScope.engine_id : c.engine_id,
+      transmission_id: globalScope.transmission_id !== undefined ? globalScope.transmission_id : c.transmission_id,
+      source: globalScope.source || c.source,
+    })));
+  };
+
+  const handleImport = async () => {
+    const selected = chunks.filter((c) => c.included);
+    if (!selected.length) { setError('No chunks selected'); return; }
+    setImporting(true); setError('');
+    try {
+      const { imported: count } = await importPdfChunks(selected, token);
+      setImported(count);
+      setChunks([]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const selectedCount = chunks.filter((c) => c.included).length;
+
+  return (
+    <div>
+      <h3 className="admin-section-title" style={{ marginTop: 0 }}>Import PDF</h3>
+      <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
+        Upload a PDF repair manual, technical service bulletin, or any automotive document. The text will be extracted and split into sections ready to review before saving to the knowledge base.
+      </p>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
+        <button onClick={() => fileRef.current?.click()} disabled={loading}>{loading ? 'Parsing…' : 'Choose PDF…'}</button>
+        <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
+        {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} sections extracted</span>}
+      </div>
+
+      {error && <p className="error">{error}</p>}
+      {imported !== null && <p style={{ color: '#16a34a', marginBottom: 16 }}>✓ {imported} entries imported to knowledge base.</p>}
+
+      {chunks.length > 0 && (
+        <>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#374151' }}>Apply scope to all sections</h4>
+            <div className="kb-form-row" style={{ marginBottom: 8 }}>
+              <div className="kb-form-group">
+                <label>Category</label>
+                <select value={globalScope.category} onChange={(e) => setG('category', e.target.value)}>
+                  {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="kb-form-group">
+                <label>Source / document name</label>
+                <input value={globalScope.source} onChange={(e) => setG('source', e.target.value)} placeholder="e.g. Haynes Manual, TSB-2023-001" />
+              </div>
+              <div className="kb-form-group">
+                <label>Engine (cross-make)</label>
+                <select value={globalScope.engine_id} onChange={(e) => setG('engine_id', e.target.value)}>
+                  <option value="">— None —</option>
+                  {engines.map((e) => <option key={e.id} value={e.id}>{e.code}{e.name ? ` — ${e.name}` : ''}</option>)}
+                </select>
+              </div>
+              <div className="kb-form-group">
+                <label>Make</label>
+                <input value={globalScope.make} onChange={(e) => setG('make', e.target.value)} placeholder="e.g. Ford" />
+              </div>
+              <div className="kb-form-group">
+                <label>Model</label>
+                <input value={globalScope.model} onChange={(e) => setG('model', e.target.value)} placeholder="e.g. Focus" />
+              </div>
+            </div>
+            <button className="secondary" onClick={applyGlobalScope}>Apply to all sections</button>
+          </div>
+
+          <div className="admin-toolbar" style={{ marginBottom: 12 }}>
+            <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{selectedCount} of {chunks.length} selected</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: true })))}>Select all</button>
+              <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: false })))}>Deselect all</button>
+              <button onClick={handleImport} disabled={importing || !selectedCount}>
+                {importing ? 'Importing…' : `Import ${selectedCount} section${selectedCount !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {chunks.map((chunk, i) => (
+              <div key={i} style={{ border: '1px solid', borderColor: chunk.included ? '#bfdbfe' : '#e5e7eb', borderRadius: 8, padding: 14, background: chunk.included ? '#eff6ff' : '#fafafa', opacity: chunk.included ? 1 : 0.6 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+                  <input type="checkbox" checked={chunk.included} onChange={(e) => setChunk(i, 'included', e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
+                  <input
+                    style={{ flex: 1, fontWeight: 600, fontSize: '0.9rem', border: '1px solid #d1d5db', borderRadius: 4, padding: '4px 8px', background: 'white' }}
+                    value={chunk.title}
+                    onChange={(e) => setChunk(i, 'title', e.target.value)}
+                  />
+                  <select style={{ fontSize: '0.8rem', padding: '4px 6px' }} value={chunk.category} onChange={(e) => setChunk(i, 'category', e.target.value)}>
+                    {CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
+                <textarea
+                  rows={4}
+                  style={{ width: '100%', fontSize: '0.82rem', border: '1px solid #d1d5db', borderRadius: 4, padding: '6px 8px', background: 'white', boxSizing: 'border-box', resize: 'vertical' }}
+                  value={chunk.content}
+                  onChange={(e) => setChunk(i, 'content', e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function KnowledgeBaseTab({ token }) {
   const [entries, setEntries] = useState([]);
   const [engines, setEngines] = useState([]);
@@ -495,6 +650,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'requests', label: 'Request Log' },
   { id: 'kb', label: 'Knowledge Base' },
+  { id: 'pdf', label: 'PDF Import' },
 ];
 
 export default function AiKnowledge({ token }) {
@@ -514,6 +670,7 @@ export default function AiKnowledge({ token }) {
       {tab === 'overview' && <Overview token={token} />}
       {tab === 'requests' && <RequestLog token={token} />}
       {tab === 'kb' && <KnowledgeBaseTab token={token} />}
+      {tab === 'pdf' && <PdfImport token={token} />}
     </div>
   );
 }

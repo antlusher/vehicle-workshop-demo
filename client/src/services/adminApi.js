@@ -64,6 +64,22 @@ export const updateKbEntry = (id, data, token) =>
 export const deleteKbEntry = (id, token) =>
   request(`/api/admin/knowledge-base/${id}`, { method: 'DELETE' }, token);
 
+export async function parsePdf(file, token) {
+  const formData = new FormData();
+  formData.append('pdf', file);
+  const res = await fetch(`${BASE_URL}/api/admin/knowledge/parse-pdf`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+export const importPdfChunks = (chunks, token) =>
+  request('/api/admin/knowledge/import-chunks', { method: 'POST', body: { chunks } }, token);
+
 export function estimateCost(inputTokens, outputTokens) {
   const cost = (inputTokens * 0.000003) + (outputTokens * 0.000015);
   return cost.toFixed(4);
