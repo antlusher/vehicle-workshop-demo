@@ -325,19 +325,49 @@ function VehicleInfo({ project, onUpdateVehicle }) {
     return (
       <div>
         {editBtn}
-        <p style={{ padding: '12px 16px', color: '#6b7280' }}>No extended vehicle data available. Use Edit to add details manually.</p>
+        <div className="specs-grid">
+          <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+            <h4 className="spec-card-title">Vehicle</h4>
+            <VehicleInfoRow label="Registration" value={project.registration} />
+            <VehicleInfoRow label="VIN" value={project.vin} />
+            <VehicleInfoRow label="Make" value={project.make} />
+            <VehicleInfoRow label="Model" value={project.model} />
+            <VehicleInfoRow label="Year" value={project.year} />
+            <VehicleInfoRow label="Engine code" value={project.engineCode} />
+            <VehicleInfoRow label="Fuel type" value={project.fuelType} />
+            <VehicleInfoRow label="Trim" value={project.trim} />
+            <VehicleInfoRow label="Body type" value={project.bodyType} />
+          </div>
+        </div>
+        <p style={{ padding: '4px 16px 12px', color: '#9ca3af', fontSize: '0.8rem' }}>No extended data from API — use Edit to correct any fields above.</p>
       </div>
     );
   }
 
   const fmt = (val, unit) => (val != null ? `${val}${unit ? ' ' + unit : ''}` : null);
 
+  const basicCard = (
+    <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+      <h4 className="spec-card-title">Vehicle</h4>
+      <VehicleInfoRow label="Registration" value={project.registration} />
+      <VehicleInfoRow label="VIN" value={project.vin} />
+      <VehicleInfoRow label="Make" value={project.make} />
+      <VehicleInfoRow label="Model" value={project.model} />
+      <VehicleInfoRow label="Year" value={project.year} />
+      <VehicleInfoRow label="Engine code" value={project.engineCode} />
+      <VehicleInfoRow label="Fuel type" value={project.fuelType} />
+      <VehicleInfoRow label="Trim" value={project.trim} />
+      <VehicleInfoRow label="Body type" value={project.bodyType} />
+    </div>
+  );
+
   return (
     <div>
       {editBtn}
       <div className="specs-grid">
+      {basicCard}
       <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-        <h4 className="spec-card-title">Identity</h4>
+        <h4 className="spec-card-title">Extended Data</h4>
         <VehicleInfoRow label="Colour" value={vd.colour} />
         <VehicleInfoRow label="First registered" value={vd.dateFirstRegistered} />
         <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
