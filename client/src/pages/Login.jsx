@@ -39,43 +39,43 @@ function Login({ onLogin, error }) {
 
   return (
     <div className="login-shell">
-      <div className="card" style={{ maxWidth: 420, width: '100%', margin: 0 }}>
-        <h1>
+      <div className="login-card">
+        <h1 className="login-title">
           {mode === 'login' && 'Sign in'}
           {mode === 'register' && 'Create account'}
           {mode === 'forgot' && 'Reset password'}
         </h1>
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
+        <form onSubmit={handleSubmit} className="login-form">
           <input
             id="email"
             name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
+            className="login-input"
             required
           />
           {mode !== 'forgot' && (
-            <>
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="login-input"
+              required
+            />
           )}
-          <button type="submit">
+          <button type="submit" className="login-btn">
             {mode === 'login' && 'Sign in'}
             {mode === 'register' && 'Create account'}
             {mode === 'forgot' && 'Send reset link'}
           </button>
-          {successMessage && <p style={{ color: '#16a34a', marginTop: 8 }}>{successMessage}</p>}
-          {formError && <p className="error">{formError}</p>}
-          {error && <p className="error">{error}</p>}
+          {successMessage && <p style={{ color: '#16a34a', marginTop: 8, textAlign: 'center' }}>{successMessage}</p>}
+          {formError && <p className="error" style={{ textAlign: 'center' }}>{formError}</p>}
+          {error && <p className="error" style={{ textAlign: 'center' }}>{error}</p>}
         </form>
 
         {/* <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -11,6 +11,71 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.login-card {
+  background: white;
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+.login-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 28px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  color: #0f172a;
+  background: #f8fafc;
+  box-sizing: border-box;
+  margin-bottom: 0;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: left;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: white;
+}
+
+.login-input::placeholder {
+  color: #94a3b8;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  margin-top: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0600ff, #001a97);
+  color: white;
+  letter-spacing: 0.01em;
+}
+
+.login-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0400cc, #001270);
 }
 
 .app-header {
