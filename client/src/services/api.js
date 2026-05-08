@@ -84,6 +84,18 @@ export async function clearProjectHistory(projectId, token) {
   return request(`/api/projects/${projectId}/clear`, { method: 'POST' }, token);
 }
 
+export async function archiveProject(projectId, token) {
+  return request(`/api/projects/${projectId}/archive`, { method: 'POST' }, token);
+}
+
+export async function restoreProject(projectId, token) {
+  return request(`/api/projects/${projectId}/restore`, { method: 'POST' }, token);
+}
+
+export async function getProjects(token, { archived = false } = {}) {
+  return request(`/api/projects${archived ? '?archived=true' : ''}`, {}, token);
+}
+
 export async function fetchProjectSpecs(projectId, token) {
   return request(`/api/projects/${projectId}/specs`, { method: 'POST' }, token);
 }

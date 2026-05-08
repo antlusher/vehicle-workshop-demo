@@ -12,6 +12,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [adminView, setAdminView] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [archivedProjects, setArchivedProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
@@ -21,6 +22,7 @@ function App() {
       setToken(null);
       setUser(null);
       setProjects([]);
+      setArchivedProjects([]);
       setSelectedProject(null);
       setError('Your session has expired. Please log in again.');
       setStatus('idle');
@@ -40,8 +42,12 @@ function App() {
       try {
         const userData = await api.getProfile(token);
         setUser(userData);
-        const savedProjects = await api.fetchProjects(token);
+        const [savedProjects, savedArchived] = await Promise.all([
+          api.fetchProjects(token),
+          api.getProjects(token, { archived: true }),
+        ]);
         setProjects(savedProjects);
+        setArchivedProjects(savedArchived);
         setStatus('ready');
       } catch (err) {
         setError(err.message);
@@ -69,6 +75,7 @@ function App() {
     setToken(null);
     setUser(null);
     setProjects([]);
+    setArchivedProjects([]);
     setSelectedProject(null);
     setAdminView(false);
     setError('');
@@ -76,8 +83,12 @@ function App() {
 
   const reloadProjects = async () => {
     if (!token) return;
-    const savedProjects = await api.fetchProjects(token);
+    const [savedProjects, savedArchived] = await Promise.all([
+      api.fetchProjects(token),
+      api.getProjects(token, { archived: true }),
+    ]);
     setProjects(savedProjects);
+    setArchivedProjects(savedArchived);
   };
 
   const handleCreateProject = async (identifier) => {
@@ -153,6 +164,31 @@ function App() {
         confirmedFixes: [...(prev.confirmedFixes || []), { id: result.id, text, createdAt: new Date().toISOString() }],
       };
     });
+  };
+
+  const handleArchiveProject = async (projectId) => {
+    setError('');
+    try {
+      await api.archiveProject(projectId, token);
+      const archived = projects.find((p) => p.id === projectId);
+      setProjects((current) => current.filter((p) => p.id !== projectId));
+      if (archived) setArchivedProjects((current) => [archived, ...current]);
+      if (selectedProject?.id === projectId) setSelectedProject(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRestoreProject = async (projectId) => {
+    setError('');
+    try {
+      await api.restoreProject(projectId, token);
+      const restored = archivedProjects.find((p) => p.id === projectId);
+      setArchivedProjects((current) => current.filter((p) => p.id !== projectId));
+      if (restored) setProjects((current) => [restored, ...current]);
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   const handleClearHistory = async (projectId) => {
@@ -235,10 +271,13 @@ function App() {
         <div className="panel panel-left">
           <Projects
             projects={projects}
+            archivedProjects={archivedProjects}
             onCreateProject={handleCreateProject}
             onCreateProjectManual={handleCreateProjectManual}
             onSelectProject={handleSelectProject}
             onCloseProject={handleCloseProject}
+            onArchiveProject={handleArchiveProject}
+            onRestoreProject={handleRestoreProject}
             selectedProject={selectedProject}
             error={error}
           />

@@ -4,10 +4,11 @@ const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Pl
 const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
 const EMPTY_MANUAL = { registration: '', vin: '', make: '', model: '', year: '', engineCode: '', fuelType: '', trim: '', bodyType: '' };
 
-function Projects({ projects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, selectedProject, error }) {
+function Projects({ projects, archivedProjects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
   const [identifier, setIdentifier] = useState('');
   const [manual, setManual] = useState(false);
   const [form, setForm] = useState(EMPTY_MANUAL);
+  const [showArchived, setShowArchived] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const handleLookupSubmit = async (e) => {
@@ -25,6 +26,20 @@ function Projects({ projects, onCreateProject, onCreateProjectManual, onSelectPr
     await onCreateProjectManual(form);
     setForm(EMPTY_MANUAL);
   };
+
+  const handleArchive = (e, projectId) => {
+    e.stopPropagation();
+    if (window.confirm('Remove this project from your list? The data and history will be kept and can be restored.')) {
+      onArchiveProject(projectId);
+    }
+  };
+
+  const handleRestore = (e, projectId) => {
+    e.stopPropagation();
+    onRestoreProject(projectId);
+  };
+
+  const displayList = showArchived ? (archivedProjects || []) : projects;
 
   return (
     <div className="card">
@@ -101,18 +116,46 @@ function Projects({ projects, onCreateProject, onCreateProjectManual, onSelectPr
       )}
 
       {error && <p className="error">{error}</p>}
+
       <div style={{ marginTop: 16 }}>
-        {projects.length === 0 ? (
-          <p>No saved projects yet.</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+            {showArchived ? `${displayList.length} archived` : `${displayList.length} active`}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            style={{ fontSize: '0.78rem', padding: '3px 10px' }}
+            onClick={() => setShowArchived((v) => !v)}
+          >
+            {showArchived ? 'Show active' : `Archived${(archivedProjects?.length ?? 0) > 0 ? ` (${archivedProjects.length})` : ''}`}
+          </button>
+        </div>
+
+        {displayList.length === 0 ? (
+          <p style={{ color: '#9ca3af', fontSize: '0.88rem' }}>
+            {showArchived ? 'No archived projects.' : 'No saved projects yet.'}
+          </p>
         ) : (
-          projects.map((project) => (
-            <div key={project.id} className="project-card" style={{ borderColor: selectedProject?.id === project.id ? '#2563eb' : '#e5e7eb' }}>
+          displayList.map((project) => (
+            <div
+              key={project.id}
+              className="project-card"
+              style={{ borderColor: selectedProject?.id === project.id ? '#2563eb' : '#e5e7eb' }}
+            >
               <strong>{project.registration || project.vin || 'Untitled project'}</strong>
               <div className="meta">{project.make || 'Unknown make'} {project.model || ''} {project.year || ''}</div>
               <div className="meta">{project.active ? 'Open' : 'Closed'}</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                <button type="button" onClick={() => onSelectProject(project.id)}>Open</button>
-                {!project.closed && <button type="button" className="secondary" onClick={() => onCloseProject(project.id)}>Close</button>}
+                {showArchived ? (
+                  <button type="button" className="secondary" onClick={(e) => handleRestore(e, project.id)}>Restore</button>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onSelectProject(project.id)}>Open</button>
+                    {!project.closed && <button type="button" className="secondary" onClick={() => onCloseProject(project.id)}>Close</button>}
+                    <button type="button" className="secondary" style={{ marginLeft: 'auto', color: '#6b7280' }} onClick={(e) => handleArchive(e, project.id)}>Delete</button>
+                  </>
+                )}
               </div>
             </div>
           ))

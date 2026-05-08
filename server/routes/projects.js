@@ -49,8 +49,9 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
 }
 
 router.get('/', requireAuth, async (req, res) => {
+  const showArchived = req.query.archived === 'true';
   const { rows } = await query(
-    'SELECT * FROM projects WHERE user_id = $1 ORDER BY updated_at DESC',
+    `SELECT * FROM projects WHERE user_id = $1 AND archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'} ORDER BY updated_at DESC`,
     [req.user.id]
   );
   const projects = await Promise.all(rows.map(async (row) => {
@@ -253,6 +254,26 @@ router.post('/:projectId/close', requireAuth, async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0], []));
+});
+
+router.post('/:projectId/archive', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    `UPDATE projects SET archived_at = now(), updated_at = now()
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  return res.json(toProject(rows[0]));
+});
+
+router.post('/:projectId/restore', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    `UPDATE projects SET archived_at = NULL, updated_at = now()
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  return res.json(toProject(rows[0]));
 });
 
 module.exports = router;
