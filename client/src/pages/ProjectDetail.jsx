@@ -741,7 +741,23 @@ function ReportTab({ project, token }) {
         </div>
 
         <div className="report-section">
-          <label className="report-label">Work carried out</label>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <label className="report-label">Work carried out</label>
+            {project.confirmedFixes?.length > 0 && (
+              <button
+                className="secondary"
+                style={{ fontSize: '0.72rem', padding: '2px 10px', marginBottom: 2 }}
+                onClick={() => {
+                  const fixes = project.confirmedFixes.map((f) => f.text).join('\n');
+                  set('workCarriedOut', form.workCarriedOut
+                    ? `${form.workCarriedOut}\n${fixes}`
+                    : fixes);
+                }}
+              >
+                Import confirmed fixes ({project.confirmedFixes.length})
+              </button>
+            )}
+          </div>
           <p className="report-hint">Step-by-step description of what was done</p>
           <textarea rows={5} value={form.workCarriedOut} onChange={(e) => set('workCarriedOut', e.target.value)}
             placeholder="e.g. 1. Removed and cleaned EGR valve&#10;2. Decarbonised inlet manifold&#10;3. Replaced EGR gasket&#10;4. Reset fault codes and road tested" />
