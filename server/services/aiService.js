@@ -158,7 +158,11 @@ Return ONLY valid JSON matching this exact structure — no extra text, no markd
   "notes": []
 }
 
-Use empty string for anything you are not confident about for this specific vehicle. Keep notes to 3 max — vehicle-specific warnings or critical tips only.`;
+Critical accuracy requirements:
+- serviceIntervals.timingBelt: state exactly whether this engine uses a dry timing belt, timing chain, or wet belt-in-oil (WBIO). Wet belt-in-oil systems (e.g. Ford 1.0 EcoBoost, Ford 2.0 EcoBlue Panther, some PSA/Stellantis engines) have distinct service requirements and must not be described as a chain. Include the replacement interval if applicable.
+- engineOil: use the exact OEM-specified grade and standard for this engine — incorrect oil on wet-belt engines damages the belt.
+- Use empty string for anything you are not confident about for this specific vehicle.
+- Keep notes to 3 max — vehicle-specific warnings or critical tips only. Do not give generic advice.`;
 
   try {
     const response = await client.messages.create({
