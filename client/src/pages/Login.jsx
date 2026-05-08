@@ -38,8 +38,8 @@ function Login({ onLogin, error }) {
   };
 
   return (
-    <div className="app-shell">
-      <div className="card" style={{ maxWidth: 420, margin: '60px auto' }}>
+    <div className="login-page">
+      <div className="card" style={{ maxWidth: 420, margin: '0 auto' }}>
         <h1>
           {mode === 'login' && 'Sign in'}
           {mode === 'register' && 'Create account'}

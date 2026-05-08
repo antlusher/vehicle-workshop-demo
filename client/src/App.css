@@ -1,4 +1,13 @@
 /* ── Base ── */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%);
+}
+
 .app-shell {
   max-width: 1280px;
   margin: 0 auto;
