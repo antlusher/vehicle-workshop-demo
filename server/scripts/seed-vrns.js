@@ -25,6 +25,7 @@ const path = require('path');
 const PROGRESS_FILE = path.join(__dirname, 'seed-progress.json');
 const DELAY_MS      = 250;   // 4 req/sec — conservative to avoid rate limiting
 const LOG_INTERVAL  = 100;   // save progress + print stats every N requests
+const DAILY_LIMIT   = 1000;  // UKVD cap
 
 const UKVD_API_KEY      = process.env.UKVD_API_KEY;
 const UKVD_PACKAGE_NAME = process.env.UKVD_PACKAGE_NAME || 'VehicleDetails';
@@ -37,16 +38,10 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 // Valid letters in UK current format (A-Z, excluding I and Q)
 const LETTERS = 'ABCDEFGHJKLMNOPRSTUVWXYZ'.split('');
 
-// Age identifiers — starting from 16 (Mar 2016) then forward, then earlier years
+// Age identifiers — 2016 to 2020 only (March + September plates)
 const YEARS = [
-  // 2016 onwards (March plates)
-  '16','17','18','19','20','21','22','23','24','25',
-  // 2016 onwards (September plates)
-  '65','66','67','68','69','70','71','72','73','74','75',
-  // Earlier years — March plates
-  '02','03','04','05','06','07','08','09','10','11','12','13','14','15',
-  // Earlier years — September plates
-  '51','52','53','54','55','56','57','58','59','60','61','62','63','64',
+  '16','17','18','19','20',   // March 2016–2020
+  '65','66','67','68','69',   // September 2016–2020
 ];
 
 // Yields every LL YY LLL combination that contains at least one 'A'
@@ -69,13 +64,23 @@ function* generateVrns() {
 
 // ── Progress ──────────────────────────────────────────────────────────────────
 
+function today() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 function loadProgress() {
   try {
     if (fs.existsSync(PROGRESS_FILE)) {
-      return JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
+      const state = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
+      // Reset daily counter if it's a new day
+      if (state.date !== today()) {
+        state.date = today();
+        state.todayCount = 0;
+      }
+      return state;
     }
   } catch {}
-  return { lastVrn: null, processed: 0, found: 0 };
+  return { lastVrn: null, processed: 0, found: 0, date: today(), todayCount: 0 };
 }
 
 function saveProgress(state) {
@@ -182,8 +187,15 @@ async function main() {
   console.log('─────────────────────────────────────────');
   console.log(`  Processed so far : ${state.processed}`);
   console.log(`  Vehicles found   : ${state.found}`);
+  console.log(`  Today (${state.date})  : ${state.todayCount} / ${DAILY_LIMIT}`);
   if (state.lastVrn) console.log(`  Resuming after  : ${state.lastVrn}`);
   console.log('─────────────────────────────────────────\n');
+
+  if (state.todayCount >= DAILY_LIMIT) {
+    console.log(`Daily limit of ${DAILY_LIMIT} already reached for ${state.date}. Run again tomorrow.`);
+    await pool.end();
+    return;
+  }
 
   // Skip ahead to resume position
   let skip = !!state.lastVrn;
@@ -194,7 +206,16 @@ async function main() {
       continue;
     }
 
+    // Check daily limit before each request
+    if (state.todayCount >= DAILY_LIMIT) {
+      saveProgress(state);
+      console.log(`\nDaily limit of ${DAILY_LIMIT} reached. Resume tomorrow.`);
+      console.log(`[${state.processed} processed / ${state.found} found]  last: ${vrn}`);
+      break;
+    }
+
     state.processed++;
+    state.todayCount++;
     state.lastVrn = vrn;
 
     const data = await queryUkvd(vrn);
@@ -217,7 +238,7 @@ async function main() {
 
     if (state.processed % LOG_INTERVAL === 0) {
       saveProgress(state);
-      console.log(`\n[${state.processed} processed / ${state.found} found]  last: ${vrn}\n`);
+      console.log(`\n[${state.processed} processed / ${state.found} found / ${state.todayCount} today]  last: ${vrn}\n`);
     }
 
     await sleep(DELAY_MS);
