@@ -127,9 +127,9 @@ function QuoteLines({ quote, token, onUpdated }) {
               <td><span className="line-type-badge">{TYPE_LABELS[line.type] || line.type}</span></td>
               {editing === line.id ? (
                 <>
-                  <td><input className="line-edit-input" type="number" step="0.5" value={editVals.qty} onChange={(e) => setEditVals(v => ({ ...v, qty: e.target.value }))} /></td>
-                  <td><input className="line-edit-input" type="number" step="0.01" value={editVals.unitCost} onChange={(e) => setEditVals(v => ({ ...v, unitCost: e.target.value }))} /></td>
-                  <td><input className="line-edit-input" type="number" step="1" value={editVals.markupPct} onChange={(e) => setEditVals(v => ({ ...v, markupPct: e.target.value }))} /></td>
+                  <td><input className="line-edit-input" type="number" step="0.5" value={editVals.qty} onChange={(e) => setEditVals(v => ({ ...v, qty: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && saveEdit(line.id)} /></td>
+                  <td><input className="line-edit-input" type="number" step="0.01" value={editVals.unitCost} onChange={(e) => setEditVals(v => ({ ...v, unitCost: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && saveEdit(line.id)} /></td>
+                  <td><input className="line-edit-input" type="number" step="1" value={editVals.markupPct} onChange={(e) => setEditVals(v => ({ ...v, markupPct: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && saveEdit(line.id)} /></td>
                   <td className="num">£{(parseFloat(editVals.unitCost || 0) * (1 + parseFloat(editVals.markupPct || 0) / 100)).toFixed(2)}</td>
                   <td className="num">£{(parseFloat(editVals.unitCost || 0) * (1 + parseFloat(editVals.markupPct || 0) / 100) * parseFloat(editVals.qty || 1)).toFixed(2)}</td>
                   <td className="line-actions">
@@ -184,7 +184,7 @@ function AddLabourForm({ quoteId, token, settings, onUpdated }) {
 
   return (
     <form onSubmit={handleSubmit} className="add-labour-form">
-      <input placeholder="Labour description e.g. Diagnostic, EGR replacement" value={desc} onChange={(e) => setDesc(e.target.value)} required />
+      <input placeholder="Labour description e.g. Diagnostic, EGR replacement" value={desc} onChange={(e) => setDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} required />
       <div className="add-labour-row">
         <label>Hours<input type="number" step="0.5" min="0.5" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
         <label>Rate (£/hr)<input type="number" step="0.50" value={rate} onChange={(e) => setRate(e.target.value)} /></label>
