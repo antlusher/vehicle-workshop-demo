@@ -1,6 +1,8 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { query } = require('./db');
 
+const MODEL = 'claude-sonnet-4-6';
+
 const client = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
@@ -11,19 +13,20 @@ async function getOrCreateEngine(code, enriched) {
     await query(
       `UPDATE engines SET name=COALESCE($2,name), fuel_type=COALESCE($3,fuel_type),
        displacement=COALESCE($4,displacement), aspiration=COALESCE($5,aspiration),
-       known_makes=COALESCE($6,known_makes), updated_at=now() WHERE id=$1`,
+       known_makes=COALESCE($6,known_makes), enriched_at=now(), enriched_model=$7,
+       updated_at=now() WHERE id=$1`,
       [existing.rows[0].id, enriched.full_name || null, enriched.fuel_type || null,
        enriched.displacement || null, enriched.aspiration || null,
-       enriched.known_vehicles?.length ? enriched.known_vehicles : null]
+       enriched.known_vehicles?.length ? enriched.known_vehicles : null, MODEL]
     );
     return existing.rows[0].id;
   }
   const { rows } = await query(
-    `INSERT INTO engines (code, name, fuel_type, displacement, aspiration, known_makes)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+    `INSERT INTO engines (code, name, fuel_type, displacement, aspiration, known_makes, enriched_at, enriched_model)
+     VALUES ($1,$2,$3,$4,$5,$6,now(),$7) RETURNING id`,
     [code.toUpperCase(), enriched.full_name || null, enriched.fuel_type || null,
      enriched.displacement || null, enriched.aspiration || null,
-     enriched.known_vehicles?.length ? enriched.known_vehicles : null]
+     enriched.known_vehicles?.length ? enriched.known_vehicles : null, MODEL]
   );
   return rows[0].id;
 }
@@ -34,6 +37,13 @@ async function hasExistingKnowledge(engineId) {
     [engineId]
   );
   return rows.length > 0;
+}
+
+async function clearExistingKnowledge(engineId) {
+  await query(
+    `DELETE FROM knowledge_base WHERE engine_id=$1 AND source='claude-enrichment'`,
+    [engineId]
+  );
 }
 
 async function callClaude(engineCode, make) {
@@ -65,7 +75,7 @@ Return ONLY valid JSON — no markdown, no extra text — matching this exact st
 Include 3-8 common issues ordered by frequency/severity. Use empty string for anything you are not confident about.`;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODEL,
     max_tokens: 2048,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -77,8 +87,6 @@ Include 3-8 common issues ordered by frequency/severity. Use empty string for an
 }
 
 async function storeKnowledge(engineId, engineCode, enriched) {
-  const base = [engineId, engineCode.toUpperCase(), 'claude-enrichment'];
-
   await query(
     `INSERT INTO knowledge_base (engine_id, make, title, content, category, source)
      VALUES ($1, $2, $3, $4, 'engine-profile', $5)`,
@@ -106,18 +114,27 @@ async function storeKnowledge(engineId, engineCode, enriched) {
   }
 }
 
-async function enrichEngineCode(engineCode, make) {
+// force=true clears existing Claude KB entries and re-enriches from scratch
+async function enrichEngineCode(engineCode, make, { force = false } = {}) {
   if (!client || !engineCode) return;
   const code = engineCode.trim().toUpperCase();
 
   try {
+    // In normal (non-force) mode, skip if we already have knowledge
+    if (!force) {
+      const engineRow = await query('SELECT id FROM engines WHERE LOWER(code) = LOWER($1)', [code]);
+      if (engineRow.rows.length && await hasExistingKnowledge(engineRow.rows[0].id)) return;
+    }
+
     const enriched = await callClaude(code, make);
     const engineId = await getOrCreateEngine(code, enriched);
 
-    if (await hasExistingKnowledge(engineId)) return;
+    if (force) await clearExistingKnowledge(engineId);
     await storeKnowledge(engineId, code, enriched);
 
-    console.log(`[engine-enrichment] ${code} enriched — ${(enriched.common_issues || []).length} issues stored`);
+    const issueCount = (enriched.common_issues || []).length;
+    const tag = force ? '[force]' : '';
+    console.log(`[engine-enrichment] ${code} enriched ${tag}— ${issueCount} issues stored`);
   } catch (err) {
     console.error(`[engine-enrichment] ${code} failed: ${err.message}`);
   }

@@ -3,10 +3,13 @@
  * seed-engine-knowledge.js
  *
  * Bootstraps the engine knowledge base by enriching common UK market
- * engine codes via Claude. Run once; safe to re-run (skips already enriched).
+ * engine codes via Claude. Safe to re-run — skips already enriched codes
+ * unless --force is passed.
  *
  * Usage:
- *   node server/scripts/seed-engine-knowledge.js
+ *   node server/scripts/seed-engine-knowledge.js              # skip already enriched
+ *   node server/scripts/seed-engine-knowledge.js --force      # re-enrich all
+ *   node server/scripts/seed-engine-knowledge.js --force=R9M  # re-enrich one code
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '../../server/.env') });
@@ -16,6 +19,11 @@ const { query, pool } = require('../services/db');
 const { enrichEngineCode } = require('../services/engineEnrichment');
 
 const DELAY_MS = 2000; // 2s between Claude calls to avoid rate limits
+
+// Parse flags: --force (all) or --force=CODE (single)
+const forceArg = process.argv.find((a) => a.startsWith('--force'));
+const FORCE_ALL  = forceArg === '--force';
+const FORCE_CODE = forceArg?.startsWith('--force=') ? forceArg.split('=')[1].toUpperCase() : null;
 
 // Common UK market engine codes — ordered by workshop frequency
 const ENGINE_CODES = [
@@ -96,34 +104,50 @@ async function main() {
     process.exit(1);
   }
 
+  const modeLabel = FORCE_CODE ? `--force=${FORCE_CODE}` : FORCE_ALL ? '--force (all)' : 'normal';
   console.log('─────────────────────────────────────────');
   console.log('  Engine knowledge seed');
-  console.log(`  ${ENGINE_CODES.length} engine codes to process`);
+  console.log(`  Mode    : ${modeLabel}`);
+  console.log(`  Engines : ${ENGINE_CODES.length} codes in list`);
   console.log('─────────────────────────────────────────\n');
+
+  // If targeting a single code not in the list, add it on the fly
+  let targets = ENGINE_CODES;
+  if (FORCE_CODE && !ENGINE_CODES.some((e) => e.code.toUpperCase() === FORCE_CODE)) {
+    targets = [{ code: FORCE_CODE, make: null }];
+  } else if (FORCE_CODE) {
+    targets = ENGINE_CODES.filter((e) => e.code.toUpperCase() === FORCE_CODE);
+  }
 
   let done = 0;
   let skipped = 0;
 
-  for (const { code, make } of ENGINE_CODES) {
+  for (const { code, make } of targets) {
+    const force = FORCE_ALL || !!FORCE_CODE;
     try {
-      // Check if already enriched before calling Claude
-      const engineRow = await query(
-        'SELECT id FROM engines WHERE LOWER(code) = LOWER($1)', [code]
-      );
-      if (engineRow.rows.length) {
-        const kbRow = await query(
-          `SELECT id FROM knowledge_base WHERE engine_id=$1 AND source='claude-enrichment' LIMIT 1`,
-          [engineRow.rows[0].id]
+      if (!force) {
+        // Check if already enriched before calling Claude
+        const engineRow = await query(
+          'SELECT id, enriched_at FROM engines WHERE LOWER(code) = LOWER($1)', [code]
         );
-        if (kbRow.rows.length) {
-          console.log(`  ${code.padEnd(10)} already enriched — skipping`);
-          skipped++;
-          continue;
+        if (engineRow.rows.length) {
+          const kbRow = await query(
+            `SELECT id FROM knowledge_base WHERE engine_id=$1 AND source='claude-enrichment' LIMIT 1`,
+            [engineRow.rows[0].id]
+          );
+          if (kbRow.rows.length) {
+            const when = engineRow.rows[0].enriched_at
+              ? new Date(engineRow.rows[0].enriched_at).toLocaleDateString('en-GB')
+              : 'unknown date';
+            console.log(`  ${code.padEnd(10)} already enriched (${when}) — skipping`);
+            skipped++;
+            continue;
+          }
         }
       }
 
-      process.stdout.write(`  ${code.padEnd(10)} enriching...`);
-      await enrichEngineCode(code, make);
+      process.stdout.write(`  ${code.padEnd(10)} enriching${force ? ' [force]' : ''}...`);
+      await enrichEngineCode(code, make, { force });
       process.stdout.write(' done\n');
       done++;
       await sleep(DELAY_MS);
