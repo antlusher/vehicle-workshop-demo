@@ -108,11 +108,11 @@ async function queryUkvd(vrn) {
 // ── Database ──────────────────────────────────────────────────────────────────
 
 async function saveVehicle(vrn, data) {
-  const vi  = data.VehicleDetails?.VehicleIdentification || {};
-  const mi  = data.ModelDetails?.ModelIdentification    || {};
-  const pt  = data.ModelDetails?.Powertrain             || {};
-  const bd  = data.ModelDetails?.BodyDetails            || {};
-  const dt  = data.VehicleDetails?.DvlaTechnicalDetails || {};
+  const vi  = data?.VehicleDetails?.VehicleIdentification || {};
+  const mi  = data?.ModelDetails?.ModelIdentification    || {};
+  const pt  = data?.ModelDetails?.Powertrain             || {};
+  const bd  = data?.ModelDetails?.BodyDetails            || {};
+  const dt  = data?.VehicleDetails?.DvlaTechnicalDetails || {};
 
   const make     = mi.Make  || vi.DvlaMake  || null;
   const model    = mi.Model || mi.Range || vi.DvlaModel || null;
@@ -121,7 +121,7 @@ async function saveVehicle(vrn, data) {
   const fuelType = pt.FuelType  || vi.DvlaFuelType  || null;
   const bodyType = bd.BodyStyle || vi.DvlaBodyType  || null;
   const engineCode = dt.EngineNumber || null;
-  const source   = 'ukvd-seed';
+  const source   = data ? 'ukvd-seed' : 'ukvd-seed-empty';
 
   const client = await pool.connect();
   try {
@@ -151,7 +151,7 @@ async function saveVehicle(vrn, data) {
          (registration, vin, make, model, year, engine_code, fuel_type, body_type, source, raw_data)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING id`,
-      [vrn, vin, make, model, year, engineCode, fuelType, bodyType, source, JSON.stringify(data)]
+      [vrn, vin, make, model, year, engineCode, fuelType, bodyType, source, data ? JSON.stringify(data) : null]
     );
 
     const vehicleId = inserted[0].id;
@@ -220,20 +220,20 @@ async function main() {
 
     const data = await queryUkvd(vrn);
 
-    if (data) {
-      try {
-        const result = await saveVehicle(vrn, data);
-        const make  = data.ModelDetails?.ModelIdentification?.Make  || '?';
-        const model = data.ModelDetails?.ModelIdentification?.Model || '?';
-        if (result === 'inserted') {
+    try {
+      const result = await saveVehicle(vrn, data);
+      if (result === 'inserted') {
+        if (data) {
+          const make  = data.ModelDetails?.ModelIdentification?.Make  || '?';
+          const model = data.ModelDetails?.ModelIdentification?.Model || '?';
           state.found++;
           console.log(`✓ ${vrn}  ${make} ${model}`);
         } else {
-          console.log(`  ${vrn}  already in DB`);
+          console.log(`  ${vrn}  saved (no UKVD data)`);
         }
-      } catch (err) {
-        console.error(`  ${vrn}  DB error: ${err.message}`);
       }
+    } catch (err) {
+      console.error(`  ${vrn}  DB error: ${err.message}`);
     }
 
     if (state.processed % LOG_INTERVAL === 0) {
