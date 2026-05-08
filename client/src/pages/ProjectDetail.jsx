@@ -452,6 +452,91 @@ function VehicleInfo({ project, onUpdateVehicle }) {
   );
 }
 
+function MotTab({ project, token }) {
+  const [tests, setTests] = useState(project.motTests || null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setError('');
+    try {
+      const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+      const res = await fetch(`${BASE_URL}/api/projects/${project.id}/mot/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Refresh failed');
+      setTests(data.motTests);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  return (
+    <div className="mot-tab">
+      <div className="mot-header">
+        <div>
+          <strong>MOT History</strong>
+          {tests?.length > 0 && <span style={{ marginLeft: 8, color: '#6b7280', fontSize: '0.82rem' }}>{tests.length} test{tests.length !== 1 ? 's' : ''}</span>}
+        </div>
+        <button type="button" className="secondary" style={{ fontSize: '0.78rem', padding: '3px 10px' }} onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && <p className="error" style={{ margin: '8px 0' }}>{error}</p>}
+
+      {!tests || tests.length === 0 ? (
+        <p style={{ color: '#9ca3af', fontSize: '0.88rem', padding: '12px 0' }}>
+          No MOT history found. {!tests && 'Try refreshing.'}
+        </p>
+      ) : (
+        tests.map((t, i) => {
+          const passed = t.result === 'PASSED';
+          const advisories = t.defects?.filter((d) => d.type === 'ADVISORY') || [];
+          const failures = t.defects?.filter((d) => d.type !== 'ADVISORY') || [];
+          return (
+            <div key={i} className={`mot-test-card ${passed ? 'mot-pass' : 'mot-fail'}`}>
+              <div className="mot-test-header">
+                <span className={`mot-badge ${passed ? 'mot-badge--pass' : 'mot-badge--fail'}`}>{t.result || 'Unknown'}</span>
+                <span className="mot-test-date">{fmtDate(t.testDate)}</span>
+                {t.odometerValue && (
+                  <span className="mot-mileage">{t.odometerValue.toLocaleString()} {t.odometerUnit === 'MI' ? 'miles' : 'km'}</span>
+                )}
+                {passed && t.expiryDate && (
+                  <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#6b7280' }}>Expires {fmtDate(t.expiryDate)}</span>
+                )}
+              </div>
+              {failures.length > 0 && (
+                <div className="mot-defects">
+                  <div className="mot-defect-heading">Failures / Majors</div>
+                  {failures.map((d, j) => (
+                    <div key={j} className="mot-defect mot-defect--fail">{d.text}</div>
+                  ))}
+                </div>
+              )}
+              {advisories.length > 0 && (
+                <div className="mot-defects">
+                  <div className="mot-defect-heading">Advisories</div>
+                  {advisories.map((d, j) => (
+                    <div key={j} className="mot-defect mot-defect--advisory">{d.text}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 function ReportTab({ project, token }) {
   const [report, setReport] = useState(null);
   const [images, setImages] = useState([]);
@@ -798,6 +883,12 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
             )}
           </button>
         )}
+        {project.registration && (
+          <button type="button" className={`chat-tab${tab === 'mot' ? ' active' : ''}`} onClick={() => setTab('mot')}>
+            MOT History
+            {project.motTests?.length > 0 && <span className="chat-tab-badge">{project.motTests.length}</span>}
+          </button>
+        )}
         <button type="button" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>Quote</button>
         <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
       </div>
@@ -805,6 +896,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
       {tab === 'specs' && <div className="tab-pane"><QuickReference project={project} token={token} /></div>}
       {tab === 'history' && <div className="tab-pane"><VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} /></div>}
+      {tab === 'mot' && <div className="tab-pane"><MotTab project={project} token={token} /></div>}
       {tab === 'quote' && <div className="tab-pane"><QuoteTab project={project} token={token} /></div>}
       {tab === 'report' && <div className="tab-pane"><ReportTab project={project} token={token} /></div>}
 

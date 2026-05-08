@@ -4,6 +4,7 @@ const { lookupVehicle } = require('../services/vehicleProviders');
 const { findUserByToken } = require('../services/authService');
 const { generateVehicleSpecs } = require('../services/aiService');
 const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleService');
+const { fetchAndStoreMotHistory } = require('../services/motService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -15,7 +16,7 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null) {
+function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null, motTests = null) {
   return {
     id: row.id,
     userId: row.user_id,
@@ -38,6 +39,7 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
     vehicleData: row.vehicle_data || null,
     confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
     vehicleHistory: vehicleHistory,
+    motTests: motTests,
     history: history.map((h) => ({
       id: h.id,
       role: h.role,
@@ -46,6 +48,12 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
       createdAt: h.created_at,
     })),
   };
+}
+
+async function getMotTests(vehicleId) {
+  if (!vehicleId) return null;
+  const { rows } = await query('SELECT mot_tests FROM vehicles WHERE id = $1', [vehicleId]);
+  return rows[0]?.mot_tests || null;
 }
 
 router.get('/', requireAuth, async (req, res) => {
@@ -122,6 +130,11 @@ router.post('/', requireAuth, async (req, res) => {
       }).catch(() => {});
     }
 
+    // Fetch MOT history in the background
+    if (vehicle.id && vehicleData.registration) {
+      fetchAndStoreMotHistory(vehicle.id, vehicleData.registration).catch(() => {});
+    }
+
     return res.json(toProject(project, [], [], vehicleHistory));
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Unable to create project' });
@@ -136,13 +149,14 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = rows[0];
-  const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory] = await Promise.all([
+  const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory, motTests] = await Promise.all([
     query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
     query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
     project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+    getMotTests(project.vehicle_id),
   ]);
 
-  return res.json(toProject(project, history, confirmedFixes, vehicleHistory));
+  return res.json(toProject(project, history, confirmedFixes, vehicleHistory, motTests));
 });
 
 router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
@@ -274,6 +288,20 @@ router.post('/:projectId/restore', requireAuth, async (req, res) => {
   );
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0]));
+});
+
+router.post('/:projectId/mot/refresh', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  const project = rows[0];
+  if (!project.vehicle_id || !project.registration) {
+    return res.status(400).json({ error: 'No registration on this project' });
+  }
+  const tests = await fetchAndStoreMotHistory(project.vehicle_id, project.registration);
+  return res.json({ motTests: tests });
 });
 
 module.exports = router;

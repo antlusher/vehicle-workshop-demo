@@ -1411,3 +1411,21 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   color: inherit;
 }
 .quote-pill-delete:hover { opacity: 1; }
+
+/* MOT History Tab */
+.mot-tab { padding: 4px 0 16px; }
+.mot-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.mot-test-card { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.mot-test-card.mot-pass { border-left: 4px solid #16a34a; }
+.mot-test-card.mot-fail { border-left: 4px solid #dc2626; }
+.mot-test-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f9fafb; flex-wrap: wrap; }
+.mot-badge { font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.mot-badge--pass { background: #dcfce7; color: #15803d; }
+.mot-badge--fail { background: #fee2e2; color: #b91c1c; }
+.mot-test-date { font-weight: 600; font-size: 0.88rem; }
+.mot-mileage { font-size: 0.82rem; color: #6b7280; }
+.mot-defects { padding: 8px 14px 10px; border-top: 1px solid #f3f4f6; }
+.mot-defect-heading { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; margin-bottom: 4px; }
+.mot-defect { font-size: 0.82rem; padding: 3px 0; line-height: 1.4; }
+.mot-defect--fail { color: #b91c1c; }
+.mot-defect--advisory { color: #92400e; }
