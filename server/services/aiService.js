@@ -140,7 +140,8 @@ async function generateRepairAdvice(project, history = [], question, crossWorksh
 async function generateVehicleSpecs(project) {
   if (!client) return null;
 
-  const vehicle = [project.year, project.make, project.model, project.engineCode, project.fuelType, project.trim]
+  const vehicle = [project.year, project.make, project.model, project.engineCode, project.fuelType, project.trim,
+    project.engineSize ? `${project.engineSize}cc` : null]
     .filter(Boolean).join(' ');
 
   const prompt = `You are a vehicle technical data specialist. Provide accurate workshop specifications for: ${vehicle}

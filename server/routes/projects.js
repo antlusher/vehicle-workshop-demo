@@ -121,23 +121,32 @@ router.post('/', requireAuth, async (req, res) => {
     const vehicleHistory = vehicle.id ? await getVehicleHistory(vehicle.id) : null;
     const project = rows[0];
 
-    // Generate specs in the background — don't block the response
-    if (vehicleData.make && vehicleData.model && vehicleData.year) {
-      generateVehicleSpecs({
-        make: vehicleData.make, model: vehicleData.model, year: vehicleData.year,
-        engineCode: vehicleData.engineCode, fuelType: vehicleData.fuelType, trim: vehicleData.trim,
-      }).then((specs) => {
+    // Background chain: MOT fetch first so specs get accurate model/fuel/engineSize data
+    const runBackground = async () => {
+      let motMeta = null;
+      if (vehicle.id && vehicleData.registration) {
+        const motResult = await fetchAndStoreMotHistory(vehicle.id, vehicleData.registration);
+        motMeta = motResult?.vehicleMeta || null;
+      }
+      const specMake = vehicleData.make || motMeta?.make;
+      const specModel = vehicleData.model || motMeta?.model;
+      if (specMake && specModel && vehicleData.year) {
+        const specs = await generateVehicleSpecs({
+          make: specMake,
+          model: specModel,
+          year: vehicleData.year,
+          engineCode: vehicleData.engineCode,
+          fuelType: vehicleData.fuelType || motMeta?.fuelType,
+          trim: vehicleData.trim,
+          engineSize: motMeta?.engineSize,
+        });
         if (specs) {
-          query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2',
+          await query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2',
             [JSON.stringify(specs), project.id]);
         }
-      }).catch(() => {});
-    }
-
-    // Fetch MOT history in the background
-    if (vehicle.id && vehicleData.registration) {
-      fetchAndStoreMotHistory(vehicle.id, vehicleData.registration).catch(() => {});
-    }
+      }
+    };
+    runBackground().catch(() => {});
 
     return res.json(toProject(project, [], [], vehicleHistory));
   } catch (error) {
@@ -238,9 +247,16 @@ router.post('/:projectId/specs', requireAuth, async (req, res) => {
 
   if (project.specs) return res.json(project.specs);
 
+  const motData = await getMotData(project.vehicle_id);
+  const motMeta = motData.motVehicleMeta;
   const specs = await generateVehicleSpecs({
-    make: project.make, model: project.model, year: project.year,
-    engineCode: project.engine_code, fuelType: project.fuel_type, trim: project.trim,
+    make: project.make || motMeta?.make,
+    model: project.model || motMeta?.model,
+    year: project.year,
+    engineCode: project.engine_code,
+    fuelType: project.fuel_type || motMeta?.fuelType,
+    trim: project.trim,
+    engineSize: motMeta?.engineSize,
   });
 
   if (!specs) return res.status(500).json({ error: 'Could not generate specs' });
