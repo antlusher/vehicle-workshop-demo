@@ -305,6 +305,7 @@ function VehicleEditForm({ project, onSave, onCancel }) {
 function VehicleInfo({ project, onUpdateVehicle }) {
   const [editing, setEditing] = useState(false);
   const vd = project.vehicleData;
+  const md = project.motVehicleMeta;
 
   const handleSave = async (data) => {
     await onUpdateVehicle(project.id, data);
@@ -323,6 +324,32 @@ function VehicleInfo({ project, onUpdateVehicle }) {
     return <VehicleEditForm project={project} onSave={handleSave} onCancel={() => setEditing(false)} />;
   }
 
+  const fmtDate = (d) => {
+    if (!d) return null;
+    const p = new Date(d);
+    return isNaN(p) ? d : p.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const dvsaCard = md ? (
+    <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+      <h4 className="spec-card-title">DVSA Data</h4>
+      <VehicleInfoRow label="Make" value={md.make} />
+      <VehicleInfoRow label="Model" value={md.model} />
+      <VehicleInfoRow label="Fuel type" value={md.fuelType} />
+      <VehicleInfoRow label="Engine size" value={md.engineSize ? `${md.engineSize}cc` : null} />
+      <VehicleInfoRow label="Primary colour" value={md.primaryColour} />
+      <VehicleInfoRow label="Secondary colour" value={md.secondaryColour} />
+      <VehicleInfoRow label="First used" value={fmtDate(md.firstUsedDate)} />
+      <VehicleInfoRow label="Registration date" value={fmtDate(md.registrationDate)} />
+      <VehicleInfoRow label="Manufacture date" value={fmtDate(md.manufactureDate)} />
+      <VehicleInfoRow label="Last MOT" value={fmtDate(md.lastMotTestDate)} />
+      <VehicleInfoRow label="MOT due" value={fmtDate(md.motTestDueDate)} />
+      {md.hasOutstandingRecall === true && <VehicleInfoRow label="Outstanding recall" value="Yes" />}
+      {md.hasOutstandingRecall === 'Unknown' && <VehicleInfoRow label="Outstanding recall" value="Unknown" />}
+      <VehicleInfoRow label="Data source" value={md.dataSource} />
+    </div>
+  ) : null;
+
   if (!vd) {
     return (
       <div>
@@ -340,8 +367,9 @@ function VehicleInfo({ project, onUpdateVehicle }) {
             <VehicleInfoRow label="Trim" value={project.trim} />
             <VehicleInfoRow label="Body type" value={project.bodyType} />
           </div>
+          {dvsaCard}
         </div>
-        <p style={{ padding: '4px 16px 12px', color: '#9ca3af', fontSize: '0.8rem' }}>No extended data from API — use Edit to correct any fields above.</p>
+        {!md && <p style={{ padding: '4px 16px 12px', color: '#9ca3af', fontSize: '0.8rem' }}>No extended data from API — use Edit to correct any fields above.</p>}
       </div>
     );
   }
@@ -368,6 +396,7 @@ function VehicleInfo({ project, onUpdateVehicle }) {
       {editBtn}
       <div className="specs-grid">
       {basicCard}
+      {dvsaCard}
       <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
         <h4 className="spec-card-title">Extended Data</h4>
         <VehicleInfoRow label="Colour" value={vd.colour} />
