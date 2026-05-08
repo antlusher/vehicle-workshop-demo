@@ -501,23 +501,30 @@ function MotTab({ project, token }) {
           const passed = t.result === 'PASSED';
           const advisories = t.defects?.filter((d) => d.type === 'ADVISORY') || [];
           const failures = t.defects?.filter((d) => d.type !== 'ADVISORY') || [];
+          const showOdometer = t.odometerResultType === 'READ' && t.odometerValue != null;
+          const regDiffers = t.regMarkAtTest && t.regMarkAtTest !== project.registration?.replace(/\s+/g, '');
           return (
             <div key={i} className={`mot-test-card ${passed ? 'mot-pass' : 'mot-fail'}`}>
               <div className="mot-test-header">
                 <span className={`mot-badge ${passed ? 'mot-badge--pass' : 'mot-badge--fail'}`}>{t.result || 'Unknown'}</span>
                 <span className="mot-test-date">{fmtDate(t.testDate)}</span>
-                {t.odometerValue && (
+                {showOdometer && (
                   <span className="mot-mileage">{t.odometerValue.toLocaleString()} {t.odometerUnit === 'MI' ? 'miles' : 'km'}</span>
                 )}
                 {passed && t.expiryDate && (
                   <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#6b7280' }}>Expires {fmtDate(t.expiryDate)}</span>
                 )}
               </div>
+              {regDiffers && (
+                <div style={{ padding: '2px 14px 6px', fontSize: '0.75rem', color: '#6b7280' }}>
+                  Tested as {t.regMarkAtTest}
+                </div>
+              )}
               {failures.length > 0 && (
                 <div className="mot-defects">
                   <div className="mot-defect-heading">Failures / Majors</div>
                   {failures.map((d, j) => (
-                    <div key={j} className="mot-defect mot-defect--fail">{d.text}</div>
+                    <div key={j} className={`mot-defect mot-defect--fail${d.dangerous ? ' mot-defect--dangerous' : ''}`}>{d.text}</div>
                   ))}
                 </div>
               )}

@@ -30,22 +30,48 @@ async function getAccessToken() {
   return _token;
 }
 
-function normalizeTests(raw) {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((t) => ({
-    testDate: t.completedDate || t.testDate || null,
-    expiryDate: t.expiryDate || null,
-    result: t.testResult || null,
-    odometerValue: t.odometerValue != null ? parseInt(t.odometerValue, 10) : null,
-    odometerUnit: t.odometerUnit || null,
-    defects: Array.isArray(t.defects)
-      ? t.defects.map((d) => ({
-          type: d.type || null,
-          text: d.text || null,
-          dangerous: d.dangerous || false,
-        }))
-      : [],
-  }));
+// VehicleWithMotResponse — DVSA MOT History API v1
+// Vehicle root: registration, make, model, fuelType, primaryColour, engineSize,
+//   registrationDate, firstUsedDate, manufactureDate, lastMotTestDate, motTestDueDate
+// motTests[]: completedDate, motTestNumber, testResult, expiryDate,
+//   odometerValue (string), odometerUnit ("MI"|"KM"), odometerResultType ("READ"|"UNREADABLE"|"NO_ODOMETER"),
+//   dataSource, regMarkTimeOfTest
+//   defects[]: type ("ADVISORY"|"MAJOR"|"DANGEROUS"|"FAIL"), text, dangerous (bool)
+function normalizeResponse(data) {
+  const vehicleMeta = {
+    make: data.make || null,
+    model: data.model || null,
+    fuelType: data.fuelType || null,
+    primaryColour: data.primaryColour || null,
+    engineSize: data.engineSize || null,
+    registrationDate: data.registrationDate || null,
+    firstUsedDate: data.firstUsedDate || null,
+    lastMotTestDate: data.lastMotTestDate || null,
+    motTestDueDate: data.motTestDueDate || null,
+  };
+
+  const tests = Array.isArray(data.motTests)
+    ? data.motTests.map((t) => ({
+        testDate: t.completedDate || null,
+        motTestNumber: t.motTestNumber || null,
+        result: t.testResult || null,
+        expiryDate: t.expiryDate || null,
+        odometerValue: t.odometerValue != null ? parseInt(t.odometerValue, 10) : null,
+        odometerUnit: t.odometerUnit || null,
+        odometerResultType: t.odometerResultType || null,
+        regMarkAtTest: t.regMarkTimeOfTest || null,
+        dataSource: t.dataSource || null,
+        defects: Array.isArray(t.defects)
+          ? t.defects.map((d) => ({
+              type: d.type || null,
+              text: d.text || null,
+              dangerous: d.dangerous || false,
+            }))
+          : [],
+      }))
+    : [];
+
+  return { vehicleMeta, tests };
 }
 
 async function fetchMotHistory(registration) {
@@ -58,22 +84,23 @@ async function fetchMotHistory(registration) {
     headers: {
       Authorization: `Bearer ${token}`,
       'x-api-key': API_KEY,
+      Accept: 'application/json+v6',
     },
   });
 
-  return normalizeTests(data.motTests || data);
+  return normalizeResponse(data);
 }
 
 async function fetchAndStoreMotHistory(vehicleId, registration) {
   if (!CLIENT_ID || !CLIENT_SECRET || !API_KEY) return null;
   try {
-    const tests = await fetchMotHistory(registration);
-    if (!tests) return null;
+    const result = await fetchMotHistory(registration);
+    if (!result) return null;
     await query(
       'UPDATE vehicles SET mot_tests = $1, mot_fetched_at = now() WHERE id = $2',
-      [JSON.stringify(tests), vehicleId]
+      [JSON.stringify(result.tests), vehicleId]
     );
-    return tests;
+    return result.tests;
   } catch (err) {
     console.error(`[mot] fetch failed for ${registration}: ${err.message}`);
     return null;

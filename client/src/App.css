@@ -1429,3 +1429,4 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .mot-defect { font-size: 0.82rem; padding: 3px 0; line-height: 1.4; }
 .mot-defect--fail { color: #b91c1c; }
 .mot-defect--advisory { color: #92400e; }
+.mot-defect--dangerous { font-weight: 600; }
