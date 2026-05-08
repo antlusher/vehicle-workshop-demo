@@ -4,6 +4,7 @@ const { lookupVehicle } = require('../services/vehicleProviders');
 const { findUserByToken } = require('../services/authService');
 const { generateVehicleSpecs } = require('../services/aiService');
 const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleService');
+const { enrichEngineCode } = require('../services/engineEnrichment');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -107,6 +108,11 @@ router.post('/', requireAuth, async (req, res) => {
 
     const vehicleHistory = vehicle.id ? await getVehicleHistory(vehicle.id) : null;
     const project = rows[0];
+
+    // Enrich engine knowledge in the background if we have a new engine code
+    if (vehicleData.engineCode) {
+      enrichEngineCode(vehicleData.engineCode, vehicleData.make).catch(() => {});
+    }
 
     // Generate specs in the background — don't block the response
     if (vehicleData.make && vehicleData.model && vehicleData.year) {

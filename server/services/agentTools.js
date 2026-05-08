@@ -134,6 +134,32 @@ async function getCommonFixes({ make, model, year, engine_code, transmission_cod
   };
 }
 
+async function getEngineProfile({ engine_code }) {
+  const engineRow = await query(
+    'SELECT * FROM engines WHERE LOWER(code) = LOWER($1)', [engine_code]
+  );
+  if (!engineRow.rows.length) {
+    return { message: `No engine profile found for ${engine_code}. Knowledge may still be enriching.` };
+  }
+  const engine = engineRow.rows[0];
+  const kbRows = await query(
+    `SELECT title, content, category FROM knowledge_base
+     WHERE engine_id = $1 AND source = 'claude-enrichment'
+     ORDER BY category, title`,
+    [engine.id]
+  );
+
+  return {
+    code: engine.code,
+    name: engine.name,
+    fuelType: engine.fuel_type,
+    displacement: engine.displacement,
+    aspiration: engine.aspiration,
+    knownVehicles: engine.known_makes || [],
+    knowledge: kbRows.rows.map((r) => ({ category: r.category, title: r.title, content: r.content })),
+  };
+}
+
 async function getDtcInfo({ code }) {
   const cleaned = code.trim().toUpperCase();
   try {
@@ -200,6 +226,17 @@ const toolDefinitions = [
     },
   },
   {
+    name: 'get_engine_profile',
+    description: 'Retrieve pre-enriched engine knowledge including common issues, known faults, and maintenance tips for a specific engine code. Call this early in any diagnostic conversation when you have the engine code.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        engine_code: { type: 'string', description: 'Engine code e.g. R9M, N47, EA288' },
+      },
+      required: ['engine_code'],
+    },
+  },
+  {
     name: 'get_dtc_info',
     description: 'Look up information about an OBD-II diagnostic trouble code (DTC) such as P0300, P0171 etc.',
     input_schema: {
@@ -216,6 +253,7 @@ const toolHandlers = {
   get_vehicle_specs: getVehicleSpecs,
   search_knowledge_base: searchKnowledgeBase,
   get_common_fixes: getCommonFixes,
+  get_engine_profile: getEngineProfile,
   get_dtc_info: getDtcInfo,
 };
 
