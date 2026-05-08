@@ -47,11 +47,11 @@ async function run() {
   for (const row of rows) {
     process.stdout.write(`  ${row.registration.padEnd(12)} `);
     try {
-      const tests = await fetchAndStoreMotHistory(row.id, row.registration);
-      if (tests === null) {
+      const result = await fetchAndStoreMotHistory(row.id, row.registration);
+      if (result === null) {
         console.log('no data (404 or API unavailable)');
       } else {
-        console.log(`${tests.length} test(s) stored`);
+        console.log(`${result.tests.length} test(s) stored`);
       }
     } catch (err) {
       console.log(`ERROR: ${err.message}`);
