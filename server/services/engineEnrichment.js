@@ -76,7 +76,7 @@ Include 3-8 common issues ordered by frequency/severity. Use empty string for an
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   });
 
