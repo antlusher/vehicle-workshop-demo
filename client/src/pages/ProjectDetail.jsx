@@ -512,7 +512,7 @@ function MotTab({ project, token }) {
 
       {error && <p className="error" style={{ margin: '8px 0' }}>{error}</p>}
 
-      {meta?.hasOutstandingRecall && (
+      {meta?.hasOutstandingRecall === true && (
         <div className="mot-recall-banner">
           ⚠ Outstanding safety recall on this vehicle
         </div>
