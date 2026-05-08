@@ -148,6 +148,16 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+router.delete('/:id', requireAuth, async (req, res) => {
+  try {
+    const { rowCount } = await query('DELETE FROM quotes WHERE id=$1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: 'Quote not found' });
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const quote = await getQuoteWithLines(req.params.id);

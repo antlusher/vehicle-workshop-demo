@@ -37,6 +37,9 @@ export const createQuote = (data, token) =>
 export const updateQuote = (id, data, token) =>
   request(`${BASE}/${id}`, { method: 'PATCH', body: data }, token);
 
+export const deleteQuote = (id, token) =>
+  request(`${BASE}/${id}`, { method: 'DELETE' }, token);
+
 export const addLine = (quoteId, data, token) =>
   request(`${BASE}/${quoteId}/lines`, { method: 'POST', body: data }, token);
 

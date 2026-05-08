@@ -249,6 +249,14 @@ export default function QuoteTab({ project, token }) {
     setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
   };
 
+  const handleDelete = async (quoteId) => {
+    if (!window.confirm('Delete this quote? This cannot be undone.')) return;
+    await quotesApi.deleteQuote(quoteId, token);
+    const remaining = quotes.filter((q) => q.id !== quoteId);
+    setQuotes(remaining);
+    setActiveId(remaining[0]?.id || null);
+  };
+
   if (loading) return <p className="specs-loading">Loading quotes…</p>;
 
   return (
@@ -257,14 +265,17 @@ export default function QuoteTab({ project, token }) {
       <div className="quote-header">
         <div className="quote-selector">
           {quotes.map((q, i) => (
-            <button
-              key={q.id}
-              type="button"
-              className={`quote-pill${q.id === activeQuote?.id ? ' active' : ''}`}
-              onClick={() => setActiveId(q.id)}
-            >
-              Quote {quotes.length - i} <span className={`quote-status-dot ${q.status}`} />
-            </button>
+            <div key={q.id} className={`quote-pill${q.id === activeQuote?.id ? ' active' : ''}`}>
+              <span onClick={() => setActiveId(q.id)} style={{ cursor: 'pointer' }}>
+                Quote {quotes.length - i} <span className={`quote-status-dot ${q.status}`} />
+              </span>
+              <button
+                type="button"
+                className="quote-pill-delete"
+                title="Delete quote"
+                onClick={() => handleDelete(q.id)}
+              >✕</button>
+            </div>
           ))}
         </div>
         <button type="button" onClick={handleCreate} disabled={creating}>
