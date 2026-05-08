@@ -41,6 +41,53 @@ function buildSystemPrompt(project, crossWorkshopFixes = []) {
   if (project.fuelType) lines.push(`Fuel type: ${project.fuelType}`);
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
 
+  if (project.motVehicleMeta) {
+    const m = project.motVehicleMeta;
+    const metaFields = [
+      m.make && `Make: ${m.make}`,
+      m.model && `Model: ${m.model}`,
+      m.fuelType && `Fuel: ${m.fuelType}`,
+      m.engineSize && `Engine: ${m.engineSize}cc`,
+      m.primaryColour && `Colour: ${m.primaryColour}`,
+      m.firstUsedDate && `First used: ${m.firstUsedDate.slice(0, 10)}`,
+    ].filter(Boolean);
+    if (metaFields.length) {
+      lines.push('');
+      lines.push('DVSA vehicle data:');
+      metaFields.forEach((f) => lines.push(f));
+    }
+  }
+
+  if (project.motTests && project.motTests.length > 0) {
+    const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+    lines.push('');
+    lines.push(`MOT history (${project.motTests.length} tests, most recent first):`);
+    project.motTests.forEach((t) => {
+      const date = fmtDate(t.testDate);
+      const miles = t.odometerValue != null && t.odometerResultType === 'READ'
+        ? `${t.odometerValue.toLocaleString()} mi` : '';
+      const defects = (t.defects || []).map((d) => `${d.type}: ${d.text}`).join('; ');
+      lines.push(`- ${date} | ${t.result}${miles ? ' | ' + miles : ''}${defects ? ' | ' + defects : ''}`);
+    });
+
+    // Surface recurring advisory patterns
+    const allDefects = project.motTests.flatMap((t) => t.defects || []);
+    const defectCounts = {};
+    allDefects.forEach((d) => {
+      const key = d.text.slice(0, 60).toLowerCase();
+      defectCounts[key] = (defectCounts[key] || 0) + 1;
+    });
+    const recurring = Object.entries(defectCounts)
+      .filter(([, count]) => count >= 2)
+      .map(([text]) => text);
+    if (recurring.length) {
+      lines.push('');
+      lines.push('Recurring MOT advisories (appearing 2+ times):');
+      recurring.forEach((r) => lines.push(`- ${r}`));
+      lines.push('Consider these as known ongoing issues when diagnosing.');
+    }
+  }
+
   if (crossWorkshopFixes.length > 0) {
     lines.push('');
     lines.push('Confirmed repairs on this vehicle from other workshops:');

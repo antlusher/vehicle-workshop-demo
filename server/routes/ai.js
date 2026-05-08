@@ -27,11 +27,16 @@ router.post('/ask', requireAuth, async (req, res) => {
   if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = projectRows[0];
-  const [historyResult, vehicleHistory] = await Promise.all([
+  const [historyResult, vehicleHistory, motRow] = await Promise.all([
     query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
     project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+    project.vehicle_id
+      ? query('SELECT mot_tests, mot_vehicle_meta FROM vehicles WHERE id = $1', [project.vehicle_id])
+      : Promise.resolve({ rows: [] }),
   ]);
   const history = historyResult.rows.map((h) => ({ role: h.role, text: h.text }));
+  const motTests = motRow.rows[0]?.mot_tests || null;
+  const motVehicleMeta = motRow.rows[0]?.mot_vehicle_meta || null;
 
   // Cross-workshop confirmed fixes: all fixes on this vehicle excluding current project
   const crossWorkshopFixes = (vehicleHistory?.confirmedFixes || []).filter(
@@ -44,7 +49,7 @@ router.post('/ask', requireAuth, async (req, res) => {
       { make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
         registration: project.registration_snapshot || project.registration,
-        vin: project.vin },
+        vin: project.vin, motTests, motVehicleMeta },
       history,
       question,
       crossWorkshopFixes
