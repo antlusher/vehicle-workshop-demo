@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
 import * as reportsApi from '../services/reportsApi';
+import QuoteTab from './QuoteTab';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
@@ -797,12 +798,14 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
             )}
           </button>
         )}
+        <button type="button" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>Quote</button>
         <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
       </div>
 
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
       {tab === 'specs' && <div className="tab-pane"><QuickReference project={project} token={token} /></div>}
       {tab === 'history' && <div className="tab-pane"><VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} /></div>}
+      {tab === 'quote' && <div className="tab-pane"><QuoteTab project={project} token={token} /></div>}
       {tab === 'report' && <div className="tab-pane"><ReportTab project={project} token={token} /></div>}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
