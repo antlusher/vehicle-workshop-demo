@@ -30,44 +30,35 @@ async function getAccessToken() {
   return _token;
 }
 
-// VehicleWithMotResponse — DVSA MOT History API v1
-// Vehicle root: registration, make, model, fuelType, primaryColour, engineSize,
-//   registrationDate, firstUsedDate, manufactureDate, lastMotTestDate, motTestDueDate
-// motTests[]: completedDate, motTestNumber, testResult, expiryDate,
-//   odometerValue (string), odometerUnit ("MI"|"KM"), odometerResultType ("READ"|"UNREADABLE"|"NO_ODOMETER"),
-//   dataSource, regMarkTimeOfTest
-//   defects[]: type ("ADVISORY"|"MAJOR"|"DANGEROUS"|"FAIL"), text, dangerous (bool)
-function normalizeResponse(data) {
-  const vehicleMeta = {
-    make: data.make || null,
-    model: data.model || null,
-    fuelType: data.fuelType || null,
-    primaryColour: data.primaryColour || null,
-    engineSize: data.engineSize || null,
-    registrationDate: data.registrationDate || null,
-    firstUsedDate: data.firstUsedDate || null,
-    lastMotTestDate: data.lastMotTestDate || null,
-    motTestDueDate: data.motTestDueDate || null,
-  };
+function normalizeDefects(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((d) => ({
+    type: d.type || null,
+    text: d.text || null,
+    dangerous: d.dangerous || false,
+  }));
+}
 
-  const tests = Array.isArray(data.motTests)
-    ? data.motTests.map((t) => ({
+function normalizeResponse(data) {
+  // Capture the full vehicle-level response (minus motTests) so we get
+  // hasOutstandingRecall and any other fields without cherry-picking
+  const { motTests: rawTests, ...vehicleMeta } = data;
+
+  const tests = Array.isArray(rawTests)
+    ? rawTests.map((t) => ({
         testDate: t.completedDate || null,
         motTestNumber: t.motTestNumber || null,
         result: t.testResult || null,
         expiryDate: t.expiryDate || null,
         odometerValue: t.odometerValue != null ? parseInt(t.odometerValue, 10) : null,
         odometerUnit: t.odometerUnit || null,
+        // READ | UNREADABLE | NO_ODOMETER
         odometerResultType: t.odometerResultType || null,
-        regMarkAtTest: t.regMarkTimeOfTest || null,
+        // field name varies by API version
+        regMarkAtTest: t.regMarkTimeOfTest || t.registrationAtTimeOfTest || null,
         dataSource: t.dataSource || null,
-        defects: Array.isArray(t.defects)
-          ? t.defects.map((d) => ({
-              type: d.type || null,
-              text: d.text || null,
-              dangerous: d.dangerous || false,
-            }))
-          : [],
+        // defects field varies: 'defects' (bulk) or 'rfrAndComments' (API response)
+        defects: normalizeDefects(t.defects || t.rfrAndComments),
       }))
     : [];
 
@@ -97,10 +88,10 @@ async function fetchAndStoreMotHistory(vehicleId, registration) {
     const result = await fetchMotHistory(registration);
     if (!result) return null;
     await query(
-      'UPDATE vehicles SET mot_tests = $1, mot_fetched_at = now() WHERE id = $2',
-      [JSON.stringify(result.tests), vehicleId]
+      'UPDATE vehicles SET mot_tests = $1, mot_vehicle_meta = $2, mot_fetched_at = now() WHERE id = $3',
+      [JSON.stringify(result.tests), JSON.stringify(result.vehicleMeta), vehicleId]
     );
-    return result.tests;
+    return result;
   } catch (err) {
     console.error(`[mot] fetch failed for ${registration}: ${err.message}`);
     return null;

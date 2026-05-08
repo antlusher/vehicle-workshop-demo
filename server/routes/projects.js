@@ -16,7 +16,7 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null, motTests = null) {
+function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null, motTests = null, motVehicleMeta = null) {
   return {
     id: row.id,
     userId: row.user_id,
@@ -40,6 +40,7 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
     confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
     vehicleHistory: vehicleHistory,
     motTests: motTests,
+    motVehicleMeta: motVehicleMeta,
     history: history.map((h) => ({
       id: h.id,
       role: h.role,
@@ -50,10 +51,13 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
   };
 }
 
-async function getMotTests(vehicleId) {
-  if (!vehicleId) return null;
-  const { rows } = await query('SELECT mot_tests FROM vehicles WHERE id = $1', [vehicleId]);
-  return rows[0]?.mot_tests || null;
+async function getMotData(vehicleId) {
+  if (!vehicleId) return { motTests: null, motVehicleMeta: null };
+  const { rows } = await query('SELECT mot_tests, mot_vehicle_meta FROM vehicles WHERE id = $1', [vehicleId]);
+  return {
+    motTests: rows[0]?.mot_tests || null,
+    motVehicleMeta: rows[0]?.mot_vehicle_meta || null,
+  };
 }
 
 router.get('/', requireAuth, async (req, res) => {
@@ -149,14 +153,14 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = rows[0];
-  const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory, motTests] = await Promise.all([
+  const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory, motData] = await Promise.all([
     query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
     query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
     project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
-    getMotTests(project.vehicle_id),
+    getMotData(project.vehicle_id),
   ]);
 
-  return res.json(toProject(project, history, confirmedFixes, vehicleHistory, motTests));
+  return res.json(toProject(project, history, confirmedFixes, vehicleHistory, motData.motTests, motData.motVehicleMeta));
 });
 
 router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
@@ -300,8 +304,8 @@ router.post('/:projectId/mot/refresh', requireAuth, async (req, res) => {
   if (!project.vehicle_id || !project.registration) {
     return res.status(400).json({ error: 'No registration on this project' });
   }
-  const tests = await fetchAndStoreMotHistory(project.vehicle_id, project.registration);
-  return res.json({ motTests: tests });
+  const result = await fetchAndStoreMotHistory(project.vehicle_id, project.registration);
+  return res.json({ motTests: result?.tests || null, motVehicleMeta: result?.vehicleMeta || null });
 });
 
 module.exports = router;

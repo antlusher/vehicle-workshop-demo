@@ -452,8 +452,23 @@ function VehicleInfo({ project, onUpdateVehicle }) {
   );
 }
 
+const DEFECT_ORDER = ['DANGEROUS', 'FAIL', 'MAJOR', 'MINOR', 'PRS', 'USER_ENTERED', 'ADVISORY'];
+const DEFECT_LABELS = { DANGEROUS: 'Dangerous', FAIL: 'Fail', MAJOR: 'Major', MINOR: 'Minor', PRS: 'Pass after Rectification', USER_ENTERED: 'User Entered', ADVISORY: 'Advisory' };
+const DEFECT_CLASS = { DANGEROUS: 'mot-defect--dangerous', FAIL: 'mot-defect--fail', MAJOR: 'mot-defect--fail', MINOR: 'mot-defect--minor', PRS: 'mot-defect--prs', USER_ENTERED: 'mot-defect--advisory', ADVISORY: 'mot-defect--advisory' };
+
+function MotMetaRow({ label, value }) {
+  if (value == null || value === '' || value === false) return null;
+  return (
+    <div className="mot-meta-row">
+      <span className="mot-meta-label">{label}</span>
+      <span className="mot-meta-value">{value === true ? 'Yes' : String(value)}</span>
+    </div>
+  );
+}
+
 function MotTab({ project, token }) {
   const [tests, setTests] = useState(project.motTests || null);
+  const [meta, setMeta] = useState(project.motVehicleMeta || null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
@@ -469,6 +484,7 @@ function MotTab({ project, token }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Refresh failed');
       setTests(data.motTests);
+      setMeta(data.motVehicleMeta);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -476,7 +492,11 @@ function MotTab({ project, token }) {
     }
   };
 
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const parsed = new Date(d);
+    return isNaN(parsed) ? d : parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   return (
     <div className="mot-tab">
@@ -492,17 +512,46 @@ function MotTab({ project, token }) {
 
       {error && <p className="error" style={{ margin: '8px 0' }}>{error}</p>}
 
+      {meta?.hasOutstandingRecall && (
+        <div className="mot-recall-banner">
+          ⚠ Outstanding safety recall on this vehicle
+        </div>
+      )}
+
+      {meta && (
+        <div className="mot-meta-block">
+          <div className="mot-section-heading">Vehicle Data from DVSA</div>
+          <MotMetaRow label="Make" value={meta.make} />
+          <MotMetaRow label="Model" value={meta.model} />
+          <MotMetaRow label="Fuel type" value={meta.fuelType} />
+          <MotMetaRow label="Engine size" value={meta.engineSize ? `${meta.engineSize}cc` : null} />
+          <MotMetaRow label="Primary colour" value={meta.primaryColour} />
+          <MotMetaRow label="Secondary colour" value={meta.secondaryColour} />
+          <MotMetaRow label="First used" value={fmtDate(meta.firstUsedDate)} />
+          <MotMetaRow label="Registration date" value={fmtDate(meta.registrationDate)} />
+          <MotMetaRow label="Manufacture date" value={fmtDate(meta.manufactureDate)} />
+          <MotMetaRow label="Last MOT test" value={fmtDate(meta.lastMotTestDate)} />
+          <MotMetaRow label="MOT due" value={fmtDate(meta.motTestDueDate)} />
+          <MotMetaRow label="Last updated" value={fmtDate(meta.last_update_date)} />
+          <MotMetaRow label="Data source" value={meta.dataSource} />
+          <MotMetaRow label="Outstanding recall" value={meta.hasOutstandingRecall} />
+        </div>
+      )}
+
       {!tests || tests.length === 0 ? (
         <p style={{ color: '#9ca3af', fontSize: '0.88rem', padding: '12px 0' }}>
-          No MOT history found. {!tests && 'Try refreshing.'}
+          No MOT test records found. {!tests && 'Try refreshing.'}
         </p>
       ) : (
         tests.map((t, i) => {
           const passed = t.result === 'PASSED';
-          const advisories = t.defects?.filter((d) => d.type === 'ADVISORY') || [];
-          const failures = t.defects?.filter((d) => d.type !== 'ADVISORY') || [];
           const showOdometer = t.odometerResultType === 'READ' && t.odometerValue != null;
           const regDiffers = t.regMarkAtTest && t.regMarkAtTest !== project.registration?.replace(/\s+/g, '');
+          const defectsByType = DEFECT_ORDER.reduce((acc, type) => {
+            const matches = (t.defects || []).filter((d) => d.type === type);
+            if (matches.length) acc[type] = matches;
+            return acc;
+          }, {});
           return (
             <div key={i} className={`mot-test-card ${passed ? 'mot-pass' : 'mot-fail'}`}>
               <div className="mot-test-header">
@@ -511,31 +560,25 @@ function MotTab({ project, token }) {
                 {showOdometer && (
                   <span className="mot-mileage">{t.odometerValue.toLocaleString()} {t.odometerUnit === 'MI' ? 'miles' : 'km'}</span>
                 )}
+                {t.odometerResultType === 'NO_ODOMETER' && <span className="mot-mileage">No odometer</span>}
+                {t.odometerResultType === 'UNREADABLE' && <span className="mot-mileage">Odometer unreadable</span>}
                 {passed && t.expiryDate && (
                   <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#6b7280' }}>Expires {fmtDate(t.expiryDate)}</span>
                 )}
               </div>
               {regDiffers && (
-                <div style={{ padding: '2px 14px 6px', fontSize: '0.75rem', color: '#6b7280' }}>
+                <div style={{ padding: '2px 14px 4px', fontSize: '0.75rem', color: '#6b7280' }}>
                   Tested as {t.regMarkAtTest}
                 </div>
               )}
-              {failures.length > 0 && (
-                <div className="mot-defects">
-                  <div className="mot-defect-heading">Failures / Majors</div>
-                  {failures.map((d, j) => (
-                    <div key={j} className={`mot-defect mot-defect--fail${d.dangerous ? ' mot-defect--dangerous' : ''}`}>{d.text}</div>
+              {Object.entries(defectsByType).map(([type, defects]) => (
+                <div key={type} className="mot-defects">
+                  <div className="mot-defect-heading">{DEFECT_LABELS[type] || type}</div>
+                  {defects.map((d, j) => (
+                    <div key={j} className={`mot-defect ${DEFECT_CLASS[type] || ''}`}>{d.text}</div>
                   ))}
                 </div>
-              )}
-              {advisories.length > 0 && (
-                <div className="mot-defects">
-                  <div className="mot-defect-heading">Advisories</div>
-                  {advisories.map((d, j) => (
-                    <div key={j} className="mot-defect mot-defect--advisory">{d.text}</div>
-                  ))}
-                </div>
-              )}
+              ))}
             </div>
           );
         })
