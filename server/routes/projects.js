@@ -218,19 +218,15 @@ router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
       }
     }
 
-    if (make && model && year) {
-      generateVehicleSpecs({ make, model, year, engineCode, fuelType, trim })
-        .then((specs) => {
-          if (specs) query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2', [JSON.stringify(specs), project.id]);
-        }).catch(() => {});
-    }
-
-    const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory] = await Promise.all([
+    const [{ rows: history }, { rows: confirmedFixes }, vehicleHistory, motData] = await Promise.all([
       query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
       query('SELECT * FROM confirmed_suggestions WHERE project_id = $1 ORDER BY created_at ASC', [project.id]),
       project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+      getMotData(project.vehicle_id),
     ]);
-    return res.json(toProject(updated[0], history, confirmedFixes, vehicleHistory));
+
+    // specs cleared by UPDATE above — Quick Reference tab will trigger regen on next open
+    return res.json(toProject(updated[0], history, confirmedFixes, vehicleHistory, motData.motTests, motData.motVehicleMeta));
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Unable to update vehicle' });
   }
