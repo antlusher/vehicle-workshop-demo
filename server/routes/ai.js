@@ -15,7 +15,7 @@ function requireAuth(req, res, next) {
 }
 
 router.post('/ask', requireAuth, async (req, res) => {
-  const { projectId, question, verbosity } = req.body;
+  const { projectId, question, chatMode } = req.body;
   if (!projectId || !question) {
     return res.status(400).json({ error: 'Project ID and question are required' });
   }
@@ -53,7 +53,7 @@ router.post('/ask', requireAuth, async (req, res) => {
       history,
       question,
       crossWorkshopFixes,
-      verbosity
+      chatMode
     );
     const { answer, inputTokens, outputTokens } = result;
     const durationMs = Date.now() - startMs;

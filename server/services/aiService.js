@@ -8,46 +8,16 @@ function createClient() {
 
 const client = createClient();
 
-function buildSystemPrompt(project, crossWorkshopFixes = [], verbosity = 'detailed') {
+function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnose') {
+  const isHowTo = chatMode === 'howto';
   const lines = [
-    'You are an expert automotive diagnostic assistant for professional vehicle repair technicians.',
+    'You are an expert automotive assistant for professional vehicle repair technicians.',
     'You have access to a workshop knowledge base and vehicle database via tools.',
-    'Always use your tools to check for confirmed fixes and vehicle specs before answering.',
-    'Provide clear, structured, technician-friendly guidance.',
-    'If a DTC code is mentioned, use the get_dtc_info tool.',
     '',
   ];
 
-  if (verbosity === 'concise') {
-    lines.push(
-      'RESPONSE MODE: Concise — you are speaking to an experienced professional technician.',
-      '- Skip all background explanations. Assume full component and system knowledge.',
-      '- Lead immediately with the most likely cause and direct action.',
-      '- Use short bullet points only. No prose paragraphs.',
-      '- Maximum 6 bullets per response unless the fault genuinely requires more.',
-      '- Do NOT explain what components do — go straight to the diagnostic or fix.',
-      '- Do NOT ask multiple clarifying questions. Ask one at most if essential.',
-      '',
-    );
-  }
-
-  lines.push(
-    'STRICT formatting rules — follow these exactly:',
-    '- Do NOT use emojis anywhere in your response.',
-    '- Do NOT front-load multiple diagnostic branches in one response. Ask your initial questions first, then wait for the technician\'s answers before providing the next steps.',
-    '- When asking diagnostic questions, write ONE question per bullet point. Never combine two questions into one bullet using "or". Split them.',
-    '- Every yes/no diagnostic question MUST end with a question mark (?).',
-    '- Yes/no questions must be strictly binary — do NOT offer multiple options or alternative conditions in a single bullet. Any bullet containing " or " that presents two distinct states or conditions (e.g. "at all RPMs or only at low idle", "constant or intermittent", "low, overfull, or normal") must be rewritten as a What/Which question so the technician can type their answer.',
-    '- Never add a follow-up to a yes/no question in the same bullet. Wrong: "Are there DTCs stored? If yes, what are the codes?" — instead write two separate bullets: one yes/no question, then one What/Which question on the next bullet.',
-    '- Open-ended questions that require a descriptive answer (starting with Which, What, How, Describe, List) must also end with a question mark (?).',
-    '- Suggested actions and fixes must NOT end with a question mark.',
-    '- Do NOT repeat questions at the bottom of the response that you already asked at the top.',
-    '- Keep each bullet point concise — one idea only.',
-    '- Use plain section headings without icons or symbols.',
-    '',
-    'Current vehicle project:',
-  ];
-
+  // Vehicle identity — always included so procedures are vehicle-specific
+  lines.push('Current vehicle:');
   if (project.registration) lines.push(`Registration: ${project.registration}`);
   if (project.vin) lines.push(`VIN: ${project.vin}`);
   if (project.make) lines.push(`Make: ${project.make}`);
@@ -56,63 +26,94 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], verbosity = 'detail
   if (project.engineCode) lines.push(`Engine code: ${project.engineCode}`);
   if (project.fuelType) lines.push(`Fuel type: ${project.fuelType}`);
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
+  lines.push('');
 
-  if (project.motVehicleMeta) {
-    const m = project.motVehicleMeta;
-    const metaFields = [
-      m.make && `Make: ${m.make}`,
-      m.model && `Model: ${m.model}`,
-      m.fuelType && `Fuel: ${m.fuelType}`,
-      m.engineSize && `Engine: ${m.engineSize}cc`,
-      m.primaryColour && `Colour: ${m.primaryColour}`,
-      m.firstUsedDate && `First used: ${m.firstUsedDate.slice(0, 10)}`,
-    ].filter(Boolean);
-    if (metaFields.length) {
-      lines.push('');
-      lines.push('DVSA vehicle data:');
-      metaFields.forEach((f) => lines.push(f));
+  if (isHowTo) {
+    lines.push(
+      'MODE: How To / Procedure',
+      'The technician needs step-by-step instructions for a specific repair or replacement task.',
+      '- Respond ONLY with a numbered list of steps. No preamble, no intro, no closing remarks.',
+      '- Do NOT ask diagnostic questions or suggest further investigation.',
+      '- Do NOT include MOT history, advisories, or condition observations.',
+      '- Assume the technician has already decided to do this job.',
+      '- Include torque values, special tools, and critical warnings inline with the relevant step.',
+      '- Keep each step concise — one action per step.',
+      '- Use your tools to look up vehicle-specific specs (torque, fluid capacity, etc.) if needed.',
+    );
+  } else {
+    lines.push(
+      'MODE: Diagnose',
+      'Always use your tools to check for confirmed fixes and vehicle specs before answering.',
+      'If a DTC code is mentioned, use the get_dtc_info tool.',
+      '',
+      'STRICT formatting rules — follow these exactly:',
+      '- Do NOT use emojis anywhere in your response.',
+      '- Do NOT front-load multiple diagnostic branches in one response. Ask your initial questions first, then wait for the technician\'s answers before providing the next steps.',
+      '- When asking diagnostic questions, write ONE question per bullet point. Never combine two questions into one bullet using "or". Split them.',
+      '- Every yes/no diagnostic question MUST end with a question mark (?).',
+      '- Yes/no questions must be strictly binary — do NOT offer multiple options or alternative conditions in a single bullet. Any bullet containing " or " that presents two distinct states or conditions (e.g. "at all RPMs or only at low idle", "constant or intermittent", "low, overfull, or normal") must be rewritten as a What/Which question so the technician can type their answer.',
+      '- Never add a follow-up to a yes/no question in the same bullet. Wrong: "Are there DTCs stored? If yes, what are the codes?" — instead write two separate bullets: one yes/no question, then one What/Which question on the next bullet.',
+      '- Open-ended questions that require a descriptive answer (starting with Which, What, How, Describe, List) must also end with a question mark (?).',
+      '- Suggested actions and fixes must NOT end with a question mark.',
+      '- Do NOT repeat questions at the bottom of the response that you already asked at the top.',
+      '- Keep each bullet point concise — one idea only.',
+      '- Use plain section headings without icons or symbols.',
+    );
+
+    // DVSA vehicle meta
+    if (project.motVehicleMeta) {
+      const m = project.motVehicleMeta;
+      const metaFields = [
+        m.make && `Make: ${m.make}`,
+        m.model && `Model: ${m.model}`,
+        m.fuelType && `Fuel: ${m.fuelType}`,
+        m.engineSize && `Engine: ${m.engineSize}cc`,
+        m.primaryColour && `Colour: ${m.primaryColour}`,
+        m.firstUsedDate && `First used: ${m.firstUsedDate.slice(0, 10)}`,
+      ].filter(Boolean);
+      if (metaFields.length) {
+        lines.push('', 'DVSA vehicle data:');
+        metaFields.forEach((f) => lines.push(f));
+      }
     }
-  }
 
-  if (project.motTests && project.motTests.length > 0) {
-    const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-    lines.push('');
-    lines.push(`MOT history (${project.motTests.length} tests, most recent first):`);
-    project.motTests.forEach((t) => {
-      const date = fmtDate(t.testDate);
-      const miles = t.odometerValue != null && t.odometerResultType === 'READ'
-        ? `${t.odometerValue.toLocaleString()} mi` : '';
-      const defects = (t.defects || []).map((d) => `${d.type}: ${d.text}`).join('; ');
-      lines.push(`- ${date} | ${t.result}${miles ? ' | ' + miles : ''}${defects ? ' | ' + defects : ''}`);
-    });
+    // MOT history
+    if (project.motTests && project.motTests.length > 0) {
+      const fmtDate = (d) => new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+      lines.push('', `MOT history (${project.motTests.length} tests, most recent first):`);
+      project.motTests.forEach((t) => {
+        const date = fmtDate(t.testDate);
+        const miles = t.odometerValue != null && t.odometerResultType === 'READ'
+          ? `${t.odometerValue.toLocaleString()} mi` : '';
+        const defects = (t.defects || []).map((d) => `${d.type}: ${d.text}`).join('; ');
+        lines.push(`- ${date} | ${t.result}${miles ? ' | ' + miles : ''}${defects ? ' | ' + defects : ''}`);
+      });
 
-    // Surface recurring advisory patterns
-    const allDefects = project.motTests.flatMap((t) => t.defects || []);
-    const defectCounts = {};
-    allDefects.forEach((d) => {
-      const key = d.text.slice(0, 60).toLowerCase();
-      defectCounts[key] = (defectCounts[key] || 0) + 1;
-    });
-    const recurring = Object.entries(defectCounts)
-      .filter(([, count]) => count >= 2)
-      .map(([text]) => text);
-    if (recurring.length) {
-      lines.push('');
-      lines.push('Recurring MOT advisories (appearing 2+ times):');
-      recurring.forEach((r) => lines.push(`- ${r}`));
-      lines.push('Consider these as known ongoing issues when diagnosing.');
+      const allDefects = project.motTests.flatMap((t) => t.defects || []);
+      const defectCounts = {};
+      allDefects.forEach((d) => {
+        const key = d.text.slice(0, 60).toLowerCase();
+        defectCounts[key] = (defectCounts[key] || 0) + 1;
+      });
+      const recurring = Object.entries(defectCounts)
+        .filter(([, count]) => count >= 2)
+        .map(([text]) => text);
+      if (recurring.length) {
+        lines.push('', 'Recurring MOT advisories (appearing 2+ times):');
+        recurring.forEach((r) => lines.push(`- ${r}`));
+        lines.push('Consider these as known ongoing issues when diagnosing.');
+      }
     }
-  }
 
-  if (crossWorkshopFixes.length > 0) {
-    lines.push('');
-    lines.push('Confirmed repairs on this vehicle from other workshops:');
-    crossWorkshopFixes.forEach((fix) => {
-      const date = new Date(fix.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-      lines.push(`- ${fix.text} (confirmed ${date})`);
-    });
-    lines.push('');
-    lines.push('Use this history to: avoid re-diagnosing already-confirmed fixes, identify recurring faults, and understand what has already been attempted. If a previous fix matches the current symptom, investigate whether the repair failed, was incomplete, or if a related fault has developed.');
+    // Cross-workshop confirmed fixes
+    if (crossWorkshopFixes.length > 0) {
+      lines.push('', 'Confirmed repairs on this vehicle from other workshops:');
+      crossWorkshopFixes.forEach((fix) => {
+        const date = new Date(fix.createdAt).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        lines.push(`- ${fix.text} (confirmed ${date})`);
+      });
+      lines.push('', 'Use this history to: avoid re-diagnosing already-confirmed fixes, identify recurring faults, and understand what has already been attempted. If a previous fix matches the current symptom, investigate whether the repair failed, was incomplete, or if a related fault has developed.');
+    }
   }
 
   return lines.join('\n');
@@ -127,9 +128,9 @@ function buildMessages(history, question) {
   return messages;
 }
 
-async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], verbosity = 'detailed') {
+async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], chatMode = 'diagnose') {
   const messages = buildMessages(history, question);
-  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, verbosity);
+  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode);
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -193,11 +194,11 @@ function demoFallback(project, question) {
   ].join('\n');
 }
 
-async function generateRepairAdvice(project, history = [], question, crossWorkshopFixes = [], verbosity = 'detailed') {
+async function generateRepairAdvice(project, history = [], question, crossWorkshopFixes = [], chatMode = 'diagnose') {
   if (!client) {
     return { answer: demoFallback(project, question), inputTokens: 0, outputTokens: 0 };
   }
-  return runAgentLoop(client, project, history, question, crossWorkshopFixes, verbosity);
+  return runAgentLoop(client, project, history, question, crossWorkshopFixes, chatMode);
 }
 
 async function generateVehicleSpecs(project) {

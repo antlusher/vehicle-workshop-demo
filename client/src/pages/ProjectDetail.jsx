@@ -66,7 +66,7 @@ function ConfirmFixButton({ itemText, onConfirm, initialConfirmed }) {
   return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>This fixed it</button>;
 }
 
-function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts }) {
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts, chatMode }) {
   const [hasAnswers, setHasAnswers] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const answersRef = useRef({});
@@ -92,6 +92,8 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
     await onContinue(message);
   }, [onContinue]);
 
+  const isDiagnose = chatMode === 'diagnose';
+
   const components = useMemo(() => ({
     li({ children }) {
       const itemText = nodeText(children).trim();
@@ -99,24 +101,27 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
       return (
         <li className={`ai-suggestion${type === 'open' ? ' ai-suggestion--open' : ''}`}>
           <span>{children}</span>
-          {type === 'yesno' && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
-          {type === 'open' && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
-          {type === 'fix' && (
+          {isDiagnose && type === 'yesno' && isLatestAi && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
+          {isDiagnose && type === 'open' && isLatestAi && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
+          {isDiagnose && isLatestAi && type === 'fix' && (
             <ConfirmFixButton
               itemText={itemText}
               onConfirm={handleConfirm}
               initialConfirmed={confirmedTexts?.has(itemText)}
             />
           )}
+          {isDiagnose && !isLatestAi && confirmedTexts?.has(itemText) && (
+            <small className="suggestion-confirmed">✓ This fixed it</small>
+          )}
         </li>
       );
     },
-  }), [handleAnswer, handleConfirm, confirmedTexts]);
+  }), [handleAnswer, handleConfirm, confirmedTexts, isDiagnose, isLatestAi]);
 
   return (
     <div className="ai-response">
       <ReactMarkdown components={components}>{text}</ReactMarkdown>
-      {isLatestAi && hasAnswers && !submitted && (
+      {isDiagnose && isLatestAi && hasAnswers && !submitted && (
         <button type="button" className="continue-btn" disabled={isBusy} onClick={handleContinue}>
           {isBusy ? 'Thinking...' : 'Continue diagnosis →'}
         </button>
@@ -894,7 +899,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('diagnosis');
-  const [verbosity, setVerbosity] = useState(() => localStorage.getItem('diagVerbosity') || 'detailed');
+  const [chatMode, setChatMode] = useState(() => localStorage.getItem('chatMode') || 'diagnose');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
@@ -908,24 +913,23 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [project?.history?.length, status]);
 
-  const toggleVerbosity = () => {
-    const next = verbosity === 'detailed' ? 'concise' : 'detailed';
-    setVerbosity(next);
-    localStorage.setItem('diagVerbosity', next);
+  const selectMode = (mode) => {
+    setChatMode(mode);
+    localStorage.setItem('chatMode', mode);
   };
 
   const submitQuestion = useCallback(async (text) => {
     setError('');
     setStatus('Thinking...');
     try {
-      await onAsk(project.id, text, verbosity);
+      await onAsk(project.id, text, chatMode);
       setQuestion('');
       setStatus('');
     } catch (err) {
       setError(err.message);
       setStatus('');
     }
-  }, [onAsk, project, verbosity]);
+  }, [onAsk, project, chatMode]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1004,7 +1008,19 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (
-          <p className="chat-empty">Ask a question to begin the diagnostic session.</p>
+          <div className="chat-mode-prompt">
+            <p className="chat-mode-prompt-label">What do you need help with?</p>
+            <div className="chat-mode-cards">
+              <button type="button" className={`chat-mode-card${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>
+                <span className="chat-mode-card-title">Diagnose</span>
+                <span className="chat-mode-card-desc">Investigate symptoms, fault codes, and intermittent faults</span>
+              </button>
+              <button type="button" className={`chat-mode-card${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>
+                <span className="chat-mode-card-title">How To</span>
+                <span className="chat-mode-card-desc">Step-by-step procedures for repairs and replacements</span>
+              </button>
+            </div>
+          </div>
         )}
 
         {project.history?.map((entry) => {
@@ -1043,6 +1059,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
                   isLatestAi={isLatestAi}
                   isBusy={isBusy}
                   confirmedTexts={confirmedTexts}
+                  chatMode={chatMode}
                 />
               </div>
               <small className="chat-time">{time}</small>
@@ -1076,23 +1093,9 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
       {tab === 'diagnosis' && (
         <div className="chat-input-bar">
           <div className="chat-verbosity-bar">
-            <span className="chat-verbosity-label">Response detail:</span>
-            <button
-              type="button"
-              className={`chat-verbosity-btn${verbosity === 'concise' ? ' active' : ''}`}
-              onClick={toggleVerbosity}
-              title="Short, direct answers — assumes tech knowledge"
-            >
-              Concise
-            </button>
-            <button
-              type="button"
-              className={`chat-verbosity-btn${verbosity === 'detailed' ? ' active' : ''}`}
-              onClick={toggleVerbosity}
-              title="Full explanations and step-by-step guidance"
-            >
-              Detailed
-            </button>
+            <span className="chat-verbosity-label">Mode:</span>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>Diagnose</button>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>How To</button>
           </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
