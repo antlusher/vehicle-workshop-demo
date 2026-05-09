@@ -17,14 +17,23 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
   ];
 
   // Vehicle identity — always included so procedures are vehicle-specific
+  // Fall back to DVLA motVehicleMeta when project fields are missing
+  const meta = project.motVehicleMeta || {};
+  const make = project.make || meta.make;
+  const model = project.model || meta.model;
+  const year = project.year || meta.manufactureYear;
+  const fuelType = project.fuelType || meta.fuelType;
+  const engineCode = project.engineCode;
+
   lines.push('Current vehicle:');
   if (project.registration) lines.push(`Registration: ${project.registration}`);
   if (project.vin) lines.push(`VIN: ${project.vin}`);
-  if (project.make) lines.push(`Make: ${project.make}`);
-  if (project.model) lines.push(`Model: ${project.model}`);
-  if (project.year) lines.push(`Year: ${project.year}`);
-  if (project.engineCode) lines.push(`Engine code: ${project.engineCode}`);
-  if (project.fuelType) lines.push(`Fuel type: ${project.fuelType}`);
+  if (make) lines.push(`Make: ${make}`);
+  if (model) lines.push(`Model: ${model}`);
+  if (year) lines.push(`Year: ${year}`);
+  if (engineCode) lines.push(`Engine code: ${engineCode}`);
+  if (fuelType) lines.push(`Fuel type: ${fuelType}`);
+  if (meta.engineSize) lines.push(`Engine size: ${meta.engineSize}cc`);
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
   lines.push('');
 
