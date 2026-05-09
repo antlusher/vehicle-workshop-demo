@@ -132,11 +132,16 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
   const messages = buildMessages(history, question);
   const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode);
 
+  // How To mode only gets the specs tool — history/fix tools are irrelevant for procedures
+  const tools = chatMode === 'howto'
+    ? toolDefinitions.filter((t) => t.name === 'get_vehicle_specs')
+    : toolDefinitions;
+
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     system: systemPrompt,
-    tools: toolDefinitions,
+    tools,
     messages,
   });
 
@@ -167,7 +172,7 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
-      tools: toolDefinitions,
+      tools,
       messages,
     });
   }
