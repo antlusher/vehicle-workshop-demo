@@ -46,27 +46,25 @@ function Login({ onLogin, error }) {
           {mode === 'forgot' && 'Reset password'}
         </h1>
         <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
           <input
             id="email"
             name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
             required
           />
           {mode !== 'forgot' && (
-            <>
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              required
+            />
           )}
           <button type="submit">
             {mode === 'login' && 'Sign in'}
