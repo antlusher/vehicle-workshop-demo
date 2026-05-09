@@ -894,6 +894,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('diagnosis');
+  const [verbosity, setVerbosity] = useState(() => localStorage.getItem('diagVerbosity') || 'detailed');
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
@@ -907,18 +908,24 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [project?.history?.length, status]);
 
+  const toggleVerbosity = () => {
+    const next = verbosity === 'detailed' ? 'concise' : 'detailed';
+    setVerbosity(next);
+    localStorage.setItem('diagVerbosity', next);
+  };
+
   const submitQuestion = useCallback(async (text) => {
     setError('');
     setStatus('Thinking...');
     try {
-      await onAsk(project.id, text);
+      await onAsk(project.id, text, verbosity);
       setQuestion('');
       setStatus('');
     } catch (err) {
       setError(err.message);
       setStatus('');
     }
-  }, [onAsk, project]);
+  }, [onAsk, project, verbosity]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1068,6 +1075,25 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
 
       {tab === 'diagnosis' && (
         <div className="chat-input-bar">
+          <div className="chat-verbosity-bar">
+            <span className="chat-verbosity-label">Response detail:</span>
+            <button
+              type="button"
+              className={`chat-verbosity-btn${verbosity === 'concise' ? ' active' : ''}`}
+              onClick={toggleVerbosity}
+              title="Short, direct answers — assumes tech knowledge"
+            >
+              Concise
+            </button>
+            <button
+              type="button"
+              className={`chat-verbosity-btn${verbosity === 'detailed' ? ' active' : ''}`}
+              onClick={toggleVerbosity}
+              title="Full explanations and step-by-step guidance"
+            >
+              Detailed
+            </button>
+          </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
               ref={textareaRef}

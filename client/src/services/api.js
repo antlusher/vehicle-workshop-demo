@@ -100,8 +100,8 @@ export async function fetchProjectSpecs(projectId, token) {
   return request(`/api/projects/${projectId}/specs`, { method: 'POST' }, token);
 }
 
-export async function askAI(projectId, question, token) {
-  return request('/api/ai/ask', { method: 'POST', body: { projectId, question } }, token);
+export async function askAI(projectId, question, token, verbosity) {
+  return request('/api/ai/ask', { method: 'POST', body: { projectId, question, verbosity } }, token);
 }
 
 export async function confirmSuggestion(projectId, historyId, text, token) {

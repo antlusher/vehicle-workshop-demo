@@ -15,7 +15,7 @@ function requireAuth(req, res, next) {
 }
 
 router.post('/ask', requireAuth, async (req, res) => {
-  const { projectId, question } = req.body;
+  const { projectId, question, verbosity } = req.body;
   if (!projectId || !question) {
     return res.status(400).json({ error: 'Project ID and question are required' });
   }
@@ -52,7 +52,8 @@ router.post('/ask', requireAuth, async (req, res) => {
         vin: project.vin, motTests, motVehicleMeta },
       history,
       question,
-      crossWorkshopFixes
+      crossWorkshopFixes,
+      verbosity
     );
     const { answer, inputTokens, outputTokens } = result;
     const durationMs = Date.now() - startMs;

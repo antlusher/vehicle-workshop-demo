@@ -140,10 +140,10 @@ function App() {
     }
   };
 
-  const handleAskQuestion = async (projectId, question) => {
+  const handleAskQuestion = async (projectId, question, verbosity) => {
     setError('');
     try {
-      const result = await api.askAI(projectId, question, token);
+      const result = await api.askAI(projectId, question, token, verbosity);
       setSelectedProject(result.project);
       await reloadProjects();
       return result.answer;

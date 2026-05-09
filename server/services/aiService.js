@@ -8,7 +8,7 @@ function createClient() {
 
 const client = createClient();
 
-function buildSystemPrompt(project, crossWorkshopFixes = []) {
+function buildSystemPrompt(project, crossWorkshopFixes = [], verbosity = 'detailed') {
   const lines = [
     'You are an expert automotive diagnostic assistant for professional vehicle repair technicians.',
     'You have access to a workshop knowledge base and vehicle database via tools.',
@@ -16,6 +16,22 @@ function buildSystemPrompt(project, crossWorkshopFixes = []) {
     'Provide clear, structured, technician-friendly guidance.',
     'If a DTC code is mentioned, use the get_dtc_info tool.',
     '',
+  ];
+
+  if (verbosity === 'concise') {
+    lines.push(
+      'RESPONSE MODE: Concise — you are speaking to an experienced professional technician.',
+      '- Skip all background explanations. Assume full component and system knowledge.',
+      '- Lead immediately with the most likely cause and direct action.',
+      '- Use short bullet points only. No prose paragraphs.',
+      '- Maximum 6 bullets per response unless the fault genuinely requires more.',
+      '- Do NOT explain what components do — go straight to the diagnostic or fix.',
+      '- Do NOT ask multiple clarifying questions. Ask one at most if essential.',
+      '',
+    );
+  }
+
+  lines.push(
     'STRICT formatting rules — follow these exactly:',
     '- Do NOT use emojis anywhere in your response.',
     '- Do NOT front-load multiple diagnostic branches in one response. Ask your initial questions first, then wait for the technician\'s answers before providing the next steps.',
@@ -111,9 +127,9 @@ function buildMessages(history, question) {
   return messages;
 }
 
-async function runAgentLoop(client, project, history, question, crossWorkshopFixes = []) {
+async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], verbosity = 'detailed') {
   const messages = buildMessages(history, question);
-  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes);
+  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, verbosity);
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -177,11 +193,11 @@ function demoFallback(project, question) {
   ].join('\n');
 }
 
-async function generateRepairAdvice(project, history = [], question, crossWorkshopFixes = []) {
+async function generateRepairAdvice(project, history = [], question, crossWorkshopFixes = [], verbosity = 'detailed') {
   if (!client) {
     return { answer: demoFallback(project, question), inputTokens: 0, outputTokens: 0 };
   }
-  return runAgentLoop(client, project, history, question, crossWorkshopFixes);
+  return runAgentLoop(client, project, history, question, crossWorkshopFixes, verbosity);
 }
 
 async function generateVehicleSpecs(project) {
