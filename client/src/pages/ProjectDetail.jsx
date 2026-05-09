@@ -317,14 +317,6 @@ function VehicleInfo({ project, onUpdateVehicle }) {
     setEditing(false);
   };
 
-  const editBtn = (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
-      <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => setEditing(true)}>
-        Edit vehicle details
-      </button>
-    </div>
-  );
-
   if (editing) {
     return <VehicleEditForm project={project} onSave={handleSave} onCancel={() => setEditing(false)} />;
   }
@@ -334,154 +326,99 @@ function VehicleInfo({ project, onUpdateVehicle }) {
     const p = new Date(d);
     return isNaN(p) ? d : p.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   };
-
-  const dvsaCard = md ? (
-    <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-      <h4 className="spec-card-title">DVSA Data</h4>
-      <VehicleInfoRow label="Make" value={md.make} />
-      <VehicleInfoRow label="Model" value={md.model} />
-      <VehicleInfoRow label="Fuel type" value={md.fuelType} />
-      <VehicleInfoRow label="Engine size" value={md.engineSize ? `${md.engineSize}cc` : null} />
-      <VehicleInfoRow label="Primary colour" value={md.primaryColour} />
-      <VehicleInfoRow label="Secondary colour" value={md.secondaryColour} />
-      <VehicleInfoRow label="First used" value={fmtDate(md.firstUsedDate)} />
-      <VehicleInfoRow label="Registration date" value={fmtDate(md.registrationDate)} />
-      <VehicleInfoRow label="Manufacture date" value={fmtDate(md.manufactureDate)} />
-      <VehicleInfoRow label="Last MOT" value={fmtDate(md.lastMotTestDate)} />
-      <VehicleInfoRow label="MOT due" value={fmtDate(md.motTestDueDate)} />
-      {md.hasOutstandingRecall === true && <VehicleInfoRow label="Outstanding recall" value="Yes" />}
-      {md.hasOutstandingRecall === 'Unknown' && <VehicleInfoRow label="Outstanding recall" value="Unknown" />}
-      <VehicleInfoRow label="Data source" value={md.dataSource} />
-    </div>
-  ) : null;
-
-  if (!vd) {
-    return (
-      <div>
-        {editBtn}
-        <div className="specs-grid">
-          <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-            <h4 className="spec-card-title">Vehicle</h4>
-            <VehicleInfoRow label="Registration" value={project.registration} />
-            <VehicleInfoRow label="VIN" value={project.vin} />
-            <VehicleInfoRow label="Make" value={project.make} />
-            <VehicleInfoRow label="Model" value={project.model} />
-            <VehicleInfoRow label="Year" value={project.year} />
-            <VehicleInfoRow label="Engine code" value={project.engineCode} />
-            <VehicleInfoRow label="Fuel type" value={project.fuelType} />
-            <VehicleInfoRow label="Trim" value={project.trim} />
-            <VehicleInfoRow label="Body type" value={project.bodyType} />
-          </div>
-          {dvsaCard}
-        </div>
-        {!md && <p style={{ padding: '4px 16px 12px', color: '#9ca3af', fontSize: '0.8rem' }}>No extended data from API — use Edit to correct any fields above.</p>}
-      </div>
-    );
-  }
-
   const fmt = (val, unit) => (val != null ? `${val}${unit ? ' ' + unit : ''}` : null);
-
-  const basicCard = (
-    <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-      <h4 className="spec-card-title">Vehicle</h4>
-      <VehicleInfoRow label="Registration" value={project.registration} />
-      <VehicleInfoRow label="VIN" value={project.vin} />
-      <VehicleInfoRow label="Make" value={project.make} />
-      <VehicleInfoRow label="Model" value={project.model} />
-      <VehicleInfoRow label="Year" value={project.year} />
-      <VehicleInfoRow label="Engine code" value={project.engineCode} />
-      <VehicleInfoRow label="Fuel type" value={project.fuelType} />
-      <VehicleInfoRow label="Trim" value={project.trim} />
-      <VehicleInfoRow label="Body type" value={project.bodyType} />
-    </div>
-  );
 
   return (
     <div>
-      {editBtn}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+        <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => setEditing(true)}>
+          Edit vehicle details
+        </button>
+      </div>
       <div className="specs-grid">
-      {basicCard}
-      {dvsaCard}
-      <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-        <h4 className="spec-card-title">Extended Data</h4>
-        <VehicleInfoRow label="Colour" value={vd.colour} />
-        <VehicleInfoRow label="First registered" value={vd.dateFirstRegistered} />
-        <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
-        <VehicleInfoRow label="Country of origin" value={vd.countryOfOrigin} />
-        <VehicleInfoRow label="Series / Gen" value={vd.series} />
-        <VehicleInfoRow label="Variant" value={vd.modelVariant} />
-        {vd.isScrapped && <VehicleInfoRow label="Status" value="SCRAPPED" />}
-        {vd.isExported && <VehicleInfoRow label="Status" value="EXPORTED" />}
-      </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Engine</h4>
-        <VehicleInfoRow label="Description" value={vd.engine?.description} />
-        <VehicleInfoRow label="Manufacturer" value={vd.engine?.manufacturer} />
-        <VehicleInfoRow label="Capacity" value={vd.engine?.capacityLitres != null ? `${vd.engine.capacityLitres}L (${vd.engine.capacityCc}cc)` : fmt(vd.engine?.capacityCc, 'cc')} />
-        <VehicleInfoRow label="Cylinders" value={vd.engine?.cylinders} />
-        <VehicleInfoRow label="Aspiration" value={vd.engine?.aspiration} />
-        <VehicleInfoRow label="Valve gear" value={vd.engine?.valveGear} />
-        <VehicleInfoRow label="Valves / cyl" value={vd.engine?.valvesPerCylinder} />
-      </div>
+        <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+          <h4 className="spec-card-title">Vehicle</h4>
+          <VehicleInfoRow label="Registration" value={project.registration} />
+          <VehicleInfoRow label="VIN" value={project.vin} />
+          <VehicleInfoRow label="Engine code" value={project.engineCode} />
+          {md ? (<>
+            <VehicleInfoRow label="Make" value={md.make} />
+            <VehicleInfoRow label="Model" value={md.model} />
+            <VehicleInfoRow label="Fuel type" value={md.fuelType} />
+            <VehicleInfoRow label="Engine size" value={md.engineSize ? `${md.engineSize}cc` : null} />
+            <VehicleInfoRow label="Colour" value={md.primaryColour} />
+            <VehicleInfoRow label="First used" value={fmtDate(md.firstUsedDate)} />
+            <VehicleInfoRow label="Manufacture date" value={fmtDate(md.manufactureDate)} />
+            <VehicleInfoRow label="Last MOT" value={fmtDate(md.lastMotTestDate)} />
+            <VehicleInfoRow label="MOT due" value={fmtDate(md.motTestDueDate)} />
+            {md.hasOutstandingRecall === true && <VehicleInfoRow label="Outstanding recall" value="Yes" />}
+          </>) : (<>
+            <VehicleInfoRow label="Make" value={project.make} />
+            <VehicleInfoRow label="Model" value={project.model} />
+            <VehicleInfoRow label="Year" value={project.year} />
+            <VehicleInfoRow label="Fuel type" value={project.fuelType} />
+            <VehicleInfoRow label="Trim" value={project.trim} />
+            <VehicleInfoRow label="Body type" value={project.bodyType} />
+          </>)}
+        </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Transmission</h4>
-        <VehicleInfoRow label="Type" value={vd.transmission?.type} />
-        <VehicleInfoRow label="Gears" value={vd.transmission?.gears} />
-        <VehicleInfoRow label="Drive" value={vd.transmission?.driveType} />
-        <VehicleInfoRow label="Driving axle" value={vd.transmission?.drivingAxle} />
-      </div>
+        {vd && (<>
+          <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+            <h4 className="spec-card-title">Registration History</h4>
+            <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
+            <VehicleInfoRow label="Country of origin" value={vd.countryOfOrigin} />
+            <VehicleInfoRow label="Series / Gen" value={vd.series} />
+            <VehicleInfoRow label="Variant" value={vd.modelVariant} />
+            {vd.isScrapped && <VehicleInfoRow label="Status" value="SCRAPPED" />}
+            {vd.isExported && <VehicleInfoRow label="Status" value="EXPORTED" />}
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Performance</h4>
-        <VehicleInfoRow label="Power" value={vd.performance?.powerBhp != null ? `${vd.performance.powerBhp} bhp / ${vd.performance.powerKw} kW` : null} />
-        <VehicleInfoRow label="Torque" value={vd.performance?.torqueNm != null ? `${vd.performance.torqueNm} Nm / ${vd.performance.torqueLbft} lb·ft` : null} />
-        <VehicleInfoRow label="0–60 mph" value={fmt(vd.performance?.zeroToSixtyMph, 's')} />
-        <VehicleInfoRow label="Top speed" value={fmt(vd.performance?.maxSpeedMph, 'mph')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Engine</h4>
+            <VehicleInfoRow label="Description" value={vd.engine?.description} />
+            <VehicleInfoRow label="Manufacturer" value={vd.engine?.manufacturer} />
+            <VehicleInfoRow label="Capacity" value={vd.engine?.capacityLitres != null ? `${vd.engine.capacityLitres}L (${vd.engine.capacityCc}cc)` : fmt(vd.engine?.capacityCc, 'cc')} />
+            <VehicleInfoRow label="Cylinders" value={vd.engine?.cylinders} />
+            <VehicleInfoRow label="Aspiration" value={vd.engine?.aspiration} />
+            <VehicleInfoRow label="Valve gear" value={vd.engine?.valveGear} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Fuel Economy</h4>
-        <VehicleInfoRow label="Combined" value={fmt(vd.economy?.combinedMpg, 'mpg')} />
-        <VehicleInfoRow label="Urban" value={fmt(vd.economy?.urbanMpg, 'mpg')} />
-        <VehicleInfoRow label="Extra-urban" value={fmt(vd.economy?.extraUrbanMpg, 'mpg')} />
-        <VehicleInfoRow label="Combined (l/100km)" value={fmt(vd.economy?.combinedL100km, 'L/100km')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Transmission</h4>
+            <VehicleInfoRow label="Type" value={vd.transmission?.type} />
+            <VehicleInfoRow label="Gears" value={vd.transmission?.gears} />
+            <VehicleInfoRow label="Drive" value={vd.transmission?.driveType} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Emissions</h4>
-        <VehicleInfoRow label="Euro status" value={vd.emissions?.euroStatus} />
-        <VehicleInfoRow label="CO2" value={fmt(vd.emissions?.co2, 'g/km')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Performance</h4>
+            <VehicleInfoRow label="Power" value={vd.performance?.powerBhp != null ? `${vd.performance.powerBhp} bhp / ${vd.performance.powerKw} kW` : null} />
+            <VehicleInfoRow label="Torque" value={vd.performance?.torqueNm != null ? `${vd.performance.torqueNm} Nm / ${vd.performance.torqueLbft} lb·ft` : null} />
+            <VehicleInfoRow label="0–60 mph" value={fmt(vd.performance?.zeroToSixtyMph, 's')} />
+            <VehicleInfoRow label="Top speed" value={fmt(vd.performance?.maxSpeedMph, 'mph')} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Body</h4>
-        <VehicleInfoRow label="Style" value={vd.body?.style} />
-        <VehicleInfoRow label="Shape" value={vd.body?.shape} />
-        <VehicleInfoRow label="Cab type" value={vd.body?.cabType} />
-        <VehicleInfoRow label="Wheelbase" value={vd.body?.wheelbaseType} />
-        <VehicleInfoRow label="Doors" value={vd.body?.numberOfDoors} />
-        <VehicleInfoRow label="Seats" value={vd.body?.numberOfSeats} />
-        <VehicleInfoRow label="Payload volume" value={fmt(vd.body?.payloadVolumeLitres, 'L')} />
-        <VehicleInfoRow label="Fuel tank" value={fmt(vd.body?.fuelTankLitres, 'L')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Economy</h4>
+            <VehicleInfoRow label="Combined" value={fmt(vd.economy?.combinedMpg, 'mpg')} />
+            <VehicleInfoRow label="Urban" value={fmt(vd.economy?.urbanMpg, 'mpg')} />
+            <VehicleInfoRow label="Extra-urban" value={fmt(vd.economy?.extraUrbanMpg, 'mpg')} />
+            <VehicleInfoRow label="CO2" value={fmt(vd.emissions?.co2, 'g/km')} />
+            <VehicleInfoRow label="Euro status" value={vd.emissions?.euroStatus} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Weights</h4>
-        <VehicleInfoRow label="Kerb" value={fmt(vd.weights?.kerbKg, 'kg')} />
-        <VehicleInfoRow label="Gross" value={fmt(vd.weights?.grossKg, 'kg')} />
-        <VehicleInfoRow label="Payload" value={fmt(vd.weights?.payloadKg, 'kg')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Body</h4>
+            <VehicleInfoRow label="Style" value={vd.body?.style} />
+            <VehicleInfoRow label="Doors" value={vd.body?.numberOfDoors} />
+            <VehicleInfoRow label="Seats" value={vd.body?.numberOfSeats} />
+            <VehicleInfoRow label="Fuel tank" value={fmt(vd.body?.fuelTankLitres, 'L')} />
+            <VehicleInfoRow label="Kerb weight" value={fmt(vd.weights?.kerbKg, 'kg')} />
+          </div>
+        </>)}
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Dimensions</h4>
-        <VehicleInfoRow label="Length" value={fmt(vd.dimensions?.lengthMm, 'mm')} />
-        <VehicleInfoRow label="Width" value={fmt(vd.dimensions?.widthMm, 'mm')} />
-        <VehicleInfoRow label="Height" value={fmt(vd.dimensions?.heightMm, 'mm')} />
-        <VehicleInfoRow label="Wheelbase" value={fmt(vd.dimensions?.wheelbaseMm, 'mm')} />
       </div>
-    </div>
     </div>
   );
 }
