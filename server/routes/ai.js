@@ -95,6 +95,8 @@ router.post('/ask', requireAuth, async (req, res) => {
       source: project.source,
       active: project.active,
       closed: project.closed,
+      motTests,
+      motVehicleMeta,
       confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
       history: updatedHistory.map((h) => ({
         id: h.id, role: h.role, text: h.text, confirmed: h.confirmed, createdAt: h.created_at,
