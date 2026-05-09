@@ -8,7 +8,7 @@ import QuoteTab from './QuoteTab';
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
 const COMPOUND = /\?\s*(if|when|please|and)\b/i;
-const DIAGNOSTIC_VERB = /^(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|confirm that|see if|determine|evaluate)\b/i;
+const DIAGNOSTIC_VERB = /\b(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|see if|determine|evaluate|consider)\b/i;
 
 function nodeText(node) {
   if (!node) return '';
