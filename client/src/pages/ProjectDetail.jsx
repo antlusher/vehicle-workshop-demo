@@ -506,6 +506,10 @@ function MotTab({ project, token }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!tests && project.registration) handleRefresh();
+  }, [project.id]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     setError('');
@@ -894,7 +898,7 @@ function VehicleHistoryTab({ history, currentProjectId }) {
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, token }) {
+function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -908,6 +912,13 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     () => new Set((project?.confirmedFixes || []).map((f) => f.text)),
     [project?.confirmedFixes]
   );
+
+  // Auto-refresh project when motVehicleMeta is missing (e.g. after createProject)
+  useEffect(() => {
+    if (project?.id && !project.motVehicleMeta && project.registration && onRefreshProject) {
+      onRefreshProject(project.id);
+    }
+  }, [project?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -947,10 +958,17 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     await submitQuestion(composedMessage);
   }, [submitQuestion]);
 
-  if (!project) {
+  if (projectLoading || !project) {
     return (
       <div className="chat-shell chat-shell--empty">
-        <p>Select a project to begin the diagnostic session.</p>
+        {projectLoading ? (
+          <div className="project-loading">
+            <div className="project-loading-car">&#x1F697;</div>
+            <p>Loading vehicle data…</p>
+          </div>
+        ) : (
+          <p>Select a project to begin the diagnostic session.</p>
+        )}
       </div>
     );
   }

@@ -119,13 +119,18 @@ function App() {
     setProjects((current) => current.map((p) => p.id === projectId ? { ...p, ...updated } : p));
   };
 
+  const [projectLoading, setProjectLoading] = useState(false);
+
   const handleSelectProject = async (projectId) => {
     setError('');
+    setProjectLoading(true);
     try {
       const project = await api.getProject(projectId, token);
       setSelectedProject(project);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setProjectLoading(false);
     }
   };
 
@@ -285,10 +290,12 @@ function App() {
         <div className="panel-right">
           <ProjectDetail
             project={selectedProject}
+            projectLoading={projectLoading}
             onAsk={handleAskQuestion}
             onConfirmSuggestion={handleConfirmSuggestion}
             onClearHistory={handleClearHistory}
             onUpdateVehicle={handleUpdateVehicle}
+            onRefreshProject={handleSelectProject}
             token={token}
           />
         </div>

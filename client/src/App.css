@@ -120,6 +120,23 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   padding: 24px;
 }
 
+.project-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.project-loading-car {
+  font-size: 2.5rem;
+  animation: car-pulse 1s ease-in-out infinite;
+}
+
+@keyframes car-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50%       { transform: scale(1.15); opacity: 1; }
+}
+
 /* ── Chat header ── */
 .chat-header {
   display: flex;
