@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const { findUserByToken, createUser } = require('../services/authService');
 const { query } = require('../services/db');
 const admin = require('../services/adminService');
@@ -143,7 +143,7 @@ router.delete('/knowledge-base/:id', async (req, res) => {
 router.post('/knowledge/parse-pdf', upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
   try {
-    const { text } = await pdfParse(req.file.buffer);
+    const { text } = await new PDFParse().parse(req.file.buffer);
     const chunks = chunkPdfText(text);
     return res.json({ chunks });
   } catch (err) {
