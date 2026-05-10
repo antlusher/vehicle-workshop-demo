@@ -251,9 +251,13 @@ Critical accuracy requirements:
 
     const text = response.content.find((b) => b.type === 'text')?.text || '';
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+    if (!match) {
+      console.error('[generateVehicleSpecs] No JSON found in response for:', vehicle, '| response:', text.slice(0, 200));
+      return null;
+    }
     return JSON.parse(match[0]);
-  } catch {
+  } catch (err) {
+    console.error('[generateVehicleSpecs] Error for:', vehicle, '|', err.message);
     return null;
   }
 }

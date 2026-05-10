@@ -157,18 +157,27 @@ function QuickReference({ project, token }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (specs) return;
+  const fetchSpecs = () => {
     setLoading(true);
     setError('');
     api.fetchProjectSpecs(project.id, token)
       .then(setSpecs)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (specs) return;
+    fetchSpecs();
   }, [project.id]);
 
   if (loading) return <p className="specs-loading">Generating vehicle specs…</p>;
-  if (error) return <p className="error" style={{ padding: 16 }}>{error}</p>;
+  if (error) return (
+    <div style={{ padding: 16 }}>
+      <p className="error" style={{ marginBottom: 10 }}>{error}</p>
+      <button className="secondary" style={{ fontSize: '0.85rem' }} onClick={fetchSpecs}>Try again</button>
+    </div>
+  );
   if (!specs) return null;
 
   const s = specs;
