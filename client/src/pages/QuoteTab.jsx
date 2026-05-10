@@ -4,6 +4,58 @@ import * as quotesApi from '../services/quotesApi';
 const STATUS_LABELS = { draft: 'Draft', sent: 'Sent to customer', approved: 'Approved', invoiced: 'Invoiced' };
 const TYPE_LABELS   = { part: 'Part', labour: 'Labour', other: 'Other' };
 
+function QuotePreviewModal({ quote, quoteFields, onClose }) {
+  const allLines = quote.lines.map((l) => ({
+    ...l,
+    // apply any unsaved quoteFields edits by using saved quote lines
+  }));
+  const partLines   = allLines.filter((l) => l.type === 'part');
+  const labourLines = allLines.filter((l) => l.type === 'labour');
+  const otherLines  = allLines.filter((l) => l.type !== 'part' && l.type !== 'labour');
+
+  const renderLines = (lines) => lines.map((l) => (
+    <div key={l.id} className="cp-quote-line">
+      <span className="cp-quote-line-desc">{l.description}</span>
+      <span className="cp-quote-line-qty">×{l.qty}</span>
+      <span className="cp-quote-line-total">£{l.lineTotal.toFixed(2)}</span>
+    </div>
+  ));
+
+  const summary = quoteFields.diagnosticSummary;
+  const notes   = quoteFields.notes;
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>Customer view — quote preview</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body cp-detail">
+          <div className="cp-report-section cp-quote-section">
+            <h3 className="cp-section-title">Your estimate</h3>
+            {summary && <p className="cp-section-text" style={{ marginBottom: 12 }}>{summary}</p>}
+
+            {partLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Parts</div>{renderLines(partLines)}</div>}
+            {labourLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Labour</div>{renderLines(labourLines)}</div>}
+            {otherLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Other</div>{renderLines(otherLines)}</div>}
+
+            {allLines.length === 0 && <p style={{ color: '#9ca3af', padding: '12px 0' }}>No line items yet — add parts or labour to see them here.</p>}
+
+            <div className="cp-quote-totals">
+              <div className="cp-cost-row"><span>Subtotal</span><span>£{quote.totals.subtotal.toFixed(2)}</span></div>
+              <div className="cp-cost-row"><span>VAT ({quote.totals.vatRate}%)</span><span>£{quote.totals.vat.toFixed(2)}</span></div>
+              <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>£{quote.totals.total.toFixed(2)}</span></div>
+            </div>
+
+            {notes && <p className="cp-quote-notes">{notes}</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
   const [q, setQ]           = useState('');
   const [results, setResults] = useState([]);
@@ -208,6 +260,7 @@ export default function QuoteTab({ project, token }) {
   const [quoteFields, setQuoteFields] = useState({ diagnosticSummary: '', notes: '' });
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
+  const [previewing, setPreviewing] = useState(false);
 
   const activeQuote = quotes.find((q) => q.id === activeId) || quotes[0] || null;
 
@@ -329,12 +382,21 @@ export default function QuoteTab({ project, token }) {
 
       {activeQuote && (
         <>
+          {previewing && (
+            <QuotePreviewModal
+              quote={activeQuote}
+              quoteFields={quoteFields}
+              onClose={() => setPreviewing(false)}
+            />
+          )}
+
           {/* Status bar */}
           <div className="quote-status-bar">
             <span className={`quote-status-badge ${activeQuote.status}`}>
               {STATUS_LABELS[activeQuote.status] || activeQuote.status}
             </span>
             <div className="quote-status-actions">
+              <button type="button" className="secondary" onClick={() => setPreviewing(true)}>Preview</button>
               {activeQuote.status === 'draft' && (
                 <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Mark as sent</button>
               )}

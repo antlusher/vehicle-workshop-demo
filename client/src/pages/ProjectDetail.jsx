@@ -562,6 +562,62 @@ function MotTab({ project, token }) {
   );
 }
 
+function ReportPreviewModal({ project, form, images, confirmedFixes, onClose }) {
+  const fmt = (v) => v ? `£${parseFloat(v).toFixed(2)}` : null;
+  const hasCosts = form.costParts || form.costLabour || form.costTotal;
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>Customer view — report preview</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body cp-detail">
+          <div className="cp-detail-header">
+            <div>
+              <h2 className="cp-detail-title">{project.registration || 'Vehicle'} — Service Report</h2>
+              <p className="cp-detail-meta">{[project.make, project.model, project.year].filter(Boolean).join(' ')}</p>
+            </div>
+          </div>
+          {form.diagnosis && <div className="cp-report-section"><h3 className="cp-section-title">What we found</h3><p className="cp-section-text">{form.diagnosis}</p></div>}
+          {form.workCarriedOut && <div className="cp-report-section"><h3 className="cp-section-title">What we did</h3><p className="cp-section-text" style={{ whiteSpace: 'pre-line' }}>{form.workCarriedOut}</p></div>}
+          {confirmedFixes?.length > 0 && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Repairs confirmed</h3>
+              <ul className="cp-fixes">{confirmedFixes.map((f) => <li key={f.id} className="cp-fix">✓ {f.text}</li>)}</ul>
+            </div>
+          )}
+          {form.technicianNotes && <div className="cp-report-section cp-report-section--note"><h3 className="cp-section-title">Technician notes</h3><p className="cp-section-text" style={{ whiteSpace: 'pre-line' }}>{form.technicianNotes}</p></div>}
+          {hasCosts && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Your bill</h3>
+              <div className="cp-costs">
+                {form.costParts && <div className="cp-cost-row"><span>Parts</span><span>{fmt(form.costParts)}</span></div>}
+                {form.costLabour && <div className="cp-cost-row"><span>Labour</span><span>{fmt(form.costLabour)}</span></div>}
+                {form.costTotal && <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>{fmt(form.costTotal)}</span></div>}
+              </div>
+            </div>
+          )}
+          {images.length > 0 && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Photos</h3>
+              <div className="cp-photos">
+                {images.map((img) => (
+                  <div key={img.id} className="cp-photo">
+                    <img src={reportsApi.imageUrl(img.filename)} alt={img.caption || ''} />
+                    {img.caption && <p className="cp-photo-caption">{img.caption}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!form.diagnosis && !form.workCarriedOut && !hasCosts && <p style={{ color: '#9ca3af', textAlign: 'center', padding: '24px 0' }}>Nothing to preview yet — fill in the report fields above.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportTab({ project, token }) {
   const [report, setReport] = useState(null);
   const [images, setImages] = useState([]);
@@ -571,6 +627,7 @@ function ReportTab({ project, token }) {
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
   const fileRef = useRef(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -657,11 +714,23 @@ function ReportTab({ project, token }) {
 
   return (
     <div className="report-tab">
+      {previewing && (
+        <ReportPreviewModal
+          project={project}
+          form={form}
+          images={images}
+          confirmedFixes={project.confirmedFixes}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
       <div className="report-status-bar">
         <span className={`report-badge ${isPublished ? 'report-badge--published' : 'report-badge--draft'}`}>
           {isPublished ? 'Published to customer' : 'Draft — not visible to customer'}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="secondary" onClick={() => setPreviewing(true)} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
+            Preview
+          </button>
           <button onClick={handleSave} disabled={saving} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
             {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save report'}
           </button>
