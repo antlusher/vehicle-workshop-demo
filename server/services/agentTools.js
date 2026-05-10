@@ -44,22 +44,23 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
   const transmissionId = await resolveTransmissionId(transmission_code);
 
   const [csRows, kbRows] = await Promise.all([
+    // Confirmed fixes: match by engine_code directly or make/model
     query(
       `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
               COUNT(*) OVER (PARTITION BY cs.text) as frequency
        FROM confirmed_suggestions cs
        JOIN projects p ON cs.project_id = p.id
-       LEFT JOIN vehicle_types vt ON p.vehicle_type_id = vt.id
        WHERE (
-         ($1::uuid IS NOT NULL AND vt.engine_id = $1)
+         ($1::text IS NOT NULL AND LOWER(p.engine_code) = LOWER($1))
          OR (LOWER(p.make) = LOWER($2) AND LOWER(p.model) = LOWER($3))
        )
        AND ($4::varchar IS NULL OR p.year = $4)
        AND cs.text ILIKE $5
        ORDER BY frequency DESC
        LIMIT 5`,
-      [engineId, make, model, year || null, `%${symptom}%`]
+      [engine_code || null, make, model, year || null, `%${symptom}%`]
     ),
+    // Knowledge base: match by engine_id, or fall back to full-text search
     query(
       `SELECT title, content, category, fault_code, source,
               CASE WHEN ($1::uuid IS NOT NULL AND engine_id = $1) THEN 0
@@ -69,12 +70,13 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
        WHERE (
          ($1::uuid IS NOT NULL AND engine_id = $1)
          OR ($2::uuid IS NOT NULL AND transmission_id = $2)
-         OR (($3::varchar IS NULL OR LOWER(make) = LOWER($3)) AND ($4::varchar IS NULL OR LOWER(model) = LOWER($4)))
+         OR search_vector @@ plainto_tsquery('english', $5)
        )
-       AND (title ILIKE $5 OR content ILIKE $5)
-       ORDER BY relevance, updated_at DESC
-       LIMIT 5`,
-      [engineId, transmissionId, make || null, model || null, `%${symptom}%`]
+       ORDER BY relevance,
+         CASE WHEN search_vector IS NOT NULL THEN ts_rank(search_vector, plainto_tsquery('english', $5)) ELSE 0 END DESC,
+         updated_at DESC
+       LIMIT 6`,
+      [engineId, transmissionId, make || null, model || null, symptom]
     ),
   ]);
 
@@ -104,22 +106,19 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
 }
 
 async function getCommonFixes({ make, model, year, engine_code, transmission_code }) {
-  const engineId = await resolveEngineId(engine_code);
-
   const { rows } = await query(
-    `SELECT cs.text, COUNT(*) as confirmed_count, p.make, p.model, p.year
+    `SELECT cs.text, COUNT(*) as confirmed_count
      FROM confirmed_suggestions cs
      JOIN projects p ON cs.project_id = p.id
-     LEFT JOIN vehicle_types vt ON p.vehicle_type_id = vt.id
      WHERE (
-       ($1::uuid IS NOT NULL AND vt.engine_id = $1)
+       ($1::text IS NOT NULL AND LOWER(p.engine_code) = LOWER($1))
        OR (LOWER(p.make) = LOWER($2) AND LOWER(p.model) = LOWER($3))
      )
      AND ($4::varchar IS NULL OR p.year = $4)
-     GROUP BY cs.text, p.make, p.model, p.year
+     GROUP BY cs.text
      ORDER BY confirmed_count DESC
-     LIMIT 5`,
-    [engineId, make, model, year || null]
+     LIMIT 10`,
+    [engine_code || null, make, model, year || null]
   );
 
   if (!rows.length) {
