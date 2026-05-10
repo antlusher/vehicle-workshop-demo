@@ -14,6 +14,7 @@ async function request(path, options = {}, token) {
 export const getMyVehicles = (token) => request('/api/customer/vehicles', {}, token);
 export const getVehicleJobs = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/jobs`, {}, token);
 export const getJobReport = (projectId, token) => request(`/api/customer/jobs/${projectId}`, {}, token);
+export const getJobQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote`, {}, token);
 
 // Admin customer management
 export const getCustomers = (token) => request('/api/admin/customers', {}, token);

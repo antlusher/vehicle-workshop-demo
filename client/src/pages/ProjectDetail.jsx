@@ -717,7 +717,31 @@ function ReportTab({ project, token }) {
         </div>
 
         <div className="report-section">
-          <label className="report-label">Costs</label>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <label className="report-label">Costs</label>
+            <button
+              type="button"
+              className="secondary"
+              style={{ fontSize: '0.72rem', padding: '2px 10px', marginBottom: 2 }}
+              onClick={async () => {
+                try {
+                  const qs = await import('../services/quotesApi').then((m) => m.getQuotes(project.id, token));
+                  const sent = qs.find((q) => q.status === 'sent' || q.status === 'approved') || qs[0];
+                  if (!sent) { alert('No quote found for this project.'); return; }
+                  const partsTotal = sent.lines.filter((l) => l.type === 'part').reduce((s, l) => s + l.lineTotal, 0);
+                  const labourTotal = sent.lines.filter((l) => l.type === 'labour').reduce((s, l) => s + l.lineTotal, 0);
+                  setForm((f) => ({
+                    ...f,
+                    costParts: partsTotal > 0 ? partsTotal.toFixed(2) : f.costParts,
+                    costLabour: labourTotal > 0 ? labourTotal.toFixed(2) : f.costLabour,
+                    costTotal: sent.totals.total.toFixed(2),
+                  }));
+                } catch { alert('Could not load quote.'); }
+              }}
+            >
+              Load from quote
+            </button>
+          </div>
           <div className="report-costs">
             <div>
               <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Parts (£)</label>

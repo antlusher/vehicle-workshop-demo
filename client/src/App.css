@@ -1356,6 +1356,63 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .cp-error { color: #b91c1c; padding: 24px; text-align: center; }
 .cp-empty { color: #9ca3af; font-size: 0.9rem; padding: 32px 0; }
 
+.cp-job-badges { display: flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+
+.cp-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cp-badge--report { background: #dbeafe; color: #1d4ed8; }
+.cp-badge--quote  { background: #fef9c3; color: #92400e; }
+.cp-badge--approved { background: #d1fae5; color: #065f46; }
+
+.cp-status-badge--quote { background: #fef9c3; color: #92400e; font-size: 0.78rem; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
+
+.cp-quote-section { margin-top: 24px; }
+
+.cp-quote-group { margin-bottom: 12px; }
+
+.cp-quote-group-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.cp-quote-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.88rem;
+}
+.cp-quote-line-desc { flex: 1; color: #1e293b; }
+.cp-quote-line-qty  { color: #94a3b8; font-size: 0.8rem; white-space: nowrap; }
+.cp-quote-line-total { font-weight: 600; white-space: nowrap; }
+
+.cp-quote-totals {
+  margin-top: 12px;
+  border-top: 2px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.cp-quote-notes {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  color: #64748b;
+  font-style: italic;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
 /* ── Quote Tab ── */
 .quote-tab { padding: 20px 0; }
 

@@ -44,7 +44,7 @@ router.get('/vehicles', requireCustomer, async (req, res) => {
   })));
 });
 
-// GET /api/customer/vehicles/:vehicleId/jobs — list published jobs for a vehicle
+// GET /api/customer/vehicles/:vehicleId/jobs — list published jobs + jobs with sent quotes
 router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
   // Verify customer is linked to this vehicle
   const { rows: link } = await query(
@@ -56,10 +56,14 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
   const { rows } = await query(
     `SELECT p.id, p.registration_snapshot, p.registration, p.make, p.model, p.year,
             p.created_at, p.closed,
-            jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at, jr.status
+            jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at,
+            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
+            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
      FROM projects p
-     JOIN job_reports jr ON jr.project_id = p.id
-     WHERE p.vehicle_id = $1 AND jr.status = 'published'
+     LEFT JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
+     WHERE p.vehicle_id = $1
+       AND (jr.id IS NOT NULL
+            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved')))
      ORDER BY p.created_at DESC`,
     [req.params.vehicleId]
   );
@@ -74,6 +78,8 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
     reportId: r.report_id,
     diagnosisSummary: r.diagnosis ? r.diagnosis.slice(0, 120) + (r.diagnosis.length > 120 ? '…' : '') : null,
     costTotal: r.cost_total ? parseFloat(r.cost_total) : null,
+    quoteId: r.quote_id || null,
+    quoteStatus: r.quote_status || null,
     publishedAt: r.published_at,
   })));
 });
@@ -135,6 +141,60 @@ router.get('/jobs/:projectId', requireCustomer, async (req, res) => {
       caption: img.caption || '',
     })),
     confirmedFixes: fixRows.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
+  });
+});
+
+// GET /api/customer/jobs/:projectId/quote — sent/approved quote visible to customer
+router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
+  const { rows: proj } = await query('SELECT vehicle_id FROM projects WHERE id=$1', [req.params.projectId]);
+  if (!proj.length) return res.status(404).json({ error: 'Not found' });
+
+  if (proj[0].vehicle_id) {
+    const { rows: link } = await query(
+      'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+      [req.user.id, proj[0].vehicle_id]
+    );
+    if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+  } else {
+    return res.status(403).json({ error: 'Not authorised' });
+  }
+
+  const { rows } = await query(
+    `SELECT * FROM quotes WHERE project_id=$1 AND status IN ('sent','approved')
+     ORDER BY updated_at DESC LIMIT 1`,
+    [req.params.projectId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'No quote available' });
+  const quote = rows[0];
+
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+
+  const lines = lineRows.map((row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal };
+  });
+
+  const vatRate = parseFloat(quote.vat_rate);
+  const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  return res.json({
+    id: quote.id,
+    status: quote.status,
+    notes: quote.notes || '',
+    diagnosticSummary: quote.diagnostic_summary || '',
+    vatRate,
+    createdAt: quote.created_at,
+    updatedAt: quote.updated_at,
+    lines,
+    totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
   });
 });
 
