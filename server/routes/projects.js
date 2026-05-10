@@ -286,6 +286,16 @@ router.post('/:projectId/close', requireAuth, async (req, res) => {
   return res.json(toProject(rows[0], []));
 });
 
+router.post('/:projectId/reopen', requireAuth, async (req, res) => {
+  const { rows } = await query(
+    `UPDATE projects SET closed = false, active = true, updated_at = now()
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [req.params.projectId, req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  return res.json(toProject(rows[0], []));
+});
+
 router.post('/:projectId/archive', requireAuth, async (req, res) => {
   const { rows } = await query(
     `UPDATE projects SET archived_at = now(), updated_at = now()

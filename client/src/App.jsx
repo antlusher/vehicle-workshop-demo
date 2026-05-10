@@ -145,6 +145,16 @@ function App() {
     }
   };
 
+  const handleReopenProject = async (projectId) => {
+    setError('');
+    try {
+      await api.reopenProject(projectId, token);
+      await reloadProjects();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleAskQuestion = async (projectId, question, chatMode) => {
     setError('');
     try {
@@ -281,6 +291,7 @@ function App() {
             onCreateProjectManual={handleCreateProjectManual}
             onSelectProject={handleSelectProject}
             onCloseProject={handleCloseProject}
+            onReopenProject={handleReopenProject}
             onArchiveProject={handleArchiveProject}
             onRestoreProject={handleRestoreProject}
             selectedProject={selectedProject}

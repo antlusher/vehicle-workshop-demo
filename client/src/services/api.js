@@ -80,6 +80,10 @@ export async function closeProject(projectId, token) {
   return request(`/api/projects/${projectId}/close`, { method: 'POST' }, token);
 }
 
+export async function reopenProject(projectId, token) {
+  return request(`/api/projects/${projectId}/reopen`, { method: 'POST' }, token);
+}
+
 export async function clearProjectHistory(projectId, token) {
   return request(`/api/projects/${projectId}/clear`, { method: 'POST' }, token);
 }

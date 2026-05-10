@@ -4,7 +4,7 @@ const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Pl
 const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
 const EMPTY_MANUAL = { registration: '', vin: '', make: '', model: '', year: '', engineCode: '', fuelType: '', trim: '', bodyType: '' };
 
-function ProjectCard({ project, selectedProject, archived, onSelect, onClose, onArchive, onRestore }) {
+function ProjectCard({ project, selectedProject, archived, onSelect, onClose, onReopen, onArchive, onRestore }) {
   return (
     <div
       className="project-card"
@@ -19,6 +19,7 @@ function ProjectCard({ project, selectedProject, archived, onSelect, onClose, on
           <>
             <button type="button" onClick={() => onSelect(project.id)}>Open</button>
             {!project.closed && <button type="button" className="secondary" onClick={() => onClose(project.id)}>Close</button>}
+            {project.closed && <button type="button" className="secondary" onClick={() => onReopen(project.id)}>Reopen</button>}
             <button type="button" className="secondary" style={{ marginLeft: 'auto', color: '#6b7280' }} onClick={(e) => onArchive(e, project.id)}>Delete</button>
           </>
         )}
@@ -27,7 +28,7 @@ function ProjectCard({ project, selectedProject, archived, onSelect, onClose, on
   );
 }
 
-function ProjectGroup({ label, projects, selectedProject, onSelect, onClose, onArchive, emptyText }) {
+function ProjectGroup({ label, projects, selectedProject, onSelect, onClose, onReopen, onArchive, emptyText }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
@@ -38,14 +39,14 @@ function ProjectGroup({ label, projects, selectedProject, onSelect, onClose, onA
       ) : (
         projects.map((project) => (
           <ProjectCard key={project.id} project={project} selectedProject={selectedProject}
-            onSelect={onSelect} onClose={onClose} onArchive={onArchive} />
+            onSelect={onSelect} onClose={onClose} onReopen={onReopen} onArchive={onArchive} />
         ))
       )}
     </div>
   );
 }
 
-function Projects({ projects, archivedProjects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
+function Projects({ projects, archivedProjects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, onReopenProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
   const [identifier, setIdentifier] = useState('');
   const [manual, setManual] = useState(false);
   const [form, setForm] = useState(EMPTY_MANUAL);
@@ -183,10 +184,10 @@ function Projects({ projects, archivedProjects, onCreateProject, onCreateProject
         ) : (
           <>
             <ProjectGroup label="Open" projects={openProjects} selectedProject={selectedProject}
-              onSelect={onSelectProject} onClose={onCloseProject} onArchive={handleArchive} emptyText="No open projects." />
+              onSelect={onSelectProject} onClose={onCloseProject} onReopen={onReopenProject} onArchive={handleArchive} emptyText="No open projects." />
             {closedProjects.length > 0 && (
               <ProjectGroup label="Closed" projects={closedProjects} selectedProject={selectedProject}
-                onSelect={onSelectProject} onClose={onCloseProject} onArchive={handleArchive} />
+                onSelect={onSelectProject} onClose={onCloseProject} onReopen={onReopenProject} onArchive={handleArchive} />
             )}
           </>
         )}
