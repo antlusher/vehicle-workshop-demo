@@ -1,5 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { toolDefinitions, toolHandlers } = require('./agentTools');
+const { workshopToolDefinitions, workshopToolHandlers } = require('./workshopTools');
 
 function createClient() {
   if (!process.env.ANTHROPIC_API_KEY) return null;
@@ -10,6 +11,51 @@ const client = createClient();
 
 function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnose') {
   const isHowTo = chatMode === 'howto';
+  const isWorkshop = chatMode === 'workshop';
+
+  if (isWorkshop) {
+    const meta = project.motVehicleMeta || {};
+    const make = project.make || meta.make || '';
+    const model = project.model || meta.model || '';
+    const year = project.year || meta.manufactureYear || '';
+    const fuelType = project.fuelType || meta.fuelType || '';
+    const engineSize = meta.engineSize ? `${meta.engineSize}cc` : '';
+
+    return [
+      'You are a workshop management assistant for a professional vehicle repair workshop.',
+      'You have two capabilities: answering analytics questions about the workshop, and performing admin tasks for the current job.',
+      '',
+      'CURRENT JOB:',
+      project.registration ? `Registration: ${project.registration}` : null,
+      make ? `Vehicle: ${[year, make, model, project.engineCode, fuelType, engineSize].filter(Boolean).join(' ')}` : null,
+      `Project ID: ${project.id}`,
+      '',
+      'WHAT YOU CAN DO:',
+      '1. ANALYTICS — answer questions about the workshop using query_workshop_stats:',
+      '   - How many vehicles by make/model have been worked on',
+      '   - Job counts by month',
+      '   - Customer and staff counts',
+      '   - Most common confirmed faults and repairs',
+      '   - Service type breakdown (oil/service, brakes, timing, tyres)',
+      '   - Revenue from invoiced quotes',
+      '   - Active vs closed job counts',
+      '',
+      '2. QUOTE CREATION — build quotes for the current job:',
+      '   - Use get_project_specs to get oil grade, capacity, service intervals',
+      '   - Use get_mot_summary to get the latest mileage reading',
+      '   - Always show the proposed lines WITH COSTS before creating',
+      '   - Ask "Shall I create this quote?" and wait for confirmation',
+      '   - Only call create_quote after the technician confirms',
+      '   - Use realistic UK trade cost prices (the markup is applied on top)',
+      '',
+      'FORMATTING RULES:',
+      '- Be concise. For analytics, give a direct answer with the numbers.',
+      '- For quote proposals, list each line clearly: description, qty, sell price, line total.',
+      '- Do not use emojis.',
+      '- After creating a quote, remind the technician to review it in the Quote tab.',
+    ].filter((l) => l !== null).join('\n');
+  }
+
   const lines = [
     'You are an expert automotive assistant for professional vehicle repair technicians.',
     'You have access to a workshop knowledge base and vehicle database via tools.',
@@ -141,10 +187,13 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
   const messages = buildMessages(history, question);
   const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode);
 
-  // How To mode only gets the specs tool — history/fix tools are irrelevant for procedures
-  const tools = chatMode === 'howto'
-    ? toolDefinitions.filter((t) => t.name === 'get_vehicle_specs')
-    : toolDefinitions;
+  const isWorkshop = chatMode === 'workshop';
+  const tools = isWorkshop
+    ? workshopToolDefinitions
+    : chatMode === 'howto'
+      ? toolDefinitions.filter((t) => t.name === 'get_vehicle_specs')
+      : toolDefinitions;
+  const handlers = isWorkshop ? workshopToolHandlers : toolHandlers;
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -159,7 +208,7 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
     const toolResults = [];
 
     for (const toolUse of toolUseBlocks) {
-      const handler = toolHandlers[toolUse.name];
+      const handler = handlers[toolUse.name];
       let result;
       try {
         result = handler ? await handler(toolUse.input) : { error: `Unknown tool: ${toolUse.name}` };

@@ -1076,7 +1076,31 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
                 <span className="chat-mode-card-title">How To</span>
                 <span className="chat-mode-card-desc">Step-by-step procedures for repairs and replacements</span>
               </button>
+              <button type="button" className={`chat-mode-card${chatMode === 'workshop' ? ' active' : ''}`} onClick={() => selectMode('workshop')}>
+                <span className="chat-mode-card-title">Workshop</span>
+                <span className="chat-mode-card-desc">Create quotes, look up business stats, automate admin tasks</span>
+              </button>
             </div>
+            {chatMode === 'workshop' && (
+              <div className="workshop-examples">
+                <p className="workshop-examples-label">Try asking:</p>
+                <div className="workshop-example-chips">
+                  {[
+                    'Create a full service quote',
+                    'How many VWs have we worked on?',
+                    'What are our most common repairs?',
+                    'How many customers do we have?',
+                    'Create a brake pad quote',
+                    'How many jobs this year?',
+                  ].map((ex) => (
+                    <button key={ex} type="button" className="workshop-chip"
+                      onClick={() => setQuestion(ex)}>
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1153,6 +1177,7 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
             <span className="chat-verbosity-label">Mode:</span>
             <button type="button" className={`chat-verbosity-btn${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>Diagnose</button>
             <button type="button" className={`chat-verbosity-btn${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>How To</button>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'workshop' ? ' active' : ''}`} onClick={() => selectMode('workshop')}>Workshop</button>
           </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
@@ -1163,7 +1188,9 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask for repair guidance... (Enter to send, Shift+Enter for new line)"
+              placeholder={chatMode === 'workshop'
+                ? 'Ask a workshop question or request a task… (Enter to send)'
+                : 'Ask for repair guidance... (Enter to send, Shift+Enter for new line)'}
               disabled={isBusy}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
