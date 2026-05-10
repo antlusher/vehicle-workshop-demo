@@ -199,14 +199,24 @@ function AddLabourForm({ quoteId, token, settings, onUpdated }) {
 }
 
 export default function QuoteTab({ project, token }) {
-  const [quotes, setQuotes]     = useState([]);
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [activeId, setActiveId] = useState(null);
-  const [creating, setCreating] = useState(false);
+  const [quotes, setQuotes]         = useState([]);
+  const [settings, setSettings]     = useState(null);
+  const [loading, setLoading]       = useState(true);
+  const [activeId, setActiveId]     = useState(null);
+  const [creating, setCreating]     = useState(false);
   const [diagSummary, setDiagSummary] = useState('');
+  const [quoteFields, setQuoteFields] = useState({ diagnosticSummary: '', notes: '' });
+  const [saving, setSaving]         = useState(false);
+  const [saved, setSaved]           = useState(false);
 
   const activeQuote = quotes.find((q) => q.id === activeId) || quotes[0] || null;
+
+  useEffect(() => {
+    if (activeQuote) {
+      setQuoteFields({ diagnosticSummary: activeQuote.diagnosticSummary || '', notes: activeQuote.notes || '' });
+      setSaved(false);
+    }
+  }, [activeQuote?.id]);
 
   const load = useCallback(async () => {
     const [qs, s] = await Promise.all([
@@ -247,6 +257,22 @@ export default function QuoteTab({ project, token }) {
     if (!activeQuote) return;
     const updated = await quotesApi.updateQuote(activeQuote.id, { status }, token);
     setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+  };
+
+  const handleSaveFields = async () => {
+    if (!activeQuote) return;
+    setSaving(true);
+    try {
+      const updated = await quotesApi.updateQuote(activeQuote.id, {
+        notes: quoteFields.notes,
+        diagnostic_summary: quoteFields.diagnosticSummary,
+      }, token);
+      setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (quoteId) => {
@@ -324,13 +350,31 @@ export default function QuoteTab({ project, token }) {
             </div>
           </div>
 
-          {/* Diagnostic summary */}
-          {activeQuote.diagnosticSummary && (
-            <div className="diag-summary-block">
-              <h4>Diagnostic summary</h4>
-              <p>{activeQuote.diagnosticSummary}</p>
+          {/* Diagnostic summary + notes */}
+          <div className="quote-section">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <h4 style={{ margin: 0 }}>Quote details</h4>
+              <button type="button" onClick={handleSaveFields} disabled={saving} style={{ fontSize: '0.8rem', padding: '4px 14px' }}>
+                {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
+              </button>
             </div>
-          )}
+            <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: 4 }}>Diagnostic summary</label>
+            <textarea
+              rows={3}
+              style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10 }}
+              placeholder="Summary of diagnosis for the customer…"
+              value={quoteFields.diagnosticSummary}
+              onChange={(e) => setQuoteFields((f) => ({ ...f, diagnosticSummary: e.target.value }))}
+            />
+            <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: 4 }}>Notes</label>
+            <textarea
+              rows={2}
+              style={{ width: '100%', boxSizing: 'border-box' }}
+              placeholder="Internal notes or customer-facing comments…"
+              value={quoteFields.notes}
+              onChange={(e) => setQuoteFields((f) => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
 
           {/* Parts search */}
           <div className="quote-section">
