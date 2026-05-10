@@ -19,7 +19,7 @@ function formatUserResponse(user) {
     role: user.role,
     token: user.token,
     subscribed: user.subscribed,
-    demoMode: !Boolean(process.env.OPENAI_API_KEY),
+    demoMode: !Boolean(process.env.ANTHROPIC_API_KEY),
   };
 }
 
