@@ -5,7 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js",
+    "dev": "nodemon --watch server server/index.js",
     "migrate": "node-pg-migrate up -m server/migrations",
     "migrate:down": "node-pg-migrate down -m server/migrations",
     "seed": "node server/seeds/dev.js"
@@ -27,5 +27,8 @@
     "openai": "^6.35.0",
     "pdf-parse": "1.1.1",
     "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }
