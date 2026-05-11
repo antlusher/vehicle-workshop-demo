@@ -73,10 +73,19 @@ function applyMarkup(costPrice, markupPct) {
 async function getWorkshopSettings() {
   const { rows } = await query('SELECT * FROM workshop_settings LIMIT 1');
   if (!rows.length) return { defaultMarkupPct: 30, labourRatePerHour: 75, vatRate: 20 };
+  const r = rows[0];
   return {
-    defaultMarkupPct: parseFloat(rows[0].default_markup_pct),
-    labourRatePerHour: parseFloat(rows[0].labour_rate_per_hour),
-    vatRate: parseFloat(rows[0].vat_rate),
+    defaultMarkupPct: parseFloat(r.default_markup_pct),
+    labourRatePerHour: parseFloat(r.labour_rate_per_hour),
+    vatRate: parseFloat(r.vat_rate),
+    workshopName: r.workshop_name || null,
+    addressLine1: r.address_line1 || null,
+    addressLine2: r.address_line2 || null,
+    city: r.city || null,
+    postcode: r.postcode || null,
+    phone: r.phone || null,
+    email: r.email || null,
+    paymentNotes: r.payment_notes || null,
   };
 }
 

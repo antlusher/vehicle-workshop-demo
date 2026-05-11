@@ -474,6 +474,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .ai-response strong { font-weight: 700; }
 .ai-response code { background: #e5e7eb; padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
 .ai-response pre  { background: #e5e7eb; padding: 10px; border-radius: 8px; overflow-x: auto; margin-bottom: 8px; }
+.ai-response table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 8px 0 12px; }
+.ai-response th { background: #f1f5f9; text-align: left; padding: 7px 10px; font-weight: 600; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+.ai-response td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.ai-response tr:last-child td { border-bottom: none; }
+.ai-response td:nth-child(n+4), .ai-response th:nth-child(n+4) { text-align: right; }
 
 /* ── Suggestion interaction ── */
 .ai-suggestion {
@@ -485,6 +490,13 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 
 .ai-suggestion > span { flex: 1; }
 .ai-suggestion--open { flex-wrap: wrap; }
+
+/* Warning bullets — orange left border, no action button */
+.ai-suggestion--warning > span {
+  padding-left: 8px;
+  border-left: 3px solid #f59e0b;
+  color: #92400e;
+}
 
 .open-answer-input {
   width: 100%;
@@ -498,19 +510,53 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   margin-bottom: 0;
 }
 
-.suggestion-confirm-btn {
-  font-size: 0.7rem;
-  padding: 2px 10px;
-  white-space: nowrap;
-  flex-shrink: 0;
-  margin-top: 1px;
-  background: #dcfce7;
+/* What fixed it CTA */
+.what-fixed-btn {
+  margin-top: 10px;
+  font-size: 0.78rem;
+  padding: 5px 14px;
+  background: #f0fdf4;
   color: #15803d;
-  border-color: #86efac;
+  border: 1px solid #86efac;
+  border-radius: 8px;
 }
-.suggestion-confirm-btn:hover {
-  background: #bbf7d0;
+.what-fixed-btn:hover:not(:disabled) { background: #dcfce7; }
+
+/* Fix chooser panel */
+.fix-chooser {
+  margin-top: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
 }
+.fix-chooser-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #374151;
+  margin: 0 0 10px;
+}
+.fix-chooser-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fix-chooser-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #111827;
+  cursor: pointer;
+  font-weight: normal;
+}
+.fix-chooser-item input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; width: auto; }
+.fix-chooser-item--done label { color: #6b7280; cursor: default; }
+.fix-chooser-actions { display: flex; gap: 8px; }
+.fix-chooser-actions button { font-size: 0.82rem; padding: 5px 14px; }
 
 .confirmed-fixes-bar {
   background: #f0fdf4;
@@ -980,8 +1026,9 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   flex-direction: column;
   gap: 2px;
 }
-.convo-entry--user { align-items: flex-end; }
-.convo-entry--ai   { align-items: flex-start; }
+.convo-entry--user       { align-items: flex-end; }
+.convo-entry--ai         { align-items: flex-start; }
+.convo-entry--assistant  { align-items: flex-start; }
 
 .convo-bubble {
   padding: 8px 12px;
@@ -995,7 +1042,8 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   color: white;
   border-bottom-right-radius: 3px;
 }
-.convo-bubble--ai {
+.convo-bubble--ai,
+.convo-bubble--assistant {
   background: #f1f5f9;
   color: #1e293b;
   border-bottom-left-radius: 3px;
@@ -1695,3 +1743,35 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   background: #e0f2fe;
   color: #0284c7;
 }
+
+/* ── Workshop Settings ─────────────────────────────────────────────────────── */
+.ws-shell { display: flex; flex-direction: column; height: 100%; }
+.ws-tabs { display: flex; gap: 2px; padding: 12px 20px 0; border-bottom: 1px solid #e5e7eb; background: #fff; }
+.ws-tab { background: none; border: none; padding: 8px 16px; font-size: 0.88rem; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ws-tab.active { color: #1d4ed8; border-bottom-color: #1d4ed8; font-weight: 600; }
+.ws-tab:hover:not(.active) { color: #374151; }
+.ws-body { flex: 1; overflow-y: auto; padding: 24px 24px 40px; }
+.ws-section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+.ws-section-title { font-size: 0.95rem; font-weight: 700; color: #111827; margin: 0 0 16px; }
+.ws-field { margin-bottom: 12px; }
+.ws-label { display: block; font-size: 0.8rem; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.ws-hint { font-weight: 400; color: #9ca3af; }
+.ws-field input, .ws-field select, .ws-field textarea { width: 100%; }
+.ws-save-bar { display: flex; align-items: center; gap: 12px; justify-content: flex-end; padding-top: 4px; }
+.ws-add-form { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 12px; }
+
+/* ── Training Chat ──────────────────────────────────────────────────────────── */
+.training-layout { display: flex; gap: 24px; align-items: flex-start; min-height: 0; }
+.training-chat-panel { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.training-chat-feed { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; min-height: 360px; max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.training-chat-bar { display: flex; gap: 8px; align-items: center; }
+.training-empty { color: #9ca3af; font-size: 0.9rem; text-align: center; margin: auto; padding: 32px 0; }
+.training-thinking { color: #9ca3af; font-style: italic; }
+.training-feed-panel { flex: 0 0 360px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; }
+.training-feed-input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 6px; padding: 10px 12px; font-size: 0.85rem; font-family: inherit; resize: vertical; }
+.training-entry-card { border: 1px solid #bfdbfe; border-radius: 6px; padding: 12px; background: white; margin-bottom: 10px; }
+.training-entry-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.training-entry-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.78rem; color: #6b7280; margin-bottom: 6px; }
+.training-entry-preview { font-size: 0.82rem; color: #374151; margin: 0 0 8px; line-height: 1.45; }
+.training-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; display: flex; align-items: center; justify-content: center; }
+.training-modal { background: white; border-radius: 12px; padding: 24px; width: 700px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }

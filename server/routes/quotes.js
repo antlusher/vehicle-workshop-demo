@@ -93,20 +93,44 @@ router.get('/settings', requireAuth, async (req, res) => {
 
 router.patch('/settings', requireAuth, async (req, res) => {
   try {
-    const { defaultMarkupPct, labourRatePerHour, vatRate } = req.body;
+    const {
+      defaultMarkupPct, labourRatePerHour, vatRate,
+      workshopName, addressLine1, addressLine2, city, postcode,
+      phone, email, paymentNotes,
+    } = req.body;
     const existing = await query('SELECT id FROM workshop_settings LIMIT 1');
     if (existing.rows.length) {
       await query(
         `UPDATE workshop_settings SET
            default_markup_pct=COALESCE($1,default_markup_pct),
            labour_rate_per_hour=COALESCE($2,labour_rate_per_hour),
-           vat_rate=COALESCE($3,vat_rate), updated_at=now()`,
-        [defaultMarkupPct ?? null, labourRatePerHour ?? null, vatRate ?? null]
+           vat_rate=COALESCE($3,vat_rate),
+           workshop_name=COALESCE($4,workshop_name),
+           address_line1=COALESCE($5,address_line1),
+           address_line2=COALESCE($6,address_line2),
+           city=COALESCE($7,city),
+           postcode=COALESCE($8,postcode),
+           phone=COALESCE($9,phone),
+           email=COALESCE($10,email),
+           payment_notes=COALESCE($11,payment_notes),
+           updated_at=now()`,
+        [
+          defaultMarkupPct ?? null, labourRatePerHour ?? null, vatRate ?? null,
+          workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
+          city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
+        ]
       );
     } else {
       await query(
-        'INSERT INTO workshop_settings (default_markup_pct, labour_rate_per_hour, vat_rate) VALUES ($1,$2,$3)',
-        [defaultMarkupPct ?? 30, labourRatePerHour ?? 75, vatRate ?? 20]
+        `INSERT INTO workshop_settings
+           (default_markup_pct, labour_rate_per_hour, vat_rate,
+            workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          defaultMarkupPct ?? 30, labourRatePerHour ?? 75, vatRate ?? 20,
+          workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
+          city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
+        ]
       );
     }
     res.json(await getWorkshopSettings());

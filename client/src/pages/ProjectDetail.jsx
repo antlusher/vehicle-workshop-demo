@@ -6,9 +6,15 @@ import * as reportsApi from '../services/reportsApi';
 import QuoteTab from './QuoteTab';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
+const PREP_WH = /^(at|in|on|under|during|from|by|for)\s+(what|which|how|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
 const COMPOUND = /\?\s*(if|when|please|and)\b/i;
-const DIAGNOSTIC_VERB = /\b(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|see if|determine|evaluate|consider)\b/i;
+const BINARY_START = /^(is|are|does|do|has|have|did|can|will|was|were|would|could|should)\b/i;
+const DIAGNOSTIC_VERB = /\b(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|see if|determine|evaluate|consider|confirm|run\s+a|record|note|review|compare|document|identify|locate|connect)\b/i;
+const INSPECTION_PURPOSE = /\bto\s+(gain access|inspect|check|verify|examine|assess|look\b|see\b)/i;
+const WARNING_START = /^(do not|don't|never|warning|caution|important|note:|n\.b\.|avoid\b|stop\b)/i;
+const REPAIR_VERB = /\b(replace|fit|install|renew|swap|clean|flush|bleed|adjust|seal|remove|repair|rebuild|reset|clear|relearn|prime|top.?up|refill|tighten|torque|apply|lubricate)\b/i;
+const AWAITING_FINDINGS = /\breport\s+back\b|\byour\s+findings\b|\badvise\s+(on\s+the\s+correct|further)\b|\blet\s+me\s+know\s+(what|the|how)\b/i;
 
 function nodeText(node) {
   if (!node) return '';
@@ -19,12 +25,24 @@ function nodeText(node) {
 }
 
 function questionType(text) {
+  if (WARNING_START.test(text)) return 'warning';
   if (!text.endsWith('?')) {
-    if (DIAGNOSTIC_VERB.test(text)) return 'step';
-    return 'fix';
+    if (DIAGNOSTIC_VERB.test(text) || INSPECTION_PURPOSE.test(text)) return 'step';
+    if (REPAIR_VERB.test(text)) return 'fix';
+    return 'info';
   }
-  if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
+  if (OPEN_ENDED_START.test(text) || PREP_WH.test(text)) return 'open';
+  if (MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
+  if (BINARY_START.test(text) && /\bor\b(?!\s*not\b)/i.test(text)) return 'open';
   return 'yesno';
+}
+
+function extractActionItems(text) {
+  return text
+    .split('\n')
+    .filter((l) => /^[\s]*(?:[-*•]|\d+\.)\s+/.test(l))
+    .map((l) => l.replace(/^[\s]*(?:[-*•]|\d+\.)\s+/, '').trim())
+    .filter((l) => questionType(l) === 'fix');
 }
 
 function YesNoButtons({ onAnswered }) {
@@ -56,29 +74,59 @@ function OpenAnswerInput({ itemText, onAnswer }) {
   );
 }
 
-function ConfirmFixButton({ itemText, onConfirm, initialConfirmed }) {
-  const [confirmed, setConfirmed] = useState(initialConfirmed || false);
-  const handle = async () => {
-    setConfirmed(true);
-    try { await onConfirm(itemText); } catch { setConfirmed(false); }
-  };
-  if (confirmed) return <small className="suggestion-confirmed">✓ This fixed it</small>;
-  return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>This fixed it</button>;
+function FixChooser({ items, confirmedTexts, onConfirm, onCancel, isBusy }) {
+  const [selected, setSelected] = useState(new Set());
+  const toggle = (item) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(item) ? next.delete(item) : next.add(item);
+    return next;
+  });
+  const newFixes = [...selected].filter((i) => !confirmedTexts?.has(i));
+  return (
+    <div className="fix-chooser">
+      <p className="fix-chooser-label">Which of these fixed it?</p>
+      <ul className="fix-chooser-list">
+        {items.map((item, i) => {
+          const done = confirmedTexts?.has(item);
+          return (
+            <li key={i} className={`fix-chooser-item${done ? ' fix-chooser-item--done' : ''}`}>
+              <label>
+                <input type="checkbox" checked={done || selected.has(item)} disabled={done} onChange={() => !done && toggle(item)} />
+                <span>{item}</span>
+                {done && <small className="suggestion-confirmed">✓ confirmed</small>}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="fix-chooser-actions">
+        <button type="button" disabled={!newFixes.length || isBusy} onClick={() => onConfirm(newFixes)}>
+          {isBusy ? 'Saving…' : `Confirm ${newFixes.length || ''} fix${newFixes.length !== 1 ? 'es' : ''}`}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
 }
 
 function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts, chatMode }) {
   const [hasAnswers, setHasAnswers] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showChooser, setShowChooser] = useState(false);
+  const [confirmingFixes, setConfirmingFixes] = useState(false);
   const answersRef = useRef({});
+
+  const actionItems = useMemo(() => extractActionItems(text), [text]);
+  const awaitingFindings = useMemo(() => AWAITING_FINDINGS.test(text), [text]);
+  const hasDiagnosticSteps = useMemo(() => text.split('\n')
+    .filter((l) => /^[\s]*(?:[-*•]|\d+\.)\s+/.test(l))
+    .map((l) => l.replace(/^[\s]*(?:[-*•]|\d+\.)\s+/, '').trim())
+    .some((l) => questionType(l) === 'step'), [text]);
 
   const handleAnswer = useCallback((key, value) => {
     answersRef.current[key] = value;
     setHasAnswers(Object.values(answersRef.current).some((v) => v !== null && v !== ''));
   }, []);
-
-  const handleConfirm = useCallback(async (itemText) => {
-    await onConfirmSuggestion(projectId, historyId, itemText);
-  }, [projectId, historyId, onConfirmSuggestion]);
 
   const handleContinue = useCallback(async () => {
     const answered = Object.entries(answersRef.current).filter(([, v]) => v !== null && v !== '');
@@ -92,31 +140,37 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
     await onContinue(message);
   }, [onContinue]);
 
+  const handleConfirmFixes = useCallback(async (selected) => {
+    setConfirmingFixes(true);
+    try {
+      for (const itemText of selected) {
+        await onConfirmSuggestion(projectId, historyId, itemText);
+      }
+      setShowChooser(false);
+    } finally {
+      setConfirmingFixes(false);
+    }
+  }, [projectId, historyId, onConfirmSuggestion]);
+
   const isDiagnose = chatMode === 'diagnose';
+  const hasConfirmedFromThis = actionItems.some((i) => confirmedTexts?.has(i));
 
   const components = useMemo(() => ({
     li({ children }) {
       const itemText = nodeText(children).trim();
       const type = questionType(itemText);
       return (
-        <li className={`ai-suggestion${type === 'open' ? ' ai-suggestion--open' : ''}`}>
+        <li className={`ai-suggestion ai-suggestion--${type}`}>
           <span>{children}</span>
           {isDiagnose && type === 'yesno' && isLatestAi && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
           {isDiagnose && type === 'open' && isLatestAi && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
-          {isDiagnose && isLatestAi && type === 'fix' && (
-            <ConfirmFixButton
-              itemText={itemText}
-              onConfirm={handleConfirm}
-              initialConfirmed={confirmedTexts?.has(itemText)}
-            />
-          )}
           {isDiagnose && !isLatestAi && confirmedTexts?.has(itemText) && (
             <small className="suggestion-confirmed">✓ This fixed it</small>
           )}
         </li>
       );
     },
-  }), [handleAnswer, handleConfirm, confirmedTexts, isDiagnose, isLatestAi]);
+  }), [handleAnswer, confirmedTexts, isDiagnose, isLatestAi]);
 
   return (
     <div className="ai-response">
@@ -128,6 +182,20 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
       )}
       {submitted && !isBusy && (
         <small className="suggestion-confirmed">Answers sent — see next step below</small>
+      )}
+      {isDiagnose && isLatestAi && actionItems.length > 0 && !showChooser && !awaitingFindings && !hasDiagnosticSteps && (
+        <button type="button" className="what-fixed-btn" onClick={() => setShowChooser(true)}>
+          {hasConfirmedFromThis ? 'Update confirmed fixes' : 'What fixed it? →'}
+        </button>
+      )}
+      {isDiagnose && isLatestAi && showChooser && (
+        <FixChooser
+          items={actionItems}
+          confirmedTexts={confirmedTexts}
+          onConfirm={handleConfirmFixes}
+          onCancel={() => setShowChooser(false)}
+          isBusy={confirmingFixes}
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 const express = require('express');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
-const { generateRepairAdvice } = require('../services/aiService');
+const { generateRepairAdvice, generateTrainingChat, extractKnowledgeFromText } = require('../services/aiService');
 const { getVehicleHistory } = require('../services/vehicleService');
 const router = express.Router();
 
@@ -46,7 +46,7 @@ router.post('/ask', requireAuth, async (req, res) => {
   const startMs = Date.now();
   try {
     const result = await generateRepairAdvice(
-      { make: project.make, model: project.model, year: project.year,
+      { id: project.id, make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
         registration: project.registration_snapshot || project.registration,
         vin: project.vin, motTests, motVehicleMeta },
@@ -106,6 +106,28 @@ router.post('/ask', requireAuth, async (req, res) => {
     return res.json({ project: updatedProject, answer: answer });
   } catch (error) {
     return res.status(500).json({ error: 'AI request failed' });
+  }
+});
+
+router.post('/training', requireAuth, async (req, res) => {
+  const { question, history = [] } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    const result = await generateTrainingChat(history, question);
+    res.json({ answer: result.answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/extract-knowledge', requireAuth, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  try {
+    const result = await extractKnowledgeFromText(text);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

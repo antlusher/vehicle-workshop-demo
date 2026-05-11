@@ -80,6 +80,12 @@ export async function parsePdf(file, token) {
 export const importPdfChunks = (chunks, token) =>
   request('/api/admin/knowledge/import-chunks', { method: 'POST', body: { chunks } }, token);
 
+export const trainingChat = (question, history, token) =>
+  request('/api/ai/training', { method: 'POST', body: { question, history } }, token);
+
+export const extractKnowledge = (text, token) =>
+  request('/api/ai/extract-knowledge', { method: 'POST', body: { text } }, token);
+
 export function estimateCost(inputTokens, outputTokens) {
   const cost = (inputTokens * 0.000003) + (outputTokens * 0.000015);
   return cost.toFixed(4);

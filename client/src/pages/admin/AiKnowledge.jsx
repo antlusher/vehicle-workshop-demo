@@ -5,6 +5,7 @@ import {
   getLearningStats,
   getKnowledgeBase, createKbEntry, updateKbEntry, deleteKbEntry,
   parsePdf, importPdfChunks,
+  trainingChat, extractKnowledge,
 } from '../../services/adminApi';
 import { getEngines, getTransmissions } from '../../services/registryApi';
 
@@ -644,6 +645,198 @@ function KnowledgeBaseTab({ token }) {
   );
 }
 
+// ── Training Chat sub-tab ─────────────────────────────────────────────────────
+
+function TrainingChat({ token }) {
+  const [history, setHistory] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [feedText, setFeedText] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState([]);
+  const [extractError, setExtractError] = useState('');
+  const [kbDraft, setKbDraft] = useState(null);
+  const [engines, setEngines] = useState([]);
+  const [transmissions, setTransmissions] = useState([]);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    Promise.all([getEngines(token), getTransmissions(token)])
+      .then(([e, t]) => { setEngines(e); setTransmissions(t); });
+  }, [token]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history, loading]);
+
+  const handleSend = async () => {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput('');
+    const nextHistory = [...history, { role: 'user', text: q }];
+    setHistory(nextHistory);
+    setLoading(true);
+    try {
+      const { answer } = await trainingChat(q, history, token);
+      setHistory([...nextHistory, { role: 'ai', text: answer }]);
+    } catch (err) {
+      setHistory([...nextHistory, { role: 'ai', text: `Error: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExtract = async () => {
+    if (!feedText.trim() || extracting) return;
+    setExtracting(true);
+    setExtracted([]);
+    setExtractError('');
+    try {
+      const { entries } = await extractKnowledge(feedText, token);
+      setExtracted(entries);
+      if (!entries.length) setExtractError('No knowledge entries could be extracted from that text.');
+    } catch (err) {
+      setExtractError(err.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const openDraft = (entry) => setKbDraft({
+    title: entry.title || '',
+    content: entry.content || '',
+    category: entry.category || 'General',
+    make: entry.make || '',
+    model: entry.model || '',
+    year_from: entry.year_from || '',
+    year_to: entry.year_to || '',
+    fault_code: entry.fault_code || '',
+    source: entry.source || 'Technician Experience',
+    engine_id: '',
+    transmission_id: '',
+  });
+
+  const openDraftFromResponse = (text) => openDraft({
+    title: text.replace(/[#*`]/g, '').split('\n').find((l) => l.trim()) || 'Training chat response',
+    content: text,
+    category: 'General',
+    source: 'Bob Training Chat',
+  });
+
+  return (
+    <div className="training-layout">
+      <div className="training-chat-panel">
+        <div className="training-chat-feed">
+          {history.length === 0 && !loading && (
+            <p className="training-empty">Ask Bob anything — faults, procedures, diagnostic approaches — or share knowledge from your own experience.</p>
+          )}
+          {history.map((h, i) => (
+            <div key={i} className={`convo-entry convo-entry--${h.role === 'user' ? 'user' : 'assistant'}`}>
+              <div className={`convo-bubble convo-bubble--${h.role === 'user' ? 'user' : 'assistant'}`}>
+                {h.role === 'user' ? (
+                  <p style={{ margin: 0 }}>{h.text}</p>
+                ) : (
+                  <div className="ai-response convo-ai-prose">
+                    <ReactMarkdown>{h.text}</ReactMarkdown>
+                    <button
+                      className="secondary"
+                      style={{ fontSize: '0.75rem', marginTop: 10, padding: '4px 12px' }}
+                      onClick={() => openDraftFromResponse(h.text)}
+                    >
+                      Save to knowledge base
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="convo-entry convo-entry--assistant">
+              <div className="convo-bubble convo-bubble--assistant training-thinking">Bob is thinking...</div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+        <div className="training-chat-bar">
+          <input
+            className="admin-search"
+            style={{ flex: 1, margin: 0 }}
+            placeholder="Ask Bob or share your experience..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            disabled={loading}
+          />
+          <button onClick={handleSend} disabled={!input.trim() || loading} style={{ whiteSpace: 'nowrap' }}>
+            {loading ? 'Thinking...' : 'Send'}
+          </button>
+        </div>
+      </div>
+
+      <div className="training-feed-panel">
+        <h4 style={{ margin: '0 0 6px', fontSize: '0.9rem', fontWeight: 600 }}>Feed Knowledge</h4>
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
+          Paste a fault description, confirmed fix, or procedure from your own experience. Bob will extract and structure it into knowledge base entries.
+        </p>
+        <textarea
+          className="training-feed-input"
+          rows={7}
+          placeholder="e.g. On the PSA DV5 1.5 BlueHDi, timing chain stretch is common after 80k miles. Symptoms include P0017, rattling on cold start. The chain tensioner fails first — replace the full kit including tensioner, guides and chain. Always check camshaft wear pattern..."
+          value={feedText}
+          onChange={(e) => setFeedText(e.target.value)}
+        />
+        <button
+          style={{ width: '100%', marginTop: 10 }}
+          disabled={!feedText.trim() || extracting}
+          onClick={handleExtract}
+        >
+          {extracting ? 'Processing...' : 'Extract knowledge entries'}
+        </button>
+
+        {extractError && <p className="error" style={{ marginTop: 10 }}>{extractError}</p>}
+
+        {extracted.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: '0.8rem', color: '#374151', margin: '0 0 10px', fontWeight: 500 }}>
+              {extracted.length} entr{extracted.length > 1 ? 'ies' : 'y'} extracted — review before saving:
+            </p>
+            {extracted.map((entry, i) => (
+              <div key={i} className="training-entry-card">
+                <div className="training-entry-title">{entry.title}</div>
+                <div className="training-entry-meta">
+                  <span className="badge badge-blue">{entry.category}</span>
+                  {entry.make && <span>{entry.make} {entry.model}</span>}
+                  {entry.fault_code && <span>{entry.fault_code}</span>}
+                  {entry.year_from && <span>{entry.year_from}{entry.year_to ? `–${entry.year_to}` : '+'}</span>}
+                </div>
+                <p className="training-entry-preview">{entry.content.slice(0, 140)}{entry.content.length > 140 ? '…' : ''}</p>
+                <button style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => openDraft(entry)}>
+                  Review &amp; save
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {kbDraft && (
+        <div className="training-modal-backdrop" onClick={() => setKbDraft(null)}>
+          <div className="training-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1rem' }}>Save to Knowledge Base</h3>
+            <KbForm
+              initial={kbDraft}
+              engines={engines}
+              transmissions={transmissions}
+              onSave={async (form) => { await createKbEntry(form, token); setKbDraft(null); }}
+              onCancel={() => setKbDraft(null)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -651,6 +844,7 @@ const TABS = [
   { id: 'requests', label: 'Request Log' },
   { id: 'kb', label: 'Knowledge Base' },
   { id: 'pdf', label: 'PDF Import' },
+  { id: 'training', label: 'Training Chat' },
 ];
 
 export default function AiKnowledge({ token }) {
@@ -671,6 +865,7 @@ export default function AiKnowledge({ token }) {
       {tab === 'requests' && <RequestLog token={token} />}
       {tab === 'kb' && <KnowledgeBaseTab token={token} />}
       {tab === 'pdf' && <PdfImport token={token} />}
+      {tab === 'training' && <TrainingChat token={token} />}
     </div>
   );
 }

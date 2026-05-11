@@ -1,4 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const { query } = require('./db');
 const { toolDefinitions, toolHandlers } = require('./agentTools');
 const { workshopToolDefinitions, workshopToolHandlers } = require('./workshopTools');
 
@@ -9,7 +10,7 @@ function createClient() {
 
 const client = createClient();
 
-function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnose') {
+function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnose', techDocSummary = '') {
   const isHowTo = chatMode === 'howto';
   const isWorkshop = chatMode === 'workshop';
 
@@ -41,17 +42,22 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
       '   - Active vs closed job counts',
       '',
       '2. QUOTE CREATION — build quotes for the current job:',
+      '   - Use search_parts_catalogue FIRST to find stocked parts with real part numbers and cost prices',
       '   - Use get_project_specs to get oil grade, capacity, service intervals',
       '   - Use get_mot_summary to get the latest mileage reading',
+      '   - Prefer catalogue parts (real part numbers, known cost). Fall back to estimated prices only if not found.',
       '   - Always show the proposed lines WITH COSTS before creating',
       '   - Ask "Shall I create this quote?" and wait for confirmation',
       '   - Only call create_quote after the technician confirms',
-      '   - Use realistic UK trade cost prices (the markup is applied on top)',
       '',
       'FORMATTING RULES:',
       '- Be concise. For analytics, give a direct answer with the numbers.',
-      '- For quote proposals, list each line clearly: description, qty, sell price, line total.',
       '- Do not use emojis.',
+      '- Do not use markdown tables. Ever.',
+      '- For quote proposals, use a simple numbered list. Each line on its own row:',
+      '    1. [Part no.] Description — Qty x £price = £total',
+      '  Include a plausible generic part number (e.g. OIL-5W30-4L, FIL-OIL-PSA15, etc.).',
+      '  End with a blank line then: Subtotal: £x.xx | VAT (20%): £x.xx | Total: £x.xx',
       '- After creating a quote, remind the technician to review it in the Quote tab.',
     ].filter((l) => l !== null).join('\n');
   }
@@ -83,6 +89,25 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
   if (project.bodyType) lines.push(`Body type: ${project.bodyType}`);
   lines.push('');
 
+  // Diesel guard — prevent AI from referencing petrol-only variable valve systems
+  const isDiesel = fuelType && /diesel/i.test(fuelType);
+  if (isDiesel) {
+    lines.push(
+      'IMPORTANT: This is a DIESEL engine. Do NOT reference VVT (Variable Valve Timing), VANOS, Valvetronic, i-VTEC, or any petrol-specific variable valve timing systems — these do not exist on diesel engines and must never be mentioned.',
+      '',
+    );
+  }
+
+  // Inject manufacturer tech docs as authoritative grounding
+  if (techDocSummary) {
+    lines.push(
+      'MANUFACTURER TECHNICAL DOCUMENTATION FOR THIS ENGINE (treat as authoritative — this overrides your training knowledge for this specific engine):',
+      '',
+      techDocSummary,
+      '',
+    );
+  }
+
   if (isHowTo) {
     lines.push(
       'MODE: How To / Procedure',
@@ -103,6 +128,8 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
       '',
       'STRICT formatting rules — follow these exactly:',
       '- Do NOT use emojis anywhere in your response.',
+      '- Safety warnings (do not start engine, do not drive, risk of injury, etc.) must start with "Do not" or "Warning:" so they are visually distinct.',
+      '- When listing actions for the technician to carry out, introduce them with a plain heading such as "Actions to try:" or "Next steps:" so they are clearly grouped.',
       '- Do NOT front-load multiple diagnostic branches in one response. Ask your initial questions first, then wait for the technician\'s answers before providing the next steps.',
       '- When asking diagnostic questions, write ONE question per bullet point. Never combine two questions into one bullet using "or". Split them.',
       '- Every yes/no diagnostic question MUST end with a question mark (?).',
@@ -183,9 +210,33 @@ function buildMessages(history, question) {
   return messages;
 }
 
+async function fetchEngineDocSummary(engineCode) {
+  if (!engineCode) return '';
+  try {
+    const { rows: eRows } = await query(
+      'SELECT id FROM engines WHERE LOWER(code) = LOWER($1)',
+      [engineCode]
+    );
+    if (!eRows.length) return '';
+    const { rows: docRows } = await query(
+      `SELECT content FROM knowledge_base
+       WHERE engine_id = $1 AND source = 'tech_doc' AND category = 'procedure'
+       ORDER BY title LIMIT 8`,
+      [eRows[0].id]
+    );
+    if (!docRows.length) return '';
+    return docRows.map((r) => r.content).join('\n\n---\n\n');
+  } catch {
+    return '';
+  }
+}
+
 async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], chatMode = 'diagnose') {
+  const techDocSummary = chatMode !== 'workshop'
+    ? await fetchEngineDocSummary(project.engineCode)
+    : '';
   const messages = buildMessages(history, question);
-  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode);
+  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode, techDocSummary);
 
   const isWorkshop = chatMode === 'workshop';
   const tools = isWorkshop
@@ -271,7 +322,32 @@ async function generateVehicleSpecs(project) {
     project.engineSize ? `${project.engineSize}cc` : null]
     .filter(Boolean).join(' ');
 
-  const prompt = `You are a vehicle technical data specialist. Provide accurate workshop specifications for: ${vehicle}
+  // Fetch tech_doc entries from the knowledge base for this engine — use as authoritative grounding
+  let techDocSection = '';
+  if (project.engineCode) {
+    try {
+      const { rows: engineRows } = await query(
+        'SELECT id FROM engines WHERE LOWER(code) = LOWER($1)',
+        [project.engineCode]
+      );
+      if (engineRows.length) {
+        const { rows: docRows } = await query(
+          `SELECT content FROM knowledge_base
+           WHERE engine_id = $1 AND source = 'tech_doc'
+           ORDER BY title LIMIT 12`,
+          [engineRows[0].id]
+        );
+        if (docRows.length) {
+          techDocSection = '\n\nAUTHORITATIVE MANUFACTURER TECH DOCUMENT DATA (treat this as ground truth — it overrides your training knowledge for this engine):\n\n' +
+            docRows.map((r) => r.content).join('\n\n---\n\n');
+        }
+      }
+    } catch (err) {
+      console.error('[generateVehicleSpecs] Tech doc lookup failed:', err.message);
+    }
+  }
+
+  const prompt = `You are a vehicle technical data specialist. Provide accurate workshop specifications for: ${vehicle}${techDocSection}
 
 Return ONLY valid JSON matching this exact structure — no extra text, no markdown fences:
 {
@@ -286,8 +362,8 @@ Return ONLY valid JSON matching this exact structure — no extra text, no markd
 }
 
 Critical accuracy requirements:
-- serviceIntervals.timingBelt: state exactly whether this engine uses a dry timing belt, timing chain, or wet belt-in-oil (WBIO). Wet belt-in-oil systems (e.g. Ford 1.0 EcoBoost, Ford 2.0 EcoBlue Panther, some PSA/Stellantis engines) have distinct service requirements and must not be described as a chain. Include the replacement interval if applicable.
-- engineOil: use the exact OEM-specified grade and standard for this engine — incorrect oil on wet-belt engines damages the belt.
+- serviceIntervals.timingBelt: state exactly whether this engine uses a dry timing belt, timing chain, or wet belt-in-oil (WBIO). If manufacturer tech data is provided above, use it as the definitive source. Include the replacement interval if applicable.
+- engineOil: use the exact OEM-specified grade and standard for this engine.
 - Use empty string for anything you are not confident about for this specific vehicle.
 - Keep notes to 3 max — vehicle-specific warnings or critical tips only. Do not give generic advice.`;
 
@@ -311,4 +387,89 @@ Critical accuracy requirements:
   }
 }
 
-module.exports = { generateRepairAdvice, generateVehicleSpecs };
+async function generateTrainingChat(history, question) {
+  if (!client) return { answer: 'No API key configured.', inputTokens: 0, outputTokens: 0 };
+
+  const systemPrompt = [
+    'You are Bob, an expert automotive diagnostic and repair assistant for professional vehicle technicians.',
+    'You are in training/consultation mode — there is no specific vehicle or job context.',
+    '',
+    'In this mode you can:',
+    '- Answer questions about vehicle diagnostics, repair procedures, and technical specifications',
+    '- Discuss faults, causes, and confirmed fixes for specific makes, models, or engine families',
+    '- Acknowledge and validate technical information shared by experienced technicians',
+    '- Help structure knowledge for storage in a workshop knowledge base',
+    '',
+    'When a technician shares a confirmed observation or repair from their own experience:',
+    '- Acknowledge it specifically and concisely',
+    '- Ask for any missing detail that would make it more useful as a KB entry (vehicle scope, DTC code, year range)',
+    '',
+    'Formatting:',
+    '- Do not use emojis',
+    '- Do not use markdown tables',
+    '- Keep responses concise and professional',
+  ].join('\n');
+
+  const messages = history.slice(-12).map((h) => ({
+    role: h.role === 'user' ? 'user' : 'assistant',
+    content: h.text,
+  }));
+  messages.push({ role: 'user', content: question });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages,
+  });
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  return {
+    answer: textBlock?.text || 'No response generated.',
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+  };
+}
+
+async function extractKnowledgeFromText(rawText) {
+  if (!client) return { entries: [] };
+
+  const prompt = `You are a knowledge base assistant for an automotive workshop. Extract structured knowledge entries from the following text written by an experienced technician.
+
+Return ONLY a valid JSON array — no extra text, no markdown fences:
+[
+  {
+    "title": "short descriptive title (max 80 chars)",
+    "category": "one of: Common Fix, DTC Code, Vehicle Note, Service Interval, General",
+    "content": "full technical detail written clearly for a workshop technician",
+    "make": "vehicle make if specific, empty string if general",
+    "model": "vehicle model if specific, empty string if general",
+    "year_from": "4-digit year string if applicable, empty string if not",
+    "year_to": "4-digit year string if applicable, empty string if not",
+    "fault_code": "DTC or fault code if mentioned, empty string if none",
+    "source": "Technician Experience"
+  }
+]
+
+If the text contains multiple distinct pieces of knowledge, return multiple entries. If it is a single topic, return one entry.
+
+Text:
+${rawText}`;
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = response.content.find((b) => b.type === 'text')?.text || '';
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) return { entries: [] };
+  try {
+    return { entries: JSON.parse(match[0]) };
+  } catch {
+    return { entries: [] };
+  }
+}
+
+module.exports = { generateRepairAdvice, generateVehicleSpecs, generateTrainingChat, extractKnowledgeFromText };

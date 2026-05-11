@@ -1,5 +1,5 @@
 const { query } = require('./db');
-const { applyMarkup, getWorkshopSettings } = require('./partsService');
+const { applyMarkup, getWorkshopSettings, searchProvider } = require('./partsService');
 
 async function queryWorkshopStats({ stat_type, filters = {} }) {
   switch (stat_type) {
@@ -147,6 +147,21 @@ async function getProjectSpecs({ project_id }) {
   return rows[0].specs;
 }
 
+async function searchPartsCatalogue({ query: q, make, model, engine_code }) {
+  const results = await searchProvider(q || '', { make, model, engineCode: engine_code });
+  if (!results.length) return { message: 'No matching parts found in the workshop parts catalogue.' };
+  return {
+    parts: results.map((p) => ({
+      partNumber: p.partNumber,
+      brand: p.brand,
+      title: p.title,
+      category: p.category,
+      costPrice: p.costPrice,
+      inStock: p.inStock,
+    })),
+  };
+}
+
 async function createQuote({ project_id, notes, diagnostic_summary, lines }) {
   if (!project_id || !lines?.length) return { error: 'project_id and lines are required' };
 
@@ -239,6 +254,20 @@ const workshopToolDefinitions = [
     },
   },
   {
+    name: 'search_parts_catalogue',
+    description: 'Search the workshop in-store parts catalogue. Use this before building a quote to find stocked parts with real part numbers and cost prices. Search by part type (e.g. "oil filter", "brake pads") and optionally filter by vehicle make or engine code.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Part type or name to search for, e.g. "oil filter", "brake pads front"' },
+        make: { type: 'string', description: 'Vehicle make to filter compatible parts' },
+        model: { type: 'string', description: 'Vehicle model' },
+        engine_code: { type: 'string', description: 'Engine code for compatibility matching' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'create_quote',
     description: 'Create a quote for the current project with line items. ALWAYS show the proposed lines and costs to the technician and get confirmation BEFORE calling this tool.',
     input_schema: {
@@ -271,6 +300,7 @@ const workshopToolHandlers = {
   query_workshop_stats: queryWorkshopStats,
   get_mot_summary: getMotSummary,
   get_project_specs: getProjectSpecs,
+  search_parts_catalogue: searchPartsCatalogue,
   create_quote: createQuote,
 };
 

@@ -12,6 +12,7 @@ const registryRouter = require('./routes/registry');
 const reportsRouter = require('./routes/reports');
 const customerRouter = require('./routes/customer');
 const quotesRouter = require('./routes/quotes');
+const techniciansRouter = require('./routes/technicians');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -31,6 +32,7 @@ app.use('/api/registry', registryRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/customer', customerRouter);
 app.use('/api/quotes', quotesRouter);
+app.use('/api/technicians', techniciansRouter);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vehicle Workshop API is running' });
