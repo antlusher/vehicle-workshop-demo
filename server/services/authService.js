@@ -11,6 +11,7 @@ function toUser(row) {
     email: row.email,
     password: row.password,
     role: row.role,
+    workshopId: row.workshop_id || null,
     subscribed: row.subscribed,
     sessionActive: row.session_active,
     token: row.token,

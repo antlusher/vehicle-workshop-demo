@@ -9,14 +9,19 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 const router = express.Router();
 
+const WORKSHOP_ROLES = ['manager', 'admin', 'tech'];
+const ADMIN_ROLES = ['manager', 'admin', 'sysadmin'];
+const MANAGER_ROLES = ['manager', 'sysadmin'];
+
 async function requireAdmin(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   try {
     const user = await findUserByToken(token);
-    if (!user || user.role !== 'admin') {
+    if (!user || !ADMIN_ROLES.includes(user.role)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
     req.admin = user;
+    req.workshopId = user.workshopId;
     next();
   } catch {
     return res.status(403).json({ error: 'Admin access required' });
@@ -232,6 +237,7 @@ function formatCustomer(r) {
 }
 
 router.get('/customers', async (req, res) => {
+  const wid = req.workshopId;
   const { rows } = await query(
     `SELECT u.id, u.email, u.name, u.phone, u.address_line1, u.address_line2,
             u.city, u.postcode, u.created_at, u.last_seen_at,
@@ -246,9 +252,10 @@ router.get('/customers', async (req, res) => {
             ), 0) AS total_spend
      FROM users u
      LEFT JOIN customer_vehicles cv ON cv.customer_id = u.id
-     WHERE u.role = 'customer'
+     WHERE u.role = 'customer' AND (u.workshop_id = $1 OR $1 IS NULL)
      GROUP BY u.id
-     ORDER BY u.created_at DESC`
+     ORDER BY u.created_at DESC`,
+    [wid]
   );
   return res.json(rows.map(formatCustomer));
 });
@@ -422,6 +429,122 @@ router.get('/customers/:id/stats', async (req, res) => {
     jobCount: jobs.length,
     jobs,
   });
+});
+
+// ── Role permissions (manager only) ────────────────────────────────────────
+
+// GET /api/admin/role-permissions — list all permissions for this workshop
+router.get('/role-permissions', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  const wid = req.workshopId;
+  const { rows } = await query(
+    `SELECT role, feature, allowed FROM workshop_role_permissions WHERE workshop_id = $1 ORDER BY role, feature`,
+    [wid]
+  );
+  return res.json(rows);
+});
+
+// PATCH /api/admin/role-permissions — update a specific permission
+router.patch('/role-permissions', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  const { role, feature, allowed } = req.body;
+  if (!role || !feature || allowed === undefined) {
+    return res.status(400).json({ error: 'role, feature and allowed are required' });
+  }
+  const wid = req.workshopId;
+  const { rows } = await query(
+    `INSERT INTO workshop_role_permissions (workshop_id, role, feature, allowed)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (workshop_id, role, feature) DO UPDATE SET allowed = $4
+     RETURNING role, feature, allowed`,
+    [wid, role, feature, allowed]
+  );
+  return res.json(rows[0]);
+});
+
+// ── Workshop staff management (manager only) ────────────────────────────────
+
+// GET /api/admin/staff — list workshop users (not customers)
+router.get('/staff', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  const wid = req.workshopId;
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.name, u.role, u.created_at,
+            (SELECT MAX(created_at) FROM login_history WHERE user_id = u.id) AS last_login,
+            (SELECT COUNT(*)::int FROM projects WHERE user_id = u.id) AS project_count
+     FROM users u
+     WHERE u.workshop_id = $1 AND u.role IN ('manager','admin','tech')
+     ORDER BY u.created_at ASC`,
+    [wid]
+  );
+  return res.json(rows);
+});
+
+// POST /api/admin/staff — create a workshop staff account
+router.post('/staff', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  const { email, password, name, role } = req.body;
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: 'email, password and role are required' });
+  }
+  if (!['manager', 'admin', 'tech'].includes(role)) {
+    return res.status(400).json({ error: 'Role must be manager, admin or tech' });
+  }
+  const bcrypt = require('bcrypt');
+  const crypto = require('crypto');
+  const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const token = crypto.randomBytes(32).toString('hex');
+  const { rows } = await query(
+    `INSERT INTO users (email, password, role, subscribed, name, workshop_id, token)
+     VALUES ($1,$2,$3,true,$4,$5,$6)
+     RETURNING id, email, name, role, created_at`,
+    [email, hashed, role, name || null, req.workshopId, token]
+  );
+  return res.status(201).json(rows[0]);
+});
+
+// PATCH /api/admin/staff/:id — change role of a staff member
+router.patch('/staff/:id', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  const { role, name } = req.body;
+  if (role && !['manager', 'admin', 'tech'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  const fields = [];
+  const vals = [];
+  let i = 1;
+  if (role) { fields.push(`role = $${i++}`); vals.push(role); }
+  if (name !== undefined) { fields.push(`name = $${i++}`); vals.push(name); }
+  if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+  vals.push(req.params.id, req.workshopId);
+  const { rows } = await query(
+    `UPDATE users SET ${fields.join(', ')} WHERE id = $${i++} AND workshop_id = $${i} RETURNING id, email, name, role`,
+    vals
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Staff member not found' });
+  return res.json(rows[0]);
+});
+
+// DELETE /api/admin/staff/:id — remove a staff member
+router.delete('/staff/:id', async (req, res) => {
+  if (!MANAGER_ROLES.includes(req.admin.role)) {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+  await query('DELETE FROM users WHERE id=$1 AND workshop_id=$2 AND role IN (\'manager\',\'admin\',\'tech\')',
+    [req.params.id, req.workshopId]);
+  return res.json({ deleted: true });
 });
 
 // Search vehicles for customer linking

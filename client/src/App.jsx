@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
+import SysAdminShell from './pages/SysAdminShell';
 import CustomerPortal from './pages/CustomerPortal';
 import AdminAgent from './pages/AdminAgent';
 import './App.css';
@@ -305,11 +306,19 @@ function App() {
     return <CustomerPortal user={user} token={token} onLogout={handleLogout} />;
   }
 
-  if (adminView && user?.role === 'admin') {
+  if (user?.role === 'sysadmin') {
+    return <SysAdminShell token={token} userEmail={user.email} onLogout={handleLogout} />;
+  }
+
+  const isWorkshopStaff = ['manager', 'admin', 'tech'].includes(user?.role);
+  const canEnterAdmin = ['manager', 'admin'].includes(user?.role);
+
+  if (adminView && canEnterAdmin) {
     return (
       <AdminShell
         token={token}
         userEmail={user.email}
+        userRole={user.role}
         onExit={() => setAdminView(false)}
       />
     );
@@ -333,7 +342,7 @@ function App() {
           <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
             Assistant
           </button>
-          {user?.role === 'admin' && (
+          {canEnterAdmin && (
             <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
               Admin
             </button>

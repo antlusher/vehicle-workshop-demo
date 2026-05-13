@@ -14,6 +14,7 @@ const customerRouter = require('./routes/customer');
 const quotesRouter = require('./routes/quotes');
 const partsRouter = require('./routes/parts');
 const techniciansRouter = require('./routes/technicians');
+const sysadminRouter = require('./routes/sysadmin');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -35,6 +36,28 @@ app.use('/api/customer', customerRouter);
 app.use('/api/quotes', quotesRouter);
 app.use('/api/parts', partsRouter);
 app.use('/api/technicians', techniciansRouter);
+app.use('/api/sysadmin', sysadminRouter);
+
+// Bootstrap: create the first sysadmin — only works when none exist yet
+app.post('/api/bootstrap', async (req, res) => {
+  const { query } = require('./services/db');
+  const bcrypt = require('bcrypt');
+  const crypto = require('crypto');
+  const { email, password, secret } = req.body;
+  if (secret !== (process.env.BOOTSTRAP_SECRET || 'changeme')) {
+    return res.status(403).json({ error: 'Invalid secret' });
+  }
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const existing = await query(`SELECT id FROM users WHERE role = 'sysadmin'`);
+  if (existing.rows.length) return res.status(409).json({ error: 'A sysadmin already exists' });
+  const hashed = await bcrypt.hash(password, 10);
+  const token = crypto.randomBytes(32).toString('hex');
+  const { rows } = await query(
+    `INSERT INTO users (email, password, role, subscribed, token) VALUES ($1,$2,'sysadmin',true,$3) RETURNING id, email, role`,
+    [email, hashed, token]
+  );
+  return res.status(201).json({ ...rows[0], message: 'Sysadmin created. You can now log in.' });
+});
 
 app.get('/', (req, res) => {
   res.json({ message: 'Vehicle Workshop API is running' });

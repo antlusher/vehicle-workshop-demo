@@ -59,14 +59,18 @@ function toImage(row) {
   };
 }
 
-async function ownsProject(projectId, userId) {
-  const { rows } = await query('SELECT id FROM projects WHERE id = $1 AND user_id = $2', [projectId, userId]);
+async function canAccessProject(projectId, user) {
+  if (['manager', 'admin', 'sysadmin'].includes(user.role)) {
+    const { rows } = await query('SELECT id FROM projects WHERE id = $1 AND workshop_id = $2', [projectId, user.workshopId]);
+    return rows.length > 0;
+  }
+  const { rows } = await query('SELECT id FROM projects WHERE id = $1 AND user_id = $2', [projectId, user.id]);
   return rows.length > 0;
 }
 
 // GET report for a project
 router.get('/:projectId', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query('SELECT * FROM job_reports WHERE project_id = $1', [req.params.projectId]);
@@ -75,7 +79,7 @@ router.get('/:projectId', requireAuth, async (req, res) => {
 
 // POST create/update report
 router.post('/:projectId', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { diagnosis, workCarriedOut, technicianNotes, costParts, costLabour, costTotal } = req.body;
@@ -94,7 +98,7 @@ router.post('/:projectId', requireAuth, async (req, res) => {
 
 // POST publish report
 router.post('/:projectId/publish', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query(
@@ -108,7 +112,7 @@ router.post('/:projectId/publish', requireAuth, async (req, res) => {
 
 // POST unpublish report
 router.post('/:projectId/unpublish', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query(
@@ -122,7 +126,7 @@ router.post('/:projectId/unpublish', requireAuth, async (req, res) => {
 
 // GET images for a project
 router.get('/:projectId/images', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query(
@@ -147,7 +151,7 @@ router.get('/media/url', requireAuth, async (req, res) => {
 
 // POST upload images/videos (S3 if configured, local fallback)
 router.post('/:projectId/images', requireAuth, upload.array('images', 10), async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
@@ -180,7 +184,7 @@ router.post('/:projectId/images', requireAuth, upload.array('images', 10), async
 
 // PATCH update image caption
 router.patch('/:projectId/images/:imageId', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query(
@@ -193,7 +197,7 @@ router.patch('/:projectId/images/:imageId', requireAuth, async (req, res) => {
 
 // DELETE image
 router.delete('/:projectId/images/:imageId', requireAuth, async (req, res) => {
-  if (!await ownsProject(req.params.projectId, req.user.id)) {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
   const { rows } = await query(

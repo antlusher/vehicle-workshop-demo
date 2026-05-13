@@ -16,6 +16,23 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
+// Managers/admins can access any project in their workshop; techs only their own
+async function canAccessProject(projectId, user) {
+  const isWide = ['manager', 'admin', 'sysadmin'].includes(user.role);
+  if (isWide) {
+    const { rows } = await query(
+      'SELECT id FROM projects WHERE id = $1 AND workshop_id = $2',
+      [projectId, user.workshopId]
+    );
+    return rows.length > 0;
+  }
+  const { rows } = await query(
+    'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
+    [projectId, user.id]
+  );
+  return rows.length > 0;
+}
+
 function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null, motTests = null, motVehicleMeta = null) {
   return {
     id: row.id,
@@ -62,6 +79,14 @@ async function getMotData(vehicleId) {
 
 router.get('/', requireAuth, async (req, res) => {
   const showArchived = req.query.archived === 'true';
+  const user = req.user;
+
+  // Managers/admins see all workshop projects; techs see only their own
+  const isWideRole = ['manager', 'admin', 'sysadmin'].includes(user.role);
+  const scopeClause = isWideRole
+    ? `p.workshop_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}`
+    : `p.user_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}`;
+  const scopeParam = isWideRole ? user.workshopId : user.id;
 
   // Explicit column list avoids duplicate-name clash when using p.* alongside COALESCE aliases
   const { rows } = await query(
@@ -76,9 +101,9 @@ router.get('/', requireAuth, async (req, res) => {
         p.created_at, p.updated_at, p.specs, p.vehicle_data, p.archived_at
       FROM projects p
       LEFT JOIN vehicles v ON v.id = p.vehicle_id
-      WHERE p.user_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}
+      WHERE ${scopeClause}
       ORDER BY p.updated_at DESC`,
-    [req.user.id]
+    [scopeParam]
   );
 
   // Write back any fields sourced from motVehicleMeta so the DB stays in sync
@@ -224,10 +249,10 @@ router.post('/', requireAuth, async (req, res) => {
 });
 
 router.get('/:projectId', requireAuth, async (req, res) => {
-  const { rows } = await query(
-    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-    [req.params.projectId, req.user.id]
-  );
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { rows } = await query('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = rows[0];
@@ -256,10 +281,10 @@ router.get('/:projectId', requireAuth, async (req, res) => {
 
 router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
   try {
-    const { rows } = await query(
-      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-      [req.params.projectId, req.user.id]
-    );
+    if (!await canAccessProject(req.params.projectId, req.user)) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const { rows } = await query('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
     if (!rows.length) return res.status(404).json({ error: 'Project not found' });
     const project = rows[0];
 
@@ -316,12 +341,11 @@ router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
 
 router.post('/:projectId/specs', requireAuth, async (req, res) => {
   try {
-    const { rows } = await query(
-      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-      [req.params.projectId, req.user.id]
-    );
+    if (!await canAccessProject(req.params.projectId, req.user)) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    const { rows } = await query('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
     if (!rows.length) return res.status(404).json({ error: 'Project not found' });
-
     const project = rows[0];
 
     if (project.specs) return res.json(project.specs);
@@ -354,11 +378,9 @@ router.post('/:projectId/specs', requireAuth, async (req, res) => {
 });
 
 router.post('/:projectId/clear', requireAuth, async (req, res) => {
-  const { rows } = await query(
-    'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
-    [req.params.projectId, req.user.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
 
   await query('DELETE FROM project_history WHERE project_id = $1', [req.params.projectId]);
   await query('DELETE FROM confirmed_suggestions WHERE project_id = $1', [req.params.projectId]);
@@ -368,50 +390,54 @@ router.post('/:projectId/clear', requireAuth, async (req, res) => {
 });
 
 router.post('/:projectId/close', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
   const { rows } = await query(
-    `UPDATE projects SET closed = true, active = false, updated_at = now()
-     WHERE id = $1 AND user_id = $2 RETURNING *`,
-    [req.params.projectId, req.user.id]
+    `UPDATE projects SET closed = true, active = false, updated_at = now() WHERE id = $1 RETURNING *`,
+    [req.params.projectId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0], []));
 });
 
 router.post('/:projectId/reopen', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
   const { rows } = await query(
-    `UPDATE projects SET closed = false, active = true, updated_at = now()
-     WHERE id = $1 AND user_id = $2 RETURNING *`,
-    [req.params.projectId, req.user.id]
+    `UPDATE projects SET closed = false, active = true, updated_at = now() WHERE id = $1 RETURNING *`,
+    [req.params.projectId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0], []));
 });
 
 router.post('/:projectId/archive', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
   const { rows } = await query(
-    `UPDATE projects SET archived_at = now(), updated_at = now()
-     WHERE id = $1 AND user_id = $2 RETURNING *`,
-    [req.params.projectId, req.user.id]
+    `UPDATE projects SET archived_at = now(), updated_at = now() WHERE id = $1 RETURNING *`,
+    [req.params.projectId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0]));
 });
 
 router.post('/:projectId/restore', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
   const { rows } = await query(
-    `UPDATE projects SET archived_at = NULL, updated_at = now()
-     WHERE id = $1 AND user_id = $2 RETURNING *`,
-    [req.params.projectId, req.user.id]
+    `UPDATE projects SET archived_at = NULL, updated_at = now() WHERE id = $1 RETURNING *`,
+    [req.params.projectId]
   );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   return res.json(toProject(rows[0]));
 });
 
 router.post('/:projectId/mot/refresh', requireAuth, async (req, res) => {
-  const { rows } = await query(
-    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-    [req.params.projectId, req.user.id]
-  );
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { rows } = await query('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
   const project = rows[0];
   if (!project.vehicle_id || !project.registration) {

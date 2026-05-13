@@ -377,16 +377,103 @@ function PartsCatalogueTab({ token }) {
   );
 }
 
+// ── Role Permissions Tab ────────────────────────────────────────────────────────
+
+const FEATURES = [
+  { key: 'customers',     label: 'Customer management', desc: 'View and manage customer accounts and vehicles' },
+  { key: 'knowledge_base',label: 'AI knowledge base',   desc: 'View and contribute to the AI knowledge base' },
+  { key: 'registry',      label: 'Vehicle registry',    desc: 'Look up vehicles and view full registry' },
+  { key: 'inventory',     label: 'Parts inventory',     desc: 'View and manage parts stock levels' },
+  { key: 'financials',    label: 'Financial data',      desc: 'View quote totals, invoice values and spend' },
+];
+
+function PermissionsTab({ token }) {
+  const [perms, setPerms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState({});
+
+  useEffect(() => {
+    apiFetch('/api/admin/role-permissions', {}, token)
+      .then(setPerms)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const getVal = (role, feature) => {
+    const p = perms.find((p) => p.role === role && p.feature === feature);
+    return p ? p.allowed : false;
+  };
+
+  const toggle = async (role, feature, allowed) => {
+    const key = `${role}:${feature}`;
+    setSaving((s) => ({ ...s, [key]: true }));
+    try {
+      const updated = await apiFetch('/api/admin/role-permissions', {
+        method: 'PATCH',
+        body: JSON.stringify({ role, feature, allowed }),
+      }, token);
+      setPerms((prev) => {
+        const next = prev.filter((p) => !(p.role === role && p.feature === feature));
+        return [...next, updated];
+      });
+    } finally {
+      setSaving((s) => { const n = { ...s }; delete n[key]; return n; });
+    }
+  };
+
+  if (loading) return <p className="admin-loading">Loading permissions…</p>;
+
+  return (
+    <div>
+      <p style={{ fontSize: '0.88rem', color: '#64748b', marginBottom: 20 }}>
+        Control which features are accessible to each role in your workshop.
+        Managers always have full access.
+      </p>
+      <div className="perm-grid">
+        <div className="perm-header-row">
+          <div className="perm-feature-col">Feature</div>
+          <div className="perm-role-col">Admin</div>
+          <div className="perm-role-col">Tech</div>
+        </div>
+        {FEATURES.map((f) => (
+          <div key={f.key} className="perm-row">
+            <div className="perm-feature-col">
+              <div className="perm-feature-name">{f.label}</div>
+              <div className="perm-feature-desc">{f.desc}</div>
+            </div>
+            {['admin', 'tech'].map((role) => {
+              const allowed = getVal(role, f.key);
+              const busy = saving[`${role}:${f.key}`];
+              return (
+                <div key={role} className="perm-role-col perm-toggle-cell">
+                  <button
+                    className={`perm-toggle${allowed ? ' perm-toggle--on' : ''}`}
+                    disabled={busy}
+                    onClick={() => toggle(role, f.key, !allowed)}
+                    title={allowed ? 'Click to deny' : 'Click to allow'}
+                  >
+                    <span className="perm-toggle-knob" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'details', label: 'Workshop Details' },
-  { id: 'rates', label: 'Rates' },
+  { id: 'details',     label: 'Workshop Details' },
+  { id: 'rates',       label: 'Rates' },
   { id: 'technicians', label: 'Technicians' },
-  { id: 'parts', label: 'Parts Catalogue' },
+  { id: 'parts',       label: 'Parts Catalogue' },
+  { id: 'permissions', label: 'Role Permissions' },
 ];
 
-export default function WorkshopSettings({ token }) {
+export default function WorkshopSettings({ token, userRole }) {
   const [tab, setTab] = useState('details');
 
   return (
@@ -399,10 +486,11 @@ export default function WorkshopSettings({ token }) {
         ))}
       </div>
       <div className="ws-body">
-        {tab === 'details' && <DetailsTab token={token} />}
-        {tab === 'rates' && <RatesTab token={token} />}
+        {tab === 'details'     && <DetailsTab token={token} />}
+        {tab === 'rates'       && <RatesTab token={token} />}
         {tab === 'technicians' && <TechniciansTab token={token} />}
-        {tab === 'parts' && <PartsCatalogueTab token={token} />}
+        {tab === 'parts'       && <PartsCatalogueTab token={token} />}
+        {tab === 'permissions' && <PermissionsTab token={token} />}
       </div>
     </div>
   );

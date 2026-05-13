@@ -17,6 +17,7 @@ function formatUserResponse(user) {
     id: user.id,
     email: user.email,
     role: user.role,
+    workshopId: user.workshopId || null,
     token: user.token,
     subscribed: user.subscribed,
     demoMode: !Boolean(process.env.ANTHROPIC_API_KEY),
