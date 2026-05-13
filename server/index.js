@@ -79,6 +79,16 @@ function runMigrations() {
   }
 }
 
+// Global error handler — prevents unhandled promise rejections from crashing the process
+app.use((err, req, res, next) => {
+  console.error('Unhandled route error:', err.message);
+  if (!res.headersSent) res.status(500).json({ error: 'Internal server error' });
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
 runMigrations();
 
 app.listen(PORT, () => {

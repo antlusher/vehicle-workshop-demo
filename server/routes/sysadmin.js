@@ -61,14 +61,30 @@ router.post('/workshops', async (req, res) => {
 
   const resolvedPlan = plan || 'professional';
   const seatLimit = PLAN_SEATS[resolvedPlan] ?? 10;
-  const { rows } = await query(
-    `INSERT INTO workshops (name, slug, plan, ai_model, ai_monthly_token_limit, seat_limit)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING *`,
-    [name, autoSlug, resolvedPlan, aiModel || 'claude-haiku-4-5-20251001',
-     aiMonthlyTokenLimit || 100000, seatLimit]
-  );
-  const workshop = rows[0];
+
+  // Ensure slug is unique by appending a counter if needed
+  let finalSlug = autoSlug;
+  let attempt = 0;
+  let workshop;
+  while (!workshop) {
+    try {
+      const { rows } = await query(
+        `INSERT INTO workshops (name, slug, plan, ai_model, ai_monthly_token_limit, seat_limit)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING *`,
+        [name, finalSlug, resolvedPlan, aiModel || 'claude-haiku-4-5-20251001',
+         aiMonthlyTokenLimit || 100000, seatLimit]
+      );
+      workshop = rows[0];
+    } catch (err) {
+      if (err.code === '23505' && err.constraint === 'workshops_slug_key') {
+        attempt++;
+        finalSlug = `${autoSlug}-${attempt}`;
+      } else {
+        throw err;
+      }
+    }
+  }
 
   // Seed default role permissions for this new workshop
   await query(
