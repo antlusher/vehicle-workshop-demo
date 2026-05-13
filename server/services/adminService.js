@@ -141,7 +141,8 @@ async function getAiStats(workshopId) {
 }
 
 async function listKnowledgeBase({ category, make, search, workshopId } = {}) {
-  const conditions = ['kb.workshop_id = $1'];
+  // Returns workshop's own entries + global brain entries (workshop_id IS NULL)
+  const conditions = ['(kb.workshop_id = $1 OR kb.workshop_id IS NULL)'];
   const values = [workshopId];
   let idx = 2;
 
@@ -154,11 +155,12 @@ async function listKnowledgeBase({ category, make, search, workshopId } = {}) {
   }
 
   const { rows } = await query(
-    `SELECT kb.*, u.email AS created_by_email
+    `SELECT kb.*, u.email AS created_by_email,
+            (kb.workshop_id IS NULL) AS is_global
      FROM knowledge_base kb
      LEFT JOIN users u ON u.id = kb.created_by
      WHERE ${conditions.join(' AND ')}
-     ORDER BY kb.updated_at DESC`,
+     ORDER BY kb.workshop_id NULLS FIRST, kb.updated_at DESC`,
     values
   );
   return rows;

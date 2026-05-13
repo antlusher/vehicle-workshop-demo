@@ -227,10 +227,87 @@ router.delete('/workshops/:wid/users/:uid', async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ── Global Knowledge Brain ──────────────────────────────────────────────────
+
+router.get('/brain', async (req, res) => {
+  const { category, search } = req.query;
+  const conditions = ['kb.workshop_id IS NULL'];
+  const values = [];
+  let idx = 1;
+  if (category) { conditions.push(`kb.category = $${idx++}`); values.push(category); }
+  if (search) {
+    conditions.push(`(kb.title ILIKE $${idx} OR kb.content ILIKE $${idx} OR kb.fault_code ILIKE $${idx})`);
+    values.push(`%${search}%`); idx++;
+  }
+  const { rows } = await query(
+    `SELECT kb.*, u.email AS created_by_email
+     FROM knowledge_base kb LEFT JOIN users u ON u.id = kb.created_by
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY kb.updated_at DESC`,
+    values
+  );
+  return res.json(rows);
+});
+
+router.post('/brain', async (req, res) => {
+  const { category, make, model, year_from, year_to, fault_code, title, content, source, engine_id, transmission_id } = req.body;
+  if (!category || !title || !content) return res.status(400).json({ error: 'category, title and content are required' });
+  const { rows } = await query(
+    `INSERT INTO knowledge_base (category, make, model, year_from, year_to, fault_code, title, content, source, engine_id, transmission_id, created_by, workshop_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NULL)
+     RETURNING *`,
+    [category, make || null, model || null, year_from || null, year_to || null,
+     fault_code || null, title, content, source || 'global_brain',
+     engine_id || null, transmission_id || null, req.user.id]
+  );
+  return res.status(201).json(rows[0]);
+});
+
+router.patch('/brain/:id', async (req, res) => {
+  const { category, make, model, year_from, year_to, fault_code, title, content, source } = req.body;
+  const fields = []; const vals = []; let i = 1;
+  if (category !== undefined)   { fields.push(`category = $${i++}`);   vals.push(category); }
+  if (make !== undefined)       { fields.push(`make = $${i++}`);       vals.push(make); }
+  if (model !== undefined)      { fields.push(`model = $${i++}`);      vals.push(model); }
+  if (year_from !== undefined)  { fields.push(`year_from = $${i++}`);  vals.push(year_from); }
+  if (year_to !== undefined)    { fields.push(`year_to = $${i++}`);    vals.push(year_to); }
+  if (fault_code !== undefined) { fields.push(`fault_code = $${i++}`); vals.push(fault_code); }
+  if (title !== undefined)      { fields.push(`title = $${i++}`);      vals.push(title); }
+  if (content !== undefined)    { fields.push(`content = $${i++}`);    vals.push(content); }
+  if (source !== undefined)     { fields.push(`source = $${i++}`);     vals.push(source); }
+  if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
+  fields.push(`updated_at = now()`);
+  vals.push(req.params.id);
+  const { rows } = await query(
+    `UPDATE knowledge_base SET ${fields.join(', ')} WHERE id = $${i} AND workshop_id IS NULL RETURNING *`,
+    vals
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Global brain entry not found' });
+  return res.json(rows[0]);
+});
+
+router.delete('/brain/:id', async (req, res) => {
+  const { rows } = await query('SELECT id FROM knowledge_base WHERE id = $1 AND workshop_id IS NULL', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Global brain entry not found' });
+  await query('DELETE FROM knowledge_base WHERE id = $1', [req.params.id]);
+  return res.json({ ok: true });
+});
+
+// Promote a workshop KB entry to the global brain
+router.post('/brain/promote/:id', async (req, res) => {
+  const { rows } = await query(
+    `UPDATE knowledge_base SET workshop_id = NULL, source = 'global_brain', updated_at = now()
+     WHERE id = $1 AND workshop_id IS NOT NULL RETURNING *`,
+    [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Entry not found or already global' });
+  return res.json(rows[0]);
+});
+
 // ── System stats ────────────────────────────────────────────────────────────
 
 router.get('/stats', async (req, res) => {
-  const [workshops, users, projects, ai] = await Promise.all([
+  const [workshops, users, projects, ai, brain] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE active)::int AS active FROM workshops`),
     query(`SELECT COUNT(*) FILTER (WHERE role IN ('owner','admin','tech'))::int AS staff,
                   COUNT(*) FILTER (WHERE role = 'customer')::int AS customers FROM users`),
@@ -238,12 +315,14 @@ router.get('/stats', async (req, res) => {
     query(`SELECT COUNT(*)::int AS requests, COALESCE(SUM(input_tokens+output_tokens),0)::int AS tokens,
                   COALESCE(SUM(input_tokens+output_tokens) FILTER (WHERE created_at > now()-interval '30 days'),0)::int AS tokens_30d
            FROM ai_requests`),
+    query(`SELECT COUNT(*)::int AS total FROM knowledge_base WHERE workshop_id IS NULL`),
   ]);
   return res.json({
     workshops: workshops.rows[0],
     users: users.rows[0],
     projects: projects.rows[0],
     ai: ai.rows[0],
+    brain: brain.rows[0],
   });
 });
 

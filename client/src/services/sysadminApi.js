@@ -17,6 +17,15 @@ export const getWorkshop      = (id, token) => request(`/api/sysadmin/workshops/
 export const createWorkshop   = (data, token) => request('/api/sysadmin/workshops', { method: 'POST', body: data }, token);
 export const updateWorkshop   = (id, data, token) => request(`/api/sysadmin/workshops/${id}`, { method: 'PATCH', body: data }, token);
 
+export const getBrainEntries  = (token, params = {}) => {
+  const q = new URLSearchParams(params).toString();
+  return request(`/api/sysadmin/brain${q ? '?' + q : ''}`, {}, token);
+};
+export const createBrainEntry = (data, token) => request('/api/sysadmin/brain', { method: 'POST', body: data }, token);
+export const updateBrainEntry = (id, data, token) => request(`/api/sysadmin/brain/${id}`, { method: 'PATCH', body: data }, token);
+export const deleteBrainEntry = (id, token) => request(`/api/sysadmin/brain/${id}`, { method: 'DELETE' }, token);
+export const promoteToGlobal  = (id, token) => request(`/api/sysadmin/brain/promote/${id}`, { method: 'POST' }, token);
+
 export const getSysAdmins     = (token) => request('/api/sysadmin/sysadmins', {}, token);
 export const createSysAdmin   = (data, token) => request('/api/sysadmin/sysadmins', { method: 'POST', body: data }, token);
 export const deleteSysAdmin   = (id, token) => request(`/api/sysadmin/sysadmins/${id}`, { method: 'DELETE' }, token);

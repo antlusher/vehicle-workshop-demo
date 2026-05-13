@@ -620,18 +620,23 @@ function KnowledgeBaseTab({ token }) {
                   ? <span className="badge badge-blue">{txLabel} tx</span>
                   : [e.make, e.model, e.year_from && `${e.year_from}${e.year_to ? '–' + e.year_to : '+'}`].filter(Boolean).join(' ') || <span style={{ color: '#9ca3af' }}>Universal</span>;
                 return (
-                <tr key={e.id}>
-                  <td><span className="badge badge-blue">{e.category}</span></td>
+                <tr key={e.id} style={e.is_global ? { background: 'rgba(99,102,241,0.05)' } : {}}>
+                  <td>
+                    <span className="badge badge-blue">{e.category}</span>
+                    {e.is_global && <span className="badge" style={{ marginLeft: 4, background: '#4f46e5', color: '#fff', fontSize: '0.7rem' }}>Global Brain</span>}
+                  </td>
                   <td>{scopeLabel}</td>
                   <td>{e.fault_code || <span style={{ color: '#9ca3af' }}>—</span>}</td>
                   <td>{e.title}</td>
                   <td style={{ color: '#6b7280', fontSize: '0.85rem' }}>{e.source || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', color: '#9ca3af' }}>{new Date(e.updated_at).toLocaleDateString()}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm('Delete this entry?')) return; await deleteKbEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>Delete</button>
-                    </div>
+                    {!e.is_global && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
+                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm('Delete this entry?')) return; await deleteKbEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>Delete</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

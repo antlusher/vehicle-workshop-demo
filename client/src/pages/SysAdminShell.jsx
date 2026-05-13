@@ -3,6 +3,7 @@ import {
   getSysStats, getWorkshops, createWorkshop, updateWorkshop,
   getSysAdmins, createSysAdmin, deleteSysAdmin,
   getWorkshopUsers, createWorkshopUser, updateWorkshopUser, deleteWorkshopUser,
+  getBrainEntries, createBrainEntry, updateBrainEntry, deleteBrainEntry,
 } from '../services/sysadminApi';
 
 const PLANS = ['starter', 'professional', 'enterprise'];
@@ -44,7 +45,145 @@ function OverviewPage({ token }) {
           <div className="sys-stat-label">AI tokens (30 days)</div>
           <div className="sys-stat-sub">{fmt(stats.ai.requests)} total requests</div>
         </div>
+        <div className="sys-stat-card">
+          <div className="sys-stat-value">{fmt(stats.brain?.total)}</div>
+          <div className="sys-stat-label">Global brain entries</div>
+          <div className="sys-stat-sub">Shared across all workshops</div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── Knowledge Brain page ─────────────────────────────────────────────────────
+const BRAIN_CATEGORIES = ['Common Fix', 'DTC Code', 'Vehicle Note', 'Service Interval', 'General', 'procedure'];
+
+function BrainEntryForm({ initial = {}, onSave, onCancel }) {
+  const [form, setForm] = useState({
+    category: initial.category || 'Common Fix',
+    make: initial.make || '', model: initial.model || '',
+    year_from: initial.year_from || '', year_to: initial.year_to || '',
+    fault_code: initial.fault_code || '', title: initial.title || '',
+    content: initial.content || '', source: initial.source || 'global_brain',
+  });
+  const [saving, setSaving] = useState(false);
+  const f = (k) => ({ value: form[k], onChange: (e) => setForm((s) => ({ ...s, [k]: e.target.value })) });
+
+  return (
+    <div className="kb-form-wrap" style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="kb-form-row">
+          <div className="kb-form-group">
+            <label>Category</label>
+            <select {...f('category')}>{BRAIN_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
+          </div>
+          <div className="kb-form-group">
+            <label>Fault code</label>
+            <input {...f('fault_code')} placeholder="P0300" />
+          </div>
+        </div>
+        <div className="kb-form-row">
+          <div className="kb-form-group"><label>Make</label><input {...f('make')} placeholder="Ford" /></div>
+          <div className="kb-form-group"><label>Model</label><input {...f('model')} placeholder="Focus" /></div>
+          <div className="kb-form-group"><label>Year from</label><input {...f('year_from')} placeholder="2015" /></div>
+          <div className="kb-form-group"><label>Year to</label><input {...f('year_to')} placeholder="2020" /></div>
+        </div>
+        <div className="kb-form-group">
+          <label>Title <span style={{ color: '#b91c1c' }}>*</span></label>
+          <input required {...f('title')} placeholder="EGR valve clogging causing rough idle" />
+        </div>
+        <div className="kb-form-group">
+          <label>Content <span style={{ color: '#b91c1c' }}>*</span></label>
+          <textarea rows={5} required style={{ width: '100%', padding: 8, borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', resize: 'vertical' }}
+            value={form.content} onChange={(e) => setForm((s) => ({ ...s, content: e.target.value }))} />
+        </div>
+        <div className="kb-form-actions">
+          <button disabled={saving} onClick={async () => { setSaving(true); try { await onSave(form); } finally { setSaving(false); } }}>
+            {saving ? 'Saving…' : 'Save entry'}
+          </button>
+          <button className="secondary" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrainPage({ token }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filterCat, setFilterCat] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const load = (params = {}) => getBrainEntries(token, params).then(setEntries).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  const editingEntry = editingId ? entries.find((e) => e.id === editingId) : null;
+
+  return (
+    <div>
+      <div className="admin-toolbar">
+        <h2 className="admin-page-title" style={{ margin: 0 }}>Knowledge Brain</h2>
+        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add entry</button>}
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 20 }}>
+        Global knowledge shared across all workshops during AI diagnosis. The AI automatically draws from these entries alongside each workshop's own knowledge base.
+      </p>
+
+      {showForm && (
+        <BrainEntryForm
+          onSave={async (form) => { await createBrainEntry(form, token); setShowForm(false); load(); }}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
+      {editingEntry && (
+        <BrainEntryForm
+          initial={editingEntry}
+          onSave={async (form) => { await updateBrainEntry(editingId, form, token); setEditingId(null); load(); }}
+          onCancel={() => setEditingId(null)}
+        />
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0' }}
+          placeholder="Search title, content, fault code…" value={search} onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && load({ search, category: filterCat })} />
+        <select style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0' }}
+          value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+          <option value="">All categories</option>
+          {BRAIN_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        </select>
+        <button className="secondary" onClick={() => load({ search, category: filterCat })}>Filter</button>
+        <button className="secondary" onClick={() => { setSearch(''); setFilterCat(''); load(); }}>Clear</button>
+      </div>
+
+      {loading ? <p className="admin-loading">Loading…</p> : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Category</th><th>Scope</th><th>Fault code</th><th>Title</th><th>Updated</th><th></th></tr></thead>
+            <tbody>
+              {entries.map((e) => (
+                <tr key={e.id}>
+                  <td><span className="badge badge-blue">{e.category}</span></td>
+                  <td style={{ fontSize: '0.82rem' }}>{[e.make, e.model, e.year_from && `${e.year_from}${e.year_to ? '–'+e.year_to : '+'}`].filter(Boolean).join(' ') || <span style={{ color: '#9ca3af' }}>Universal</span>}</td>
+                  <td>{e.fault_code || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                  <td>{e.title}</td>
+                  <td style={{ fontSize: '0.78rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>{fmtDate(e.updated_at)}</td>
+                  <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
+                    <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
+                    <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px', color: '#dc2626', borderColor: '#dc2626' }}
+                      onClick={async () => { if (!window.confirm('Delete this global entry?')) return; await deleteBrainEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {!entries.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No global brain entries yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -532,6 +671,7 @@ function WorkshopsPage({ token }) {
 const NAV = [
   { id: 'overview',   label: 'Overview' },
   { id: 'workshops',  label: 'Workshops' },
+  { id: 'brain',      label: 'Knowledge Brain' },
   { id: 'sysadmins', label: 'Sysadmins' },
 ];
 
@@ -560,6 +700,7 @@ export default function SysAdminShell({ token, userEmail, onLogout }) {
       <main className="sys-content">
         {page === 'overview'   && <OverviewPage token={token} />}
         {page === 'workshops'  && <WorkshopsPage token={token} />}
+        {page === 'brain'      && <BrainPage token={token} />}
         {page === 'sysadmins' && <SysAdminsPage token={token} currentUserEmail={userEmail} />}
       </main>
     </div>
