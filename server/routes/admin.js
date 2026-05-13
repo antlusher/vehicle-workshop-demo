@@ -224,14 +224,26 @@ function formatCustomer(r) {
     id: r.id, email: r.email, name: r.name || '', phone: r.phone || '',
     addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
     city: r.city || '', postcode: r.postcode || '',
-    createdAt: r.created_at, vehicleCount: parseInt(r.vehicle_count) || 0,
+    createdAt: r.created_at,
+    vehicleCount: parseInt(r.vehicle_count) || 0,
+    totalSpend: r.total_spend ? Math.round(parseFloat(r.total_spend) * 100) / 100 : 0,
+    lastPortalAccess: r.last_seen_at || null,
   };
 }
 
 router.get('/customers', async (req, res) => {
   const { rows } = await query(
     `SELECT u.id, u.email, u.name, u.phone, u.address_line1, u.address_line2,
-            u.city, u.postcode, u.created_at, COUNT(cv.id) as vehicle_count
+            u.city, u.postcode, u.created_at, u.last_seen_at,
+            COUNT(DISTINCT cv.id) as vehicle_count,
+            COALESCE((
+              SELECT SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct/100)) * (1 + q.vat_rate/100))
+              FROM quotes q
+              JOIN projects p ON p.id = q.project_id
+              JOIN customer_vehicles cv2 ON cv2.vehicle_id = p.vehicle_id AND cv2.customer_id = u.id
+              JOIN quote_lines ql ON ql.quote_id = q.id
+              WHERE q.status = 'approved' AND q.customer_id = u.id
+            ), 0) AS total_spend
      FROM users u
      LEFT JOIN customer_vehicles cv ON cv.customer_id = u.id
      WHERE u.role = 'customer'
@@ -324,6 +336,92 @@ router.post('/customers/:id/vehicles', async (req, res) => {
 router.delete('/customers/:id/vehicles/:vehicleId', async (req, res) => {
   await query('DELETE FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2', [req.params.id, req.params.vehicleId]);
   return res.json({ deleted: true });
+});
+
+// GET /api/admin/customers/:id/stats — spend, activity, job history
+router.get('/customers/:id/stats', async (req, res) => {
+  const customerId = req.params.id;
+
+  const [{ rows: userRows }, { rows: jobRows }, { rows: spendRows }] = await Promise.all([
+    query(
+      `SELECT id, email, name, created_at, last_seen_at,
+              (SELECT MAX(created_at) FROM login_history WHERE user_id = $1) AS last_staff_login
+       FROM users WHERE id = $1 AND role = 'customer'`,
+      [customerId]
+    ),
+    query(
+      `SELECT p.id, p.created_at, p.closed,
+              COALESCE(p.registration_snapshot, p.registration) AS registration,
+              COALESCE(p.make, v.make) AS make,
+              COALESCE(p.model, v.model) AS model,
+              COALESCE(p.year, v.year) AS year,
+              jr.cost_total AS report_total,
+              jr.published_at,
+              q.id AS quote_id,
+              q.reference AS quote_ref,
+              q.status AS quote_status,
+              q.vat_rate,
+              q.updated_at AS quote_date,
+              (SELECT SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct / 100)))
+               FROM quote_lines ql WHERE ql.quote_id = q.id) AS quote_subtotal
+       FROM projects p
+       JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+       LEFT JOIN vehicles v ON v.id = p.vehicle_id
+       LEFT JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
+       LEFT JOIN quotes q ON q.project_id = p.id AND q.customer_id = $1
+                         AND q.status IN ('sent','approved')
+       ORDER BY p.created_at DESC`,
+      [customerId]
+    ),
+    query(
+      `SELECT COALESCE(SUM(
+         ql.qty * (ql.unit_cost * (1 + ql.markup_pct / 100)) * (1 + q.vat_rate / 100)
+       ), 0) AS total_spend,
+       COUNT(DISTINCT q.id) AS approved_count
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+       JOIN quote_lines ql ON ql.quote_id = q.id
+       WHERE q.status = 'approved' AND q.customer_id = $1`,
+      [customerId]
+    ),
+  ]);
+
+  if (!userRows.length) return res.status(404).json({ error: 'Customer not found' });
+  const u = userRows[0];
+  const spend = spendRows[0];
+
+  const jobs = jobRows.map((r) => {
+    const subtotal = r.quote_subtotal ? parseFloat(r.quote_subtotal) : null;
+    const vatRate = r.vat_rate ? parseFloat(r.vat_rate) : 20;
+    const quoteTotal = subtotal != null ? Math.round(subtotal * (1 + vatRate / 100) * 100) / 100 : null;
+    return {
+      id: r.id,
+      openedAt: r.created_at,
+      closed: r.closed,
+      registration: r.registration,
+      vehicle: [r.make, r.model, r.year].filter(Boolean).join(' '),
+      reportTotal: r.report_total ? parseFloat(r.report_total) : null,
+      publishedAt: r.published_at,
+      quoteId: r.quote_id || null,
+      quoteRef: r.quote_ref || null,
+      quoteStatus: r.quote_status || null,
+      quoteTotal,
+      quoteDate: r.quote_date || null,
+    };
+  });
+
+  return res.json({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    createdAt: u.created_at,
+    lastPortalAccess: u.last_seen_at || null,
+    totalSpend: Math.round(parseFloat(spend.total_spend) * 100) / 100,
+    approvedQuoteCount: parseInt(spend.approved_count) || 0,
+    jobCount: jobs.length,
+    jobs,
+  });
 });
 
 // Search vehicles for customer linking

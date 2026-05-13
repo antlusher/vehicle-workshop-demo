@@ -2571,6 +2571,43 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   white-space: nowrap;
 }
 
+/* ── Customer detail panel — activity tab ── */
+.cust-detail-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e2e8f0;
+}
+.cust-detail-tab {
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #64748b;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s;
+}
+.cust-detail-tab:hover { color: #1e293b; }
+.cust-detail-tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+.cust-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.cust-stat-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.cust-stat-value { font-size: 1.2rem; font-weight: 700; color: #1e293b; }
+.cust-stat-label { font-size: 0.72rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+.cust-stat-sub { font-size: 0.72rem; color: #94a3b8; margin-top: 2px; }
+
 /* ── Customer Portal ── */
 .cp-shell {
   min-height: 100vh;

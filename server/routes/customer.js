@@ -17,8 +17,11 @@ router.post('/magic-login', async (req, res) => {
   if (!rows.length) return res.status(401).json({ error: 'Link expired or invalid' });
 
   const user = rows[0];
-  // Burn the token immediately — single use
-  await query(`UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL WHERE id = $1`, [user.id]);
+  // Burn the token immediately — single use, stamp last_seen_at
+  await query(
+    `UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL, last_seen_at = now() WHERE id = $1`,
+    [user.id]
+  );
 
   return res.json({ token: user.token, role: user.role, email: user.email, name: user.name });
 });
