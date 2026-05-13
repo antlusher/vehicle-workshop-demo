@@ -225,7 +225,10 @@ function QuickReference({ project, token }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const hasVehicleData = project.make && project.model;
+
   const fetchSpecs = () => {
+    if (!hasVehicleData) return;
     setLoading(true);
     setError('');
     api.fetchProjectSpecs(project.id, token)
@@ -235,10 +238,15 @@ function QuickReference({ project, token }) {
   };
 
   useEffect(() => {
-    if (specs) return;
+    if (specs || !hasVehicleData) return;
     fetchSpecs();
   }, [project.id]);
 
+  if (!hasVehicleData) return (
+    <p style={{ color: '#9ca3af', fontSize: '0.9rem', padding: '12px 0' }}>
+      Vehicle specs unavailable — make and model are not set for this project.
+    </p>
+  );
   if (loading) return <p className="specs-loading">Generating vehicle specs…</p>;
   if (error) return (
     <div style={{ padding: 16 }}>
@@ -528,8 +536,7 @@ function MotTab({ project, token }) {
     setRefreshing(true);
     setError('');
     try {
-      const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-      const res = await fetch(`${BASE_URL}/api/projects/${project.id}/mot/refresh`, {
+      const res = await fetch(`/api/projects/${project.id}/mot/refresh`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -878,6 +885,8 @@ function ReportTab({ project, token }) {
                   const labourTotal = sent.lines.filter((l) => l.type === 'labour').reduce((s, l) => s + l.lineTotal, 0);
                   setForm((f) => ({
                     ...f,
+                    diagnosis: f.diagnosis || sent.diagnosticSummary || '',
+                    technicianNotes: f.technicianNotes || sent.notes || '',
                     costParts: partsTotal > 0 ? partsTotal.toFixed(2) : f.costParts,
                     costLabour: labourTotal > 0 ? labourTotal.toFixed(2) : f.costLabour,
                     costTotal: sent.totals.total.toFixed(2),

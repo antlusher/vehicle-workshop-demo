@@ -39,10 +39,12 @@ async function searchSeeded(q, { make, model, engineCode } = {}) {
   // Boost compatible parts to the top when searching by text
   const compatBoost = compatConditions.length
     ? `CASE WHEN (${compatConditions.join(' OR ')}) THEN 0 ELSE 1 END`
-    : '0';
+    : null;
+
+  const orderBy = [compatBoost, 'category', 'brand', 'title'].filter(Boolean).join(', ');
 
   const { rows } = await query(
-    `SELECT * FROM parts_catalogue ${where} ORDER BY ${compatBoost}, category, brand, title LIMIT 30`,
+    `SELECT * FROM parts_catalogue ${where} ORDER BY ${orderBy} LIMIT 30`,
     params
   );
   return rows.map(formatPart);
@@ -63,6 +65,9 @@ function formatPart(row) {
     inStock: row.in_stock,
     source: row.source,
     url: row.url || null,
+    stockQty: row.stock_qty != null ? parseInt(row.stock_qty) : null,
+    reservedQty: row.reserved_qty != null ? parseInt(row.reserved_qty) : null,
+    availableQty: row.available_qty != null ? parseInt(row.available_qty) : null,
   };
 }
 

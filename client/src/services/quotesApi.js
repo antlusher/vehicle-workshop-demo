@@ -1,4 +1,5 @@
 const BASE = '/api/quotes';
+const PARTS_BASE = '/api/parts';
 
 async function request(url, options = {}, token) {
   const res = await fetch(url, {
@@ -22,7 +23,7 @@ export const searchParts = (q, { make, model, engineCode } = {}, token) => {
   if (make) params.set('make', make);
   if (model) params.set('model', model);
   if (engineCode) params.set('engine_code', engineCode);
-  return request(`${BASE}/parts/search?${params}`, {}, token);
+  return request(`${PARTS_BASE}/search?${params}`, {}, token);
 };
 
 export const getSettings = (token) => request(`${BASE}/settings`, {}, token);
@@ -48,3 +49,18 @@ export const updateLine = (quoteId, lineId, data, token) =>
 
 export const deleteLine = (quoteId, lineId, token) =>
   request(`${BASE}/${quoteId}/lines/${lineId}`, { method: 'DELETE' }, token);
+
+export const sendQuote = (quoteId, token) =>
+  request(`${BASE}/${quoteId}/send`, { method: 'POST' }, token);
+
+export const getProjectCustomers = (projectId, token) =>
+  request(`${BASE}/project-customers/${projectId}`, {}, token);
+
+export const createItem = (quoteId, data, token) =>
+  request(`${BASE}/${quoteId}/items`, { method: 'POST', body: data }, token);
+
+export const updateItem = (quoteId, itemId, data, token) =>
+  request(`${BASE}/${quoteId}/items/${itemId}`, { method: 'PATCH', body: data }, token);
+
+export const deleteItem = (quoteId, itemId, token) =>
+  request(`${BASE}/${quoteId}/items/${itemId}`, { method: 'DELETE' }, token);

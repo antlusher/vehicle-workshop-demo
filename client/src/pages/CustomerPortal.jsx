@@ -10,10 +10,6 @@ function fmt(val) {
 }
 
 function QuoteSection({ quote }) {
-  const partLines = quote.lines.filter((l) => l.type === 'part');
-  const labourLines = quote.lines.filter((l) => l.type === 'labour');
-  const otherLines = quote.lines.filter((l) => l.type !== 'part' && l.type !== 'labour');
-
   const renderLines = (lines) => lines.map((l) => (
     <div key={l.id} className="cp-quote-line">
       <span className="cp-quote-line-desc">{l.description}</span>
@@ -22,28 +18,35 @@ function QuoteSection({ quote }) {
     </div>
   ));
 
+  const hasItems = quote.items?.length > 0;
+  const hasUngrouped = quote.ungroupedLines?.length > 0;
+
   return (
     <div className="cp-report-section cp-quote-section">
       <h3 className="cp-section-title">Your estimate</h3>
-      {quote.diagnosticSummary && <p className="cp-section-text" style={{ marginBottom: 12 }}>{quote.diagnosticSummary}</p>}
+      {quote.diagnosticSummary && (
+        <p className="cp-section-text" style={{ marginBottom: 16 }}>{quote.diagnosticSummary}</p>
+      )}
 
-      {partLines.length > 0 && (
-        <div className="cp-quote-group">
-          <div className="cp-quote-group-label">Parts</div>
-          {renderLines(partLines)}
+      {hasItems && quote.items.map((item) => (
+        <div key={item.id} className="cp-quote-item-group">
+          <div className="cp-quote-item-title">{item.title}</div>
+          {item.description && <p className="cp-quote-item-desc">{item.description}</p>}
+          {renderLines(item.lines)}
+          {item.lines.length > 1 && (
+            <div className="cp-quote-item-subtotal">Item total: £{item.subtotal.toFixed(2)}</div>
+          )}
+        </div>
+      ))}
+
+      {hasUngrouped && (
+        <div className="cp-quote-item-group">
+          {renderLines(quote.ungroupedLines)}
         </div>
       )}
-      {labourLines.length > 0 && (
-        <div className="cp-quote-group">
-          <div className="cp-quote-group-label">Labour</div>
-          {renderLines(labourLines)}
-        </div>
-      )}
-      {otherLines.length > 0 && (
-        <div className="cp-quote-group">
-          <div className="cp-quote-group-label">Other</div>
-          {renderLines(otherLines)}
-        </div>
+
+      {!hasItems && !hasUngrouped && (
+        <p style={{ color: '#9ca3af' }}>No items on this quote.</p>
       )}
 
       <div className="cp-quote-totals">
@@ -81,7 +84,6 @@ function JobDetail({ projectId, token, onBack }) {
 
   if (loading) return <div className="cp-loading">Loading report…</div>;
   if (error) return <div className="cp-error">{error}</div>;
-  if (!data) return null;
 
   // quote-only view (no published report yet)
   if (!data && quote) {
@@ -98,6 +100,8 @@ function JobDetail({ projectId, token, onBack }) {
       </div>
     );
   }
+
+  if (!data) return null;
 
   const { job, report, images, confirmedFixes } = data;
 

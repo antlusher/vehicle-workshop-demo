@@ -167,22 +167,42 @@ router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'No quote available' });
   const quote = rows[0];
 
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
   const { rows: lineRows } = await query(
     'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
     [quote.id]
   );
 
-  const lines = lineRows.map((row) => {
+  const formatLine = (row) => {
     const unitCost = parseFloat(row.unit_cost);
     const markupPct = parseFloat(row.markup_pct);
     const qty = parseFloat(row.qty);
     const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
     const lineTotal = Math.round(unitPrice * qty * 100) / 100;
-    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal };
+    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+
+  const items = itemRows.map((item) => {
+    const lines = allLines.filter((l) => l.quoteItemId === item.id);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description || '',
+      notes: item.notes || '',
+      lines,
+      subtotal,
+    };
   });
 
-  const vatRate = parseFloat(quote.vat_rate);
-  const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
   const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
 
   return res.json({
@@ -193,7 +213,9 @@ router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
     vatRate,
     createdAt: quote.created_at,
     updatedAt: quote.updated_at,
-    lines,
+    items,
+    ungroupedLines,
+    lines: allLines,
     totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
   });
 });

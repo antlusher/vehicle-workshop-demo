@@ -162,57 +162,83 @@ async function searchPartsCatalogue({ query: q, make, model, engine_code }) {
   };
 }
 
-async function createQuote({ project_id, notes, diagnostic_summary, lines }) {
-  if (!project_id || !lines?.length) return { error: 'project_id and lines are required' };
+async function createQuote({ project_id, notes, diagnostic_summary, items, lines }) {
+  if (!project_id) return { error: 'project_id is required' };
+
+  // Normalise: if caller passed flat `lines`, wrap in a single item
+  const itemList = items?.length
+    ? items
+    : lines?.length
+      ? [{ title: 'Quote', description: diagnostic_summary || '', lines }]
+      : null;
+
+  if (!itemList) return { error: 'items (or lines) with at least one entry are required' };
 
   const settings = await getWorkshopSettings();
+
+  const { rows: refRows } = await query(
+    `SELECT 'Q-' || LPAD(
+       (COALESCE(MAX(CAST(SUBSTRING(reference FROM 3) AS INTEGER)), 0) + 1)::text,
+       4, '0'
+     ) AS ref FROM quotes WHERE reference ~ '^Q-[0-9]+$'`
+  );
   const { rows: qRows } = await query(
-    `INSERT INTO quotes (project_id, notes, diagnostic_summary, vat_rate)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [project_id, notes || null, diagnostic_summary || null, settings.vatRate]
+    `INSERT INTO quotes (project_id, notes, diagnostic_summary, vat_rate, reference)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [project_id, notes || null, diagnostic_summary || null, settings.vatRate, refRows[0].ref]
   );
   const quote = qRows[0];
+  const sortBase = 0;
 
-  for (const [i, line] of lines.entries()) {
-    const markup = line.markup_pct != null ? line.markup_pct
-      : line.type === 'labour' ? 0 : settings.defaultMarkupPct;
-    await query(
-      `INSERT INTO quote_lines (quote_id, type, description, qty, unit_cost, markup_pct, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [quote.id, line.type || 'part', line.description, line.qty || 1, line.unit_cost, markup, i]
+  const allFormatted = [];
+
+  for (const [itemIdx, item] of itemList.entries()) {
+    const { rows: itemRows } = await query(
+      `INSERT INTO quote_items (quote_id, title, description, notes, sort_order)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [quote.id, item.title, item.description || null, item.notes || null, sortBase + itemIdx]
     );
+    const quoteItem = itemRows[0];
+
+    for (const [i, line] of (item.lines || []).entries()) {
+      const markup = line.markup_pct != null ? line.markup_pct
+        : line.type === 'labour' ? 0 : settings.defaultMarkupPct;
+      await query(
+        `INSERT INTO quote_lines
+           (quote_id, quote_item_id, type, description, qty, unit_cost, markup_pct, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [quote.id, quoteItem.id, line.type || 'part', line.description, line.qty || 1,
+         line.unit_cost, markup, i]
+      );
+      const unitPrice = applyMarkup(parseFloat(line.unit_cost), markup);
+      allFormatted.push({
+        item: item.title,
+        type: line.type || 'part',
+        description: line.description,
+        qty: parseFloat(line.qty || 1),
+        unitPrice: Math.round(unitPrice * 100) / 100,
+        lineTotal: Math.round(unitPrice * parseFloat(line.qty || 1) * 100) / 100,
+      });
+    }
   }
 
-  const { rows: lineRows } = await query(
-    'SELECT * FROM quote_lines WHERE quote_id = $1 ORDER BY sort_order',
-    [quote.id]
-  );
-  const formatted = lineRows.map((l) => {
-    const unitPrice = applyMarkup(parseFloat(l.unit_cost), parseFloat(l.markup_pct));
-    return {
-      type: l.type,
-      description: l.description,
-      qty: parseFloat(l.qty),
-      unitPrice: Math.round(unitPrice * 100) / 100,
-      lineTotal: Math.round(unitPrice * parseFloat(l.qty) * 100) / 100,
-    };
-  });
-
-  const subtotal = formatted.reduce((s, l) => s + l.lineTotal, 0);
+  const subtotal = allFormatted.reduce((s, l) => s + l.lineTotal, 0);
   const vatRate = parseFloat(settings.vatRate);
   const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
 
   return {
     quoteId: quote.id,
+    reference: quote.reference,
     created: true,
-    lines: formatted,
+    items: itemList.map((it) => it.title),
+    lines: allFormatted,
     totals: {
       subtotal: Math.round(subtotal * 100) / 100,
       vat,
       total: Math.round((subtotal + vat) * 100) / 100,
       vatRate,
     },
-    message: 'Quote created. It will appear in the Quote tab — review and adjust before sending to the customer.',
+    message: `Quote ${quote.reference} created. It will appear in the Quote tab — review and send to the customer when ready.`,
   };
 }
 
@@ -269,29 +295,42 @@ const workshopToolDefinitions = [
   },
   {
     name: 'create_quote',
-    description: 'Create a quote for the current project with line items. ALWAYS show the proposed lines and costs to the technician and get confirmation BEFORE calling this tool.',
+    description: 'Create a new quote for the project. Each call always creates a brand-new quote — never modifies an existing one. A project can have multiple quotes (e.g. one for a service, another for additional repairs found during the job). Organise work into named items (e.g. "Full Service", "Exhaust Replacement") each with their own parts and labour lines. ALWAYS show the proposed items and costs to the technician and get confirmation BEFORE calling this tool.',
     input_schema: {
       type: 'object',
       properties: {
         project_id: { type: 'string' },
-        diagnostic_summary: { type: 'string', description: 'Customer-facing reason for the work' },
-        notes: { type: 'string', description: 'Internal notes' },
-        lines: {
+        diagnostic_summary: { type: 'string', description: 'Customer-facing overview of the work' },
+        notes: { type: 'string', description: 'Payment terms, lead times, or internal notes' },
+        items: {
           type: 'array',
+          description: 'Grouped work items. Each item is a named section with its own lines.',
           items: {
             type: 'object',
             properties: {
-              type: { type: 'string', enum: ['part', 'labour', 'other'] },
-              description: { type: 'string' },
-              qty: { type: 'number' },
-              unit_cost: { type: 'number', description: 'Cost price (ex markup)' },
-              markup_pct: { type: 'number', description: 'Markup % — omit to use workshop default' },
+              title: { type: 'string', description: 'Item name e.g. "Full Service", "Exhaust Replacement"' },
+              description: { type: 'string', description: 'Customer-facing description of this work item' },
+              notes: { type: 'string', description: 'Internal notes for this item' },
+              lines: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    type: { type: 'string', enum: ['part', 'labour', 'other'] },
+                    description: { type: 'string' },
+                    qty: { type: 'number' },
+                    unit_cost: { type: 'number', description: 'Cost price excluding markup' },
+                    markup_pct: { type: 'number', description: 'Markup % — omit to use workshop default' },
+                  },
+                  required: ['type', 'description', 'qty', 'unit_cost'],
+                },
+              },
             },
-            required: ['type', 'description', 'qty', 'unit_cost'],
+            required: ['title', 'lines'],
           },
         },
       },
-      required: ['project_id', 'lines'],
+      required: ['project_id', 'items'],
     },
   },
 ];

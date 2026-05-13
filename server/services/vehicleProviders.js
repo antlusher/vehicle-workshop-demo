@@ -1,6 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { fetchMotHistory } = require('./motService');
 
 const REG_LOOKUP_API_URL = process.env.REG_LOOKUP_API_URL;
 const REG_LOOKUP_API_KEY = process.env.REG_LOOKUP_API_KEY;
@@ -278,27 +279,11 @@ async function lookupByReg(registration) {
     throw new Error('Registration number is required for lookup');
   }
 
-  // Run UKVD and DVLA in parallel — UKVD is primary, DVLA supplements with MOT/tax data
-  const [ukvdResult, dvlaResult] = await Promise.all([
-    lookupByUkvd({ Vrm: cleaned }),
-    lookupByDvla(cleaned),
-  ]);
+  // UKVD disabled — coverage too inconsistent; MOT API fills model/make after project creation
+  // const ukvdResult = await lookupByUkvd({ Vrm: cleaned });
+  // if (ukvdResult) { ... }
 
-  if (ukvdResult) {
-    const normalized = normalizeUkvdData(ukvdResult, cleaned, null);
-    if (dvlaResult?.vehicleData) {
-      normalized.vehicleData = {
-        ...normalized.vehicleData,
-        taxStatus: dvlaResult.vehicleData.taxStatus,
-        taxDueDate: dvlaResult.vehicleData.taxDueDate,
-        motStatus: dvlaResult.vehicleData.motStatus,
-        motExpiryDate: dvlaResult.vehicleData.motExpiryDate,
-        dateOfLastV5CIssued: normalized.vehicleData?.dateOfLastV5CIssued || dvlaResult.vehicleData.dateOfLastV5CIssued,
-      };
-    }
-    return normalized;
-  }
-
+  const dvlaResult = await lookupByDvla(cleaned);
   if (dvlaResult) return dvlaResult;
 
   if (REG_LOOKUP_API_URL) {
@@ -344,6 +329,37 @@ async function lookupByReg(registration) {
     };
   }
 
+  // Last resort: DVSA MOT history API — has make/model/year for every UK reg
+  try {
+    const motResult = await fetchMotHistory(cleaned);
+    if (motResult?.vehicleMeta?.make) {
+      const m = motResult.vehicleMeta;
+      const year = m.firstUsedDate
+        ? String(new Date(m.firstUsedDate).getFullYear())
+        : m.manufactureDate
+          ? String(new Date(m.manufactureDate).getFullYear())
+          : null;
+      return {
+        vin: null,
+        make: m.make ? titleCase(m.make) : null,
+        model: m.model || null,
+        year,
+        engineCode: null,
+        fuelType: m.fuelType || null,
+        trim: null,
+        bodyType: null,
+        registration: cleaned,
+        source: 'dvsa-mot',
+        vehicleData: {
+          colour: m.primaryColour || null,
+          motTests: motResult.tests || [],
+        },
+      };
+    }
+  } catch {
+    // fall through
+  }
+
   return {
     vin: null,
     make: null,
@@ -354,8 +370,7 @@ async function lookupByReg(registration) {
     trim: null,
     bodyType: null,
     registration: cleaned,
-    source: 'mock-reg',
-    notes: 'Provide REG_LOOKUP_API_URL and REG_LOOKUP_API_KEY in .env to enable real registration lookup.',
+    source: 'unknown',
   };
 }
 

@@ -6,6 +6,7 @@ import AiKnowledge from './AiKnowledge';
 import VehicleRegistry from './VehicleRegistry';
 import Customers from './Customers';
 import WorkshopSettings from './WorkshopSettings';
+import Inventory from './Inventory';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -15,6 +16,7 @@ const NAV = [
   { id: 'registry', label: 'Vehicle Registry' },
   { id: 'customers', label: 'Customers' },
   { id: 'workshop', label: 'Workshop' },
+  { id: 'inventory', label: 'Inventory' },
 ];
 
 export default function AdminShell({ token, userEmail, onExit }) {
@@ -54,6 +56,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
         {page === 'registry' && <VehicleRegistry token={token} />}
         {page === 'customers' && <Customers token={token} />}
         {page === 'workshop' && <WorkshopSettings token={token} />}
+        {page === 'inventory' && <Inventory token={token} />}
       </main>
     </div>
   );

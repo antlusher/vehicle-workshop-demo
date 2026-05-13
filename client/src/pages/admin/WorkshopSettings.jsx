@@ -312,7 +312,7 @@ function PartsCatalogueTab({ token }) {
     setLoading(true);
     try {
       const params = new URLSearchParams({ q: q || '' });
-      const data = await apiFetch(`/quotes/parts/search?${params}`, {}, token);
+      const data = await apiFetch(`/parts/search?${params}`, {}, token);
       setParts(data);
     } catch { setParts([]); }
     finally { setLoading(false); }

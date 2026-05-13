@@ -62,10 +62,39 @@ async function getMotData(vehicleId) {
 
 router.get('/', requireAuth, async (req, res) => {
   const showArchived = req.query.archived === 'true';
+
+  // Explicit column list avoids duplicate-name clash when using p.* alongside COALESCE aliases
   const { rows } = await query(
-    `SELECT * FROM projects WHERE user_id = $1 AND archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'} ORDER BY updated_at DESC`,
+    `SELECT
+        p.id, p.user_id, p.vehicle_id, p.registration_snapshot, p.registration, p.vin,
+        COALESCE(p.make,      v.mot_vehicle_meta->>'make')            AS make,
+        COALESCE(p.model,     v.mot_vehicle_meta->>'model')           AS model,
+        COALESCE(p.year,      SUBSTRING(COALESCE(v.mot_vehicle_meta->>'firstUsedDate', v.mot_vehicle_meta->>'manufactureDate'), 1, 4)) AS year,
+        p.engine_code,
+        COALESCE(p.fuel_type, v.mot_vehicle_meta->>'fuelType')        AS fuel_type,
+        p.trim, p.body_type, p.source, p.active, p.closed,
+        p.created_at, p.updated_at, p.specs, p.vehicle_data, p.archived_at
+      FROM projects p
+      LEFT JOIN vehicles v ON v.id = p.vehicle_id
+      WHERE p.user_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}
+      ORDER BY p.updated_at DESC`,
     [req.user.id]
   );
+
+  // Write back any fields sourced from motVehicleMeta so the DB stays in sync
+  rows.filter((r) => r.make || r.model).forEach((r) => {
+    query(
+      `UPDATE projects SET
+         make      = COALESCE(make, $1),
+         model     = COALESCE(model, $2),
+         year      = COALESCE(year, $3),
+         fuel_type = COALESCE(fuel_type, $4),
+         updated_at = now()
+       WHERE id = $5 AND (make IS NULL OR model IS NULL)`,
+      [r.make || null, r.model || null, r.year || null, r.fuel_type || null, r.id]
+    ).catch(() => {});
+  });
+
   const projects = await Promise.all(rows.map(async (row) => {
     const [{ rows: history }, { rows: confirmedFixes }] = await Promise.all([
       query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [row.id]),
@@ -121,22 +150,62 @@ router.post('/', requireAuth, async (req, res) => {
     const vehicleHistory = vehicle.id ? await getVehicleHistory(vehicle.id) : null;
     const project = rows[0];
 
-    // Background chain: MOT fetch first so specs get accurate model/fuel/engineSize data
+    // Background chain: MOT fetch → patch missing fields → generate specs
     const runBackground = async () => {
       let motMeta = null;
       if (vehicle.id && vehicleData.registration) {
         const motResult = await fetchAndStoreMotHistory(vehicle.id, vehicleData.registration);
         motMeta = motResult?.vehicleMeta || null;
       }
-      const specMake = vehicleData.make || motMeta?.make;
-      const specModel = vehicleData.model || motMeta?.model;
+
+      // Patch project (and vehicle) with MOT meta when DVLA lookup left fields blank
+      if (motMeta) {
+        const patchedMake = vehicleData.make || motMeta.make || null;
+        const patchedModel = vehicleData.model || motMeta.model || null;
+        const patchedYear = vehicleData.year || (motMeta.firstUsedDate || motMeta.manufactureDate
+          ? String(new Date(motMeta.firstUsedDate || motMeta.manufactureDate).getFullYear()) : null);
+        const patchedFuel = vehicleData.fuelType || motMeta.fuelType || null;
+
+        await query(
+          `UPDATE projects SET
+             make       = COALESCE(make, $1),
+             model      = COALESCE(model, $2),
+             year       = COALESCE(year, $3),
+             fuel_type  = COALESCE(fuel_type, $4),
+             updated_at = now()
+           WHERE id = $5`,
+          [patchedMake, patchedModel, patchedYear, patchedFuel, project.id]
+        );
+
+        if (vehicle.id) {
+          await query(
+            `UPDATE vehicles SET
+               make      = COALESCE(make, $1),
+               model     = COALESCE(model, $2),
+               year      = COALESCE(year, $3),
+               fuel_type = COALESCE(fuel_type, $4),
+               updated_at = now()
+             WHERE id = $5`,
+            [patchedMake, patchedModel, patchedYear, patchedFuel, vehicle.id]
+          );
+        }
+
+        // Refresh vehicleData for specs generation
+        vehicleData.make = patchedMake;
+        vehicleData.model = patchedModel;
+        vehicleData.year = patchedYear;
+        vehicleData.fuelType = patchedFuel;
+      }
+
+      const specMake = vehicleData.make;
+      const specModel = vehicleData.model;
       if (specMake && specModel && vehicleData.year) {
         const specs = await generateVehicleSpecs({
           make: specMake,
           model: specModel,
           year: vehicleData.year,
           engineCode: vehicleData.engineCode,
-          fuelType: vehicleData.fuelType || motMeta?.fuelType,
+          fuelType: vehicleData.fuelType,
           trim: vehicleData.trim,
           engineSize: motMeta?.engineSize,
         });
@@ -168,6 +237,19 @@ router.get('/:projectId', requireAuth, async (req, res) => {
     project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
     getMotData(project.vehicle_id),
   ]);
+
+  // Write back make/model/year from motVehicleMeta if still missing — closes the creation-time sync gap
+  const meta = motData.motVehicleMeta;
+  if (meta && (!project.make || !project.model)) {
+    const m = { make: project.make || meta.make || null, model: project.model || meta.model || null,
+                 year: project.year || (meta.firstUsedDate || meta.manufactureDate
+                   ? String(new Date(meta.firstUsedDate || meta.manufactureDate).getFullYear()) : null),
+                 fuel_type: project.fuel_type || meta.fuelType || null };
+    project.make = m.make; project.model = m.model; project.year = m.year; project.fuel_type = m.fuel_type;
+    query(`UPDATE projects SET make=COALESCE(make,$1), model=COALESCE(model,$2),
+             year=COALESCE(year,$3), fuel_type=COALESCE(fuel_type,$4), updated_at=now() WHERE id=$5`,
+      [m.make, m.model, m.year, m.fuel_type, project.id]).catch(() => {});
+  }
 
   return res.json(toProject(project, history, confirmedFixes, vehicleHistory, motData.motTests, motData.motVehicleMeta));
 });
@@ -233,33 +315,42 @@ router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {
 });
 
 router.post('/:projectId/specs', requireAuth, async (req, res) => {
-  const { rows } = await query(
-    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-    [req.params.projectId, req.user.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'Project not found' });
+  try {
+    const { rows } = await query(
+      'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+      [req.params.projectId, req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
-  const project = rows[0];
+    const project = rows[0];
 
-  if (project.specs) return res.json(project.specs);
+    if (project.specs) return res.json(project.specs);
 
-  const motData = await getMotData(project.vehicle_id);
-  const motMeta = motData.motVehicleMeta;
-  const specs = await generateVehicleSpecs({
-    make: project.make || motMeta?.make,
-    model: project.model || motMeta?.model,
-    year: project.year,
-    engineCode: project.engine_code,
-    fuelType: project.fuel_type || motMeta?.fuelType,
-    trim: project.trim,
-    engineSize: motMeta?.engineSize,
-  });
+    const motData = await getMotData(project.vehicle_id);
+    const motMeta = motData.motVehicleMeta;
 
-  if (!specs) return res.status(500).json({ error: 'Could not generate specs' });
+    const vehicle = [project.make || motMeta?.make, project.model || motMeta?.model, project.year].filter(Boolean).join(' ');
+    if (!vehicle) return res.status(400).json({ error: 'Project has no vehicle data to generate specs for' });
 
-  await query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2', [JSON.stringify(specs), project.id]);
+    const specs = await generateVehicleSpecs({
+      make: project.make || motMeta?.make,
+      model: project.model || motMeta?.model,
+      year: project.year,
+      engineCode: project.engine_code,
+      fuelType: project.fuel_type || motMeta?.fuelType,
+      trim: project.trim,
+      engineSize: motMeta?.engineSize,
+    });
 
-  return res.json(specs);
+    if (!specs) return res.status(502).json({ error: 'Specs could not be generated — AI returned an unexpected response' });
+
+    await query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2', [JSON.stringify(specs), project.id]);
+
+    return res.json(specs);
+  } catch (err) {
+    console.error('[specs route]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/:projectId/clear', requireAuth, async (req, res) => {

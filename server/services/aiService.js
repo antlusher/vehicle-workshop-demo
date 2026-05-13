@@ -18,7 +18,8 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
     const meta = project.motVehicleMeta || {};
     const make = project.make || meta.make || '';
     const model = project.model || meta.model || '';
-    const year = project.year || meta.manufactureYear || '';
+    const year = project.year || (meta.firstUsedDate || meta.manufactureDate
+      ? String(new Date(meta.firstUsedDate || meta.manufactureDate).getFullYear()) : '') || '';
     const fuelType = project.fuelType || meta.fuelType || '';
     const engineSize = meta.engineSize ? `${meta.engineSize}cc` : '';
 
@@ -73,7 +74,8 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
   const meta = project.motVehicleMeta || {};
   const make = project.make || meta.make;
   const model = project.model || meta.model;
-  const year = project.year || meta.manufactureYear;
+  const year = project.year || (meta.firstUsedDate || meta.manufactureDate
+    ? String(new Date(meta.firstUsedDate || meta.manufactureDate).getFullYear()) : null);
   const fuelType = project.fuelType || meta.fuelType;
   const engineCode = project.engineCode;
 
@@ -472,4 +474,78 @@ ${rawText}`;
   }
 }
 
-module.exports = { generateRepairAdvice, generateVehicleSpecs, generateTrainingChat, extractKnowledgeFromText };
+async function generateAdminChat(history, question, userId) {
+  if (!client) return { answer: 'No API key configured.', inputTokens: 0, outputTokens: 0 };
+
+  const { adminToolDefinitions, createAdminToolHandlers } = require('./adminAgentTools');
+
+  const systemPrompt = [
+    'You are an admin assistant for a vehicle repair workshop management system.',
+    'You help staff with day-to-day admin tasks via natural language.',
+    '',
+    'WHAT YOU CAN DO:',
+    '- Create new jobs/projects (ask for the registration plate — vehicle details are looked up automatically)',
+    '- Search for vehicles, customers, and existing projects',
+    '- Create new customer records',
+    '- List recent or active projects',
+    '',
+    'RULES:',
+    '- Always confirm the key details with the user before creating anything.',
+    '- When creating a project, ask for the registration plate first.',
+    '- If a vehicle lookup might fail (no reg, foreign vehicle), ask for make/model/year as a fallback.',
+    '- After successfully creating something, tell the user clearly what was created and where to find it.',
+    '- Be concise and direct. No emojis. No markdown tables.',
+  ].join('\n');
+
+  const messages = history.slice(-14).map((h) => ({
+    role: h.role === 'user' ? 'user' : 'assistant',
+    content: h.text,
+  }));
+  messages.push({ role: 'user', content: question });
+
+  const handlers = createAdminToolHandlers(userId);
+
+  let response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: systemPrompt,
+    tools: adminToolDefinitions,
+    messages,
+  });
+
+  while (response.stop_reason === 'tool_use') {
+    const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use');
+    const toolResults = [];
+
+    for (const toolUse of toolUseBlocks) {
+      const handler = handlers[toolUse.name];
+      let result;
+      try {
+        result = handler ? await handler(toolUse.input) : { error: `Unknown tool: ${toolUse.name}` };
+      } catch (err) {
+        result = { error: err.message };
+      }
+      toolResults.push({ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) });
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    messages.push({ role: 'user', content: toolResults });
+
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      system: systemPrompt,
+      tools: adminToolDefinitions,
+      messages,
+    });
+  }
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  return {
+    answer: textBlock?.text || 'No response generated.',
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+  };
+}
+
+module.exports = { generateRepairAdvice, generateVehicleSpecs, generateTrainingChat, extractKnowledgeFromText, generateAdminChat };

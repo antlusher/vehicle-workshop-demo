@@ -5,6 +5,7 @@ import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
 import CustomerPortal from './pages/CustomerPortal';
+import AdminAgent from './pages/AdminAgent';
 import './App.css';
 
 function App() {
@@ -49,6 +50,16 @@ function App() {
         setProjects(savedProjects);
         setArchivedProjects(savedArchived);
         setStatus('ready');
+
+        // Pre-generate specs in the background for any active project that's missing them
+        savedProjects
+          .filter((p) => !p.specs && p.make && p.model)
+          .forEach((p) => api.fetchProjectSpecs(p.id, token)
+            .then((specs) => setProjects((prev) =>
+              prev.map((x) => x.id === p.id ? { ...x, specs } : x)
+            ))
+            .catch(() => {})
+          );
       } catch (err) {
         setError(err.message);
         setToken(null);
@@ -127,6 +138,11 @@ function App() {
     try {
       const project = await api.getProject(projectId, token);
       setSelectedProject(project);
+      setProjects((current) => current.map((p) =>
+        p.id === projectId
+          ? { ...p, make: project.make, model: project.model, year: project.year, fuel_type: project.fuel_type }
+          : p
+      ));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -222,12 +238,22 @@ function App() {
     }
   };
 
+  const [showAssistant, setShowAssistant] = useState(false);
+
   if (!token) {
     return <Login onLogin={handleLogin} error={error} />;
   }
 
   if (status === 'loading') {
-    return <div className="app-shell"><p>Loading your workshop...</p></div>;
+    return (
+      <div className="app-loading-overlay">
+        <div className="app-loading-inner">
+          <div className="app-loading-logo">Ask Bob</div>
+          <div className="app-loading-spinner" />
+          <p className="app-loading-text">Loading your workshop…</p>
+        </div>
+      </div>
+    );
   }
 
   if (user && !user.subscribed) {
@@ -263,12 +289,22 @@ function App() {
 
   return (
     <div className="app-shell">
+      {showAssistant && (
+        <AdminAgent
+          token={token}
+          onClose={() => setShowAssistant(false)}
+          onProjectCreated={reloadProjects}
+        />
+      )}
       <header className="app-header">
         <div>
           <h1>Ask Bob</h1>
           <p>{user?.email}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
+            Assistant
+          </button>
           {user?.role === 'admin' && (
             <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
               Admin

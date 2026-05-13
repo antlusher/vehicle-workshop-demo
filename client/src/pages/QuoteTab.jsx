@@ -1,18 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as quotesApi from '../services/quotesApi';
 
-const STATUS_LABELS = { draft: 'Draft', sent: 'Sent to customer', approved: 'Approved', invoiced: 'Invoiced' };
+const STATUS_LABELS = { draft: 'Draft', sent: 'Sent', approved: 'Customer accepted', invoiced: 'Invoiced' };
 const TYPE_LABELS   = { part: 'Part', labour: 'Labour', other: 'Other' };
 
-function QuotePreviewModal({ quote, quoteFields, onClose }) {
-  const allLines = quote.lines.map((l) => ({
-    ...l,
-    // apply any unsaved quoteFields edits by using saved quote lines
-  }));
-  const partLines   = allLines.filter((l) => l.type === 'part');
-  const labourLines = allLines.filter((l) => l.type === 'labour');
-  const otherLines  = allLines.filter((l) => l.type !== 'part' && l.type !== 'labour');
+// ── Preview modal ─────────────────────────────────────────────────────────────
 
+function QuotePreviewModal({ quote, onClose }) {
   const renderLines = (lines) => lines.map((l) => (
     <div key={l.id} className="cp-quote-line">
       <span className="cp-quote-line-desc">{l.description}</span>
@@ -20,9 +14,6 @@ function QuotePreviewModal({ quote, quoteFields, onClose }) {
       <span className="cp-quote-line-total">£{l.lineTotal.toFixed(2)}</span>
     </div>
   ));
-
-  const summary = quoteFields.diagnosticSummary;
-  const notes   = quoteFields.notes;
 
   return (
     <div className="preview-overlay" onClick={onClose}>
@@ -34,13 +25,28 @@ function QuotePreviewModal({ quote, quoteFields, onClose }) {
         <div className="preview-modal-body cp-detail">
           <div className="cp-report-section cp-quote-section">
             <h3 className="cp-section-title">Your estimate</h3>
-            {summary && <p className="cp-section-text" style={{ marginBottom: 12 }}>{summary}</p>}
+            {quote.diagnosticSummary && (
+              <p className="cp-section-text" style={{ marginBottom: 12 }}>{quote.diagnosticSummary}</p>
+            )}
 
-            {partLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Parts</div>{renderLines(partLines)}</div>}
-            {labourLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Labour</div>{renderLines(labourLines)}</div>}
-            {otherLines.length > 0 && <div className="cp-quote-group"><div className="cp-quote-group-label">Other</div>{renderLines(otherLines)}</div>}
+            {quote.items.map((item) => (
+              <div key={item.id} className="cp-quote-item-group">
+                <div className="cp-quote-item-title">{item.title}</div>
+                {item.description && <p className="cp-quote-item-desc">{item.description}</p>}
+                {item.lines.length > 0 && renderLines(item.lines)}
+                <div className="cp-quote-item-subtotal">Item total: £{item.subtotal.toFixed(2)}</div>
+              </div>
+            ))}
 
-            {allLines.length === 0 && <p style={{ color: '#9ca3af', padding: '12px 0' }}>No line items yet — add parts or labour to see them here.</p>}
+            {quote.ungroupedLines.length > 0 && (
+              <div className="cp-quote-item-group">
+                {renderLines(quote.ungroupedLines)}
+              </div>
+            )}
+
+            {quote.items.length === 0 && quote.ungroupedLines.length === 0 && (
+              <p style={{ color: '#9ca3af', padding: '12px 0' }}>No line items yet.</p>
+            )}
 
             <div className="cp-quote-totals">
               <div className="cp-cost-row"><span>Subtotal</span><span>£{quote.totals.subtotal.toFixed(2)}</span></div>
@@ -48,13 +54,15 @@ function QuotePreviewModal({ quote, quoteFields, onClose }) {
               <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>£{quote.totals.total.toFixed(2)}</span></div>
             </div>
 
-            {notes && <p className="cp-quote-notes">{notes}</p>}
+            {quote.notes && <p className="cp-quote-notes">{quote.notes}</p>}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+// ── Parts search ──────────────────────────────────────────────────────────────
 
 function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
   const [q, setQ]           = useState('');
@@ -88,6 +96,9 @@ function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
       partId: part.id,
       partNumber: part.partNumber,
     });
+    setResults([]);
+    setQ('');
+    setSearched(false);
   };
 
   return (
@@ -97,14 +108,14 @@ function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
           className="parts-search-input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search parts (e.g. brake pads, oil filter, EGR…)"
+          placeholder="Search parts catalogue (e.g. oil filter, brake pads…)"
         />
         <button type="submit" disabled={loading}>
           {loading ? 'Searching…' : 'Search'}
         </button>
       </form>
       {searched && results.length === 0 && !loading && (
-        <p className="parts-empty">No parts found. Try a broader search term.</p>
+        <p className="parts-empty">No parts found.</p>
       )}
       {results.length > 0 && (
         <div className="parts-results">
@@ -119,9 +130,7 @@ function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
               <div className="part-result-price">
                 <span className="part-cost">Cost £{part.costPrice.toFixed(2)}</span>
                 <span className="part-sell">Sell £{(part.costPrice * (1 + defaultMarkupPct / 100)).toFixed(2)}</span>
-                <button type="button" className="part-add-btn" onClick={() => handleAdd(part)}>
-                  + Add
-                </button>
+                <button type="button" className="part-add-btn" onClick={() => handleAdd(part)}>+ Add</button>
               </div>
             </div>
           ))}
@@ -131,12 +140,113 @@ function PartsSearch({ project, token, onAdd, defaultMarkupPct }) {
   );
 }
 
-function QuoteLines({ quote, token, onUpdated }) {
+// ── Manual part entry ────────────────────────────────────────────────────────
+
+function AddCustomPartForm({ onAdd, defaultMarkupPct }) {
+  const [open, setOpen]     = useState(false);
+  const [desc, setDesc]     = useState('');
+  const [qty, setQty]       = useState('1');
+  const [cost, setCost]     = useState('');
+  const [markup, setMarkup] = useState(String(defaultMarkupPct));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onAdd({
+      type: 'part',
+      description: desc,
+      qty: parseFloat(qty),
+      unitCost: parseFloat(cost),
+      markupPct: parseFloat(markup),
+    });
+    setDesc(''); setQty('1'); setCost(''); setMarkup(String(defaultMarkupPct));
+    setOpen(false);
+  };
+
+  if (!open) return (
+    <button type="button" className="secondary" style={{ fontSize: '0.8rem', marginTop: 6 }} onClick={() => setOpen(true)}>
+      + Add part manually
+    </button>
+  );
+
+  return (
+    <form onSubmit={handleSubmit} className="add-labour-form" style={{ marginTop: 8 }}>
+      <input
+        placeholder="Part description e.g. Exhaust mid section, Cabin filter"
+        value={desc}
+        onChange={(e) => setDesc(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+        required
+      />
+      <div className="add-labour-row">
+        <label>Qty<input type="number" step="1" min="1" value={qty} onChange={(e) => setQty(e.target.value)} /></label>
+        <label>Cost (£)<input type="number" step="0.01" min="0" placeholder="0.00" value={cost} onChange={(e) => setCost(e.target.value)} required /></label>
+        <label>Markup %<input type="number" step="1" value={markup} onChange={(e) => setMarkup(e.target.value)} /></label>
+      </div>
+      <div className="add-labour-actions">
+        <button type="submit">Add part</button>
+        <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+// ── Labour entry ─────────────────────────────────────────────────────────────
+
+function AddLabourForm({ onAdd, settings }) {
+  const [open, setOpen]   = useState(false);
+  const [desc, setDesc]   = useState('');
+  const [hours, setHours] = useState('1');
+  const [rate, setRate]   = useState(settings.labourRatePerHour.toFixed(2));
+  const [markup, setMarkup] = useState('0');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onAdd({
+      type: 'labour',
+      description: desc,
+      qty: parseFloat(hours),
+      unitCost: parseFloat(rate),
+      markupPct: parseFloat(markup),
+    });
+    setDesc(''); setHours('1'); setOpen(false);
+  };
+
+  if (!open) return (
+    <button type="button" className="secondary" style={{ fontSize: '0.8rem', marginTop: 6 }} onClick={() => setOpen(true)}>
+      + Add labour
+    </button>
+  );
+
+  return (
+    <form onSubmit={handleSubmit} className="add-labour-form" style={{ marginTop: 8 }}>
+      <input
+        placeholder="Labour e.g. Exhaust fitting, Diagnostic"
+        value={desc}
+        onChange={(e) => setDesc(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+        required
+      />
+      <div className="add-labour-row">
+        <label>Hours<input type="number" step="0.5" min="0.5" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
+        <label>Rate (£/hr)<input type="number" step="0.50" value={rate} onChange={(e) => setRate(e.target.value)} /></label>
+        <label>Markup %<input type="number" step="1" value={markup} onChange={(e) => setMarkup(e.target.value)} /></label>
+      </div>
+      <div className="add-labour-actions">
+        <button type="submit">Add labour</button>
+        <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+// ── Line items table ─────────────────────────────────────────────────────────
+
+function LineTable({ lines, quoteId, token, onUpdated }) {
   const [editing, setEditing] = useState(null);
   const [editVals, setEditVals] = useState({});
 
   const handleDelete = async (lineId) => {
-    const updated = await quotesApi.deleteLine(quote.id, lineId, token);
+    const updated = await quotesApi.deleteLine(quoteId, lineId, token);
     onUpdated(updated);
   };
 
@@ -146,7 +256,7 @@ function QuoteLines({ quote, token, onUpdated }) {
   };
 
   const saveEdit = async (lineId) => {
-    const updated = await quotesApi.updateLine(quote.id, lineId, {
+    const updated = await quotesApi.updateLine(quoteId, lineId, {
       qty: parseFloat(editVals.qty),
       unitCost: parseFloat(editVals.unitCost),
       markupPct: parseFloat(editVals.markupPct),
@@ -155,7 +265,7 @@ function QuoteLines({ quote, token, onUpdated }) {
     onUpdated(updated);
   };
 
-  if (!quote.lines.length) return <p className="parts-empty">No lines yet. Search for parts or add labour below.</p>;
+  if (!lines.length) return <p className="parts-empty" style={{ margin: '6px 0' }}>No lines yet.</p>;
 
   return (
     <div className="quote-lines">
@@ -173,7 +283,7 @@ function QuoteLines({ quote, token, onUpdated }) {
           </tr>
         </thead>
         <tbody>
-          {quote.lines.map((line) => (
+          {lines.map((line) => (
             <tr key={line.id}>
               <td>{line.description}</td>
               <td><span className="line-type-badge">{TYPE_LABELS[line.type] || line.type}</span></td>
@@ -210,270 +320,773 @@ function QuoteLines({ quote, token, onUpdated }) {
   );
 }
 
-function AddLabourForm({ quoteId, token, settings, onUpdated }) {
-  const [open, setOpen]       = useState(false);
-  const [desc, setDesc]       = useState('');
-  const [hours, setHours]     = useState('1');
-  const [rate, setRate]       = useState(settings.labourRatePerHour.toFixed(2));
-  const [markup, setMarkup]   = useState('0');
+// ── Quote item card ───────────────────────────────────────────────────────────
+
+function QuoteItemCard({ item, quote, project, settings, token, onUpdated }) {
+  const [expanded, setExpanded] = useState(true);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [title, setTitle]       = useState(item.title);
+  const [description, setDescription] = useState(item.description);
+  const [notes, setNotes]       = useState(item.notes);
+  const [saving, setSaving]     = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const titleRef = useRef(null);
+
+  useEffect(() => {
+    setTitle(item.title);
+    setDescription(item.description);
+    setNotes(item.notes);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (editingMeta && titleRef.current) titleRef.current.focus();
+  }, [editingMeta]);
+
+  const saveMeta = async () => {
+    setSaving(true);
+    try {
+      const updated = await quotesApi.updateItem(quote.id, item.id, { title, description, notes }, token);
+      onUpdated(updated);
+      setEditingMeta(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddLine = async (lineData) => {
+    const updated = await quotesApi.addLine(quote.id, { ...lineData, quote_item_id: item.id }, token);
+    onUpdated(updated);
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return; }
+    const updated = await quotesApi.deleteItem(quote.id, item.id, token);
+    onUpdated(updated);
+  };
+
+  return (
+    <div className={`quote-item-card${expanded ? ' expanded' : ''}`}>
+      <div className="quote-item-header" onClick={() => !editingMeta && setExpanded((v) => !v)}>
+        <span className="quote-item-chevron">{expanded ? '▾' : '▸'}</span>
+        <span className="quote-item-title-text">{item.title}</span>
+        <span className="quote-item-subtotal">£{item.subtotal.toFixed(2)}</span>
+        <div className="quote-item-header-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="secondary"
+            style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+            onClick={() => { setEditingMeta((v) => !v); setConfirmDelete(false); }}
+          >
+            {editingMeta ? 'Cancel' : 'Edit'}
+          </button>
+          <button
+            type="button"
+            className={`secondary danger`}
+            style={{ fontSize: '0.75rem', padding: '2px 8px' }}
+            onClick={handleDelete}
+          >
+            {confirmDelete ? 'Confirm delete' : '✕'}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="quote-item-body">
+          {editingMeta ? (
+            <div className="quote-item-meta-form">
+              <input
+                ref={titleRef}
+                className="quote-item-title-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Item title e.g. Full Service, Exhaust Replacement"
+              />
+              <textarea
+                className="quote-item-desc-input"
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Description for customer (optional)…"
+              />
+              <textarea
+                className="quote-item-notes-input"
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Internal notes (optional)…"
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <button type="button" onClick={saveMeta} disabled={saving || !title.trim()}>
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" className="secondary" onClick={() => setEditingMeta(false)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {item.description && <p className="quote-item-desc-display">{item.description}</p>}
+              {item.notes && <p className="quote-item-notes-display">Note: {item.notes}</p>}
+            </>
+          )}
+
+          <LineTable lines={item.lines} quoteId={quote.id} token={token} onUpdated={onUpdated} />
+
+          <div className="quote-item-add-row">
+            <PartsSearch
+              project={project}
+              token={token}
+              onAdd={handleAddLine}
+              defaultMarkupPct={settings.defaultMarkupPct}
+            />
+            <AddCustomPartForm onAdd={handleAddLine} defaultMarkupPct={settings.defaultMarkupPct} />
+            <AddLabourForm onAdd={handleAddLine} settings={settings} />
+          </div>
+
+          <div className="quote-item-subtotal-row">
+            <span>Item subtotal</span>
+            <span>£{item.subtotal.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Add item form ─────────────────────────────────────────────────────────────
+
+function AddItemForm({ quoteId, token, onUpdated }) {
+  const [open, setOpen]   = useState(false);
+  const [title, setTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const updated = await quotesApi.addLine(quoteId, {
-      type: 'labour',
-      description: desc,
-      qty: parseFloat(hours),
-      unitCost: parseFloat(rate),
-      markupPct: parseFloat(markup),
-    }, token);
-    onUpdated(updated);
-    setDesc(''); setHours('1'); setOpen(false);
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await quotesApi.createItem(quoteId, { title: title.trim() }, token);
+      onUpdated(updated);
+      setTitle('');
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!open) return (
-    <button type="button" className="secondary" onClick={() => setOpen(true)}>+ Add labour</button>
+    <button type="button" className="quote-add-item-btn" onClick={() => setOpen(true)}>
+      + Add item
+    </button>
   );
 
   return (
-    <form onSubmit={handleSubmit} className="add-labour-form">
-      <input placeholder="Labour description e.g. Diagnostic, EGR replacement" value={desc} onChange={(e) => setDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }} required />
-      <div className="add-labour-row">
-        <label>Hours<input type="number" step="0.5" min="0.5" value={hours} onChange={(e) => setHours(e.target.value)} /></label>
-        <label>Rate (£/hr)<input type="number" step="0.50" value={rate} onChange={(e) => setRate(e.target.value)} /></label>
-        <label>Markup %<input type="number" step="1" value={markup} onChange={(e) => setMarkup(e.target.value)} /></label>
-      </div>
-      <div className="add-labour-actions">
-        <button type="submit">Add labour</button>
+    <form onSubmit={handleSubmit} className="add-item-form">
+      <input
+        ref={inputRef}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Item name e.g. Full Service, Exhaust Replacement, Brake Pads"
+        onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+        required
+      />
+      <div className="add-item-form-actions">
+        <button type="submit" disabled={saving || !title.trim()}>{saving ? 'Adding…' : 'Add'}</button>
         <button type="button" className="secondary" onClick={() => setOpen(false)}>Cancel</button>
       </div>
     </form>
   );
 }
 
+// ── Main QuoteTab ─────────────────────────────────────────────────────────────
+
+// ── Customer picker ───────────────────────────────────────────────────────────
+
+function CustomerPicker({ quote, project, token, onUpdated }) {
+  const [customers, setCustomers] = useState(null);
+  const [open, setOpen]           = useState(false);
+  const [saving, setSaving]       = useState(false);
+
+  const loadCustomers = async () => {
+    if (customers) { setOpen(true); return; }
+    const list = await quotesApi.getProjectCustomers(project.id, token);
+    setCustomers(list);
+    setOpen(true);
+  };
+
+  const assign = async (customerId) => {
+    setSaving(true);
+    try {
+      const updated = await quotesApi.updateQuote(quote.id, { customer_id: customerId }, token);
+      onUpdated(updated);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    setSaving(true);
+    try {
+      await fetch(`/api/quotes/${quote.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ customer_id: null }),
+      });
+      onUpdated({ ...quote, customer: null });
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="quote-customer-row">
+      <span className="quote-customer-label">Customer</span>
+      {quote.customer ? (
+        <span className="quote-customer-value">
+          <span className="quote-customer-name">{quote.customer.name || quote.customer.email}</span>
+          <span className="quote-customer-email">{quote.customer.name ? `· ${quote.customer.email}` : ''}</span>
+          <button type="button" className="secondary" style={{ fontSize: '0.72rem', padding: '1px 8px' }} onClick={loadCustomers}>Change</button>
+        </span>
+      ) : (
+        <button type="button" className="secondary" style={{ fontSize: '0.78rem' }} onClick={loadCustomers}>
+          + Attach customer
+        </button>
+      )}
+
+      {open && (
+        <div className="customer-picker-dropdown">
+          {!customers ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>Loading…</p>
+          ) : customers.length === 0 ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>
+              No customers linked to this vehicle. Add a customer in Admin → Customers first.
+            </p>
+          ) : (
+            customers.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="customer-picker-option"
+                disabled={saving}
+                onClick={() => assign(c.id)}
+              >
+                <span className="cpo-name">{c.name || c.email}</span>
+                {c.name && <span className="cpo-email">{c.email}</span>}
+              </button>
+            ))
+          )}
+          {quote.customer && (
+            <button type="button" className="customer-picker-option customer-picker-remove" onClick={remove} disabled={saving}>
+              Remove customer
+            </button>
+          )}
+          <button type="button" className="customer-picker-cancel" onClick={() => setOpen(false)}>Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Send modal ────────────────────────────────────────────────────────────────
+
+function SendModal({ quote, onClose, onSent }) {
+  const [sending, setSending] = useState(false);
+  const [error, setError]     = useState('');
+
+  const confirm = async () => {
+    setSending(true);
+    setError('');
+    try {
+      const updated = await onSent();
+      if (updated) onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>Send quote to customer</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+          <p style={{ margin: '0 0 16px', fontSize: '0.9rem' }}>
+            An email will be sent to <strong>{quote.customer?.email}</strong> with a link to view the estimate in their portal.
+          </p>
+          <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '12px 16px', marginBottom: 20, fontSize: '0.88rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ color: '#6b7280' }}>Reference</span>
+              <strong>{quote.reference}{quote.title ? ` · ${quote.title}` : ''}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: '#6b7280' }}>Total (inc. VAT)</span>
+              <strong>£{quote.totals.total.toFixed(2)}</strong>
+            </div>
+          </div>
+          {error && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: 12 }}>{error}</p>}
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={confirm} disabled={sending}>
+              {sending ? 'Sending…' : 'Send email'}
+            </button>
+            <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit quote modal (title + overview + notes) ───────────────────────────────
+
+function EditQuoteModal({ quote, token, onUpdated, onClose }) {
+  const [title, setTitle]   = useState(quote.title || '');
+  const [summary, setSummary] = useState(quote.diagnosticSummary || '');
+  const [notes, setNotes]   = useState(quote.notes || '');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const updated = await quotesApi.updateQuote(quote.id, {
+        title: title.trim() || null,
+        diagnostic_summary: summary,
+        notes,
+      }, token);
+      onUpdated(updated);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" style={{ maxWidth: 460 }} onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>Edit quote — {quote.reference}</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <label style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+              Title
+              <input ref={inputRef} value={title} onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Annual service, Exhaust repair…"
+                style={{ display: 'block', width: '100%', marginTop: 4, boxSizing: 'border-box' }} />
+            </label>
+            <label style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+              Customer-facing overview
+              <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={3}
+                placeholder="Summary of work for the customer…"
+                style={{ display: 'block', width: '100%', marginTop: 4, boxSizing: 'border-box', resize: 'vertical' }} />
+            </label>
+            <label style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+              Notes
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+                placeholder="Payment terms, lead times, conditions…"
+                style={{ display: 'block', width: '100%', marginTop: 4, boxSizing: 'border-box', resize: 'vertical' }} />
+            </label>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Quote detail panel ────────────────────────────────────────────────────────
+
+function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) {
+  const [showSend, setShowSend]       = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const isReadOnly = quote.status === 'invoiced';
+
+  const handleStatusChange = async (status) => {
+    const updated = await quotesApi.updateQuote(quote.id, { status }, token);
+    onUpdated(updated);
+  };
+
+  const handleSend = async () => {
+    const updated = await quotesApi.sendQuote(quote.id, token);
+    onUpdated(updated);
+    setShowSend(false);
+  };
+
+  return (
+    <div className="quote-detail">
+      {showPreview && <QuotePreviewModal quote={quote} onClose={() => setShowPreview(false)} />}
+      {showSend && <SendModal quote={quote} onClose={() => setShowSend(false)} onSent={handleSend} />}
+
+      {/* Detail header */}
+      <div className="qd-header">
+        <div className="qd-header-left">
+          <span className="qa-ref">{quote.reference}</span>
+          {quote.title && <span className="qd-title">{quote.title}</span>}
+          <span className={`qa-status ${quote.status}`}>{STATUS_LABELS[quote.status] || quote.status}</span>
+          {quote.sentAt && (
+            <span className="qa-sent-label">
+              · sent {new Date(quote.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
+        <CustomerPicker quote={quote} project={project} token={token} onUpdated={onUpdated} />
+      </div>
+
+      {/* Overview + notes (read display) */}
+      {(quote.diagnosticSummary || quote.notes) && (
+        <div className="qd-overview">
+          {quote.diagnosticSummary && <p className="qd-summary">{quote.diagnosticSummary}</p>}
+          {quote.notes && <p className="qd-notes">Note: {quote.notes}</p>}
+        </div>
+      )}
+
+      {/* Items */}
+      <div className="quote-items-section">
+        {quote.items.map((item) => (
+          <QuoteItemCard
+            key={item.id}
+            item={item}
+            quote={quote}
+            project={project}
+            settings={settings}
+            token={token}
+            onUpdated={onUpdated}
+          />
+        ))}
+
+        {quote.ungroupedLines.length > 0 && (
+          <div className="quote-item-card expanded">
+            <div className="quote-item-header">
+              <span className="quote-item-title-text">General</span>
+              <span className="quote-item-subtotal">
+                £{quote.ungroupedLines.reduce((s, l) => s + l.lineTotal, 0).toFixed(2)}
+              </span>
+            </div>
+            <div className="quote-item-body">
+              <LineTable lines={quote.ungroupedLines} quoteId={quote.id} token={token} onUpdated={onUpdated} />
+            </div>
+          </div>
+        )}
+
+        {!isReadOnly && <AddItemForm quoteId={quote.id} token={token} onUpdated={onUpdated} />}
+      </div>
+
+      {/* Totals */}
+      <div className="quote-totals">
+        <div className="quote-total-row"><span>Subtotal</span><span>£{quote.totals.subtotal.toFixed(2)}</span></div>
+        <div className="quote-total-row"><span>VAT ({quote.totals.vatRate}%)</span><span>£{quote.totals.vat.toFixed(2)}</span></div>
+        <div className="quote-total-row total"><span>Total</span><span>£{quote.totals.total.toFixed(2)}</span></div>
+      </div>
+
+      {/* Status actions */}
+      <div className="qd-status-actions">
+        {quote.status === 'draft' && (
+          <button type="button" onClick={() => {
+            if (!quote.customer) { alert('Attach a customer before sending.'); return; }
+            setShowSend(true);
+          }}>
+            Send to customer
+          </button>
+        )}
+        {quote.status === 'sent' && (
+          <>
+            <button type="button" onClick={() => handleStatusChange('approved')}>Customer accepted</button>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('draft')}>Back to draft</button>
+          </>
+        )}
+        {quote.status === 'approved' && (
+          <>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('invoiced')}>Mark invoiced</button>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Unaccept</button>
+          </>
+        )}
+        <button type="button" className="secondary" onClick={() => setShowPreview(true)}>Preview</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Selectable quote list row ─────────────────────────────────────────────────
+
+function QuoteListRow({ quote, checked, selected, onToggle, onSelect }) {
+  return (
+    <div className={`quote-list-row status-${quote.status}${checked ? ' checked' : ''}${selected ? ' selected' : ''}`}>
+      {/* Checkbox — multi-select only, does NOT open detail */}
+      <input
+        type="checkbox"
+        className="qlr-checkbox"
+        checked={checked}
+        onChange={onToggle}
+      />
+      {/* Row body — opens detail panel, does NOT affect checkboxes */}
+      <div
+        className="qlr-body"
+        onClick={onSelect}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }}
+      >
+        <span className="qlr-ref">{quote.reference}</span>
+        {quote.title && <span className="qlr-title">{quote.title}</span>}
+        {quote.customer && (
+          <span className="qlr-customer">{quote.customer.name || quote.customer.email}</span>
+        )}
+        <span className="qlr-spacer" />
+        <span className="qlr-total">£{quote.totals.total.toFixed(2)}</span>
+        <span className={`qlr-status ${quote.status}`}>{STATUS_LABELS[quote.status] || quote.status}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Add quote modal ───────────────────────────────────────────────────────────
+
+function AddQuoteModal({ projectId, token, onCreated, onClose }) {
+  const [title, setTitle] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const q = await quotesApi.createQuote({ project_id: projectId, title: title.trim() || null }, token);
+      onCreated(q);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>New quote</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <label style={{ fontSize: '0.82rem', color: '#6b7280' }}>
+              Title <span style={{ fontWeight: 400 }}>(optional)</span>
+              <input
+                ref={inputRef}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Annual service, Exhaust repair…"
+                onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+                style={{ display: 'block', width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+              />
+            </label>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Add quote'}</button>
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main QuoteTab ─────────────────────────────────────────────────────────────
+
 export default function QuoteTab({ project, token }) {
   const [quotes, setQuotes]         = useState([]);
   const [settings, setSettings]     = useState(null);
   const [loading, setLoading]       = useState(true);
-  const [activeId, setActiveId]     = useState(null);
-  const [creating, setCreating]     = useState(false);
-  const [diagSummary, setDiagSummary] = useState('');
-  const [quoteFields, setQuoteFields] = useState({ diagnosticSummary: '', notes: '' });
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
-  const [previewing, setPreviewing] = useState(false);
-
-  const activeQuote = quotes.find((q) => q.id === activeId) || quotes[0] || null;
-
-  useEffect(() => {
-    if (activeQuote) {
-      setQuoteFields({ diagnosticSummary: activeQuote.diagnosticSummary || '', notes: activeQuote.notes || '' });
-      setSaved(false);
-    }
-  }, [activeQuote?.id]);
+  const [selectedId, setSelectedId] = useState(null);   // detail panel
+  const [checkedIds, setCheckedIds] = useState(new Set()); // bulk ops
+  const [showAdd, setShowAdd]       = useState(false);
+  const [showEdit, setShowEdit]     = useState(false);
+  const [showSend, setShowSend]     = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [bulkBusy, setBulkBusy]     = useState(false);
 
   const load = useCallback(async () => {
     const [qs, s] = await Promise.all([
       quotesApi.getQuotes(project.id, token),
       quotesApi.getSettings(token),
     ]);
-    setQuotes(qs);
     setSettings(s);
-    if (qs.length && !activeId) setActiveId(qs[0].id);
+    setQuotes(qs);
     setLoading(false);
   }, [project.id, token]);
 
   useEffect(() => { load(); }, [load]);
 
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      const q = await quotesApi.createQuote({ project_id: project.id, diagnostic_summary: diagSummary }, token);
-      setQuotes((prev) => [q, ...prev]);
-      setActiveId(q.id);
-      setDiagSummary('');
-    } finally {
-      setCreating(false);
-    }
+  const selected    = quotes.find((q) => q.id === selectedId) || null;
+  const checkedList = quotes.filter((q) => checkedIds.has(q.id));
+  const allChecked  = quotes.length > 0 && quotes.every((q) => checkedIds.has(q.id));
+
+  const toggleCheck = (id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
-  const handleAddPart = async (lineData) => {
-    if (!activeQuote) return;
-    const updated = await quotesApi.addLine(activeQuote.id, lineData, token);
-    setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+  const toggleAll = () => {
+    setCheckedIds(allChecked ? new Set() : new Set(quotes.map((q) => q.id)));
   };
 
   const handleUpdated = (updated) => {
     setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
   };
 
-  const handleStatusChange = async (status) => {
-    if (!activeQuote) return;
-    const updated = await quotesApi.updateQuote(activeQuote.id, { status }, token);
-    setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
+  const handleDeleted = (id) => {
+    setQuotes((prev) => prev.filter((q) => q.id !== id));
+    setCheckedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    if (selectedId === id) setSelectedId(null);
   };
 
-  const handleSaveFields = async () => {
-    if (!activeQuote) return;
-    setSaving(true);
+  const handleCreated = (q) => {
+    setQuotes((prev) => [...prev, q]);
+    setSelectedId(q.id);
+  };
+
+  const handleDelete = async () => {
+    const targets = checkedList.length > 0 ? checkedList : selected ? [selected] : [];
+    if (!targets.length) return;
+    const noun = targets.length === 1 ? 'this quote' : `${targets.length} quotes`;
+    if (!window.confirm(`Delete ${noun} and all their items?`)) return;
+    setBulkBusy(true);
     try {
-      const updated = await quotesApi.updateQuote(activeQuote.id, {
-        notes: quoteFields.notes,
-        diagnostic_summary: quoteFields.diagnosticSummary,
-      }, token);
-      setQuotes((prev) => prev.map((q) => q.id === updated.id ? updated : q));
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      await Promise.all(targets.map((q) => quotesApi.deleteQuote(q.id, token)));
+      targets.forEach((q) => handleDeleted(q.id));
     } finally {
-      setSaving(false);
+      setBulkBusy(false);
     }
   };
 
-  const handleDelete = async (quoteId) => {
-    if (!window.confirm('Delete this quote? This cannot be undone.')) return;
-    await quotesApi.deleteQuote(quoteId, token);
-    const remaining = quotes.filter((q) => q.id !== quoteId);
-    setQuotes(remaining);
-    setActiveId(remaining[0]?.id || null);
+  const handleSend = async () => {
+    const updated = await quotesApi.sendQuote(selected.id, token);
+    handleUpdated(updated);
+    setShowSend(false);
+  };
+
+  const bulkSetStatus = async (status) => {
+    setBulkBusy(true);
+    try {
+      const results = await Promise.all(checkedList.map((q) => quotesApi.updateQuote(q.id, { status }, token)));
+      results.forEach(handleUpdated);
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   if (loading) return <p className="specs-loading">Loading quotes…</p>;
 
+  const hasChecked        = checkedList.length > 0;
+  const deletable         = hasChecked
+    ? checkedList.every((q) => q.status !== 'invoiced')
+    : selected?.status !== 'invoiced';
+  const canSend           = selected?.status === 'draft';
+  const canBulkMarkSent   = hasChecked && checkedList.every((q) => q.status === 'draft');
+  const canBulkAccept     = hasChecked && checkedList.every((q) => q.status === 'sent');
+  const canBulkUnaccept   = hasChecked && checkedList.every((q) => q.status === 'approved');
+
   return (
     <div className="quote-tab">
-      {/* Quote selector / create */}
-      <div className="quote-header">
-        <div className="quote-selector">
-          {quotes.map((q, i) => (
-            <div key={q.id} className={`quote-pill${q.id === activeQuote?.id ? ' active' : ''}`}>
-              <span onClick={() => setActiveId(q.id)} style={{ cursor: 'pointer' }}>
-                Quote {quotes.length - i} <span className={`quote-status-dot ${q.status}`} />
-              </span>
-              <button
-                type="button"
-                className="quote-pill-delete"
-                title="Delete quote"
-                onClick={() => handleDelete(q.id)}
-              >✕</button>
-            </div>
-          ))}
-        </div>
-        <button type="button" onClick={handleCreate} disabled={creating}>
-          {creating ? 'Creating…' : '+ New quote'}
-        </button>
-      </div>
-
-      {!activeQuote && (
-        <div className="quote-empty-state">
-          <p>No quotes yet for this job.</p>
-          {diagSummary === '' && (
-            <textarea
-              className="diag-summary-input"
-              placeholder="Paste diagnostic summary from the AI conversation (optional)…"
-              value={diagSummary}
-              onChange={(e) => setDiagSummary(e.target.value)}
-              rows={3}
-            />
-          )}
-          <button type="button" onClick={handleCreate} disabled={creating}>
-            {creating ? 'Creating…' : 'Create first quote'}
-          </button>
-        </div>
+      {showAdd && (
+        <AddQuoteModal projectId={project.id} token={token} onCreated={handleCreated} onClose={() => setShowAdd(false)} />
+      )}
+      {showEdit && selected && (
+        <EditQuoteModal quote={selected} token={token} onUpdated={handleUpdated} onClose={() => setShowEdit(false)} />
+      )}
+      {showSend && selected && (
+        <SendModal quote={selected} onClose={() => setShowSend(false)} onSent={handleSend} />
+      )}
+      {showPreview && selected && (
+        <QuotePreviewModal quote={selected} onClose={() => setShowPreview(false)} />
       )}
 
-      {activeQuote && (
-        <>
-          {previewing && (
-            <QuotePreviewModal
-              quote={activeQuote}
-              quoteFields={quoteFields}
-              onClose={() => setPreviewing(false)}
-            />
-          )}
+      {/* ── Toolbar ── */}
+      <div className="quote-toolbar">
+        <button type="button" onClick={() => setShowAdd(true)}>+ Add quote</button>
 
-          {/* Status bar */}
-          <div className="quote-status-bar">
-            <span className={`quote-status-badge ${activeQuote.status}`}>
-              {STATUS_LABELS[activeQuote.status] || activeQuote.status}
-            </span>
-            <div className="quote-status-actions">
-              <button type="button" className="secondary" onClick={() => setPreviewing(true)}>Preview</button>
-              {activeQuote.status === 'draft' && (
-                <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Mark as sent</button>
-              )}
-              {activeQuote.status === 'sent' && (
-                <>
-                  <button type="button" className="secondary" onClick={() => handleStatusChange('approved')}>Mark approved</button>
-                  <button type="button" className="secondary" onClick={() => handleStatusChange('draft')}>Back to draft</button>
-                </>
-              )}
-              {activeQuote.status === 'approved' && (
-                <button type="button" className="secondary" onClick={() => handleStatusChange('invoiced')}>Mark invoiced</button>
-              )}
-            </div>
-          </div>
+        {/* Single-quote actions — always present, driven by selectedId */}
+        {!hasChecked && <>
+          <button type="button" className="secondary" disabled={!selected} onClick={() => setShowEdit(true)}>Edit</button>
+          <button type="button" className="secondary" disabled={!selected || !deletable} onClick={handleDelete}>Delete</button>
+          <span className="quote-toolbar-sep" />
+          <button
+            type="button" className="secondary" disabled={!canSend}
+            onClick={() => {
+              if (!selected.customer) { alert('Attach a customer before sending.'); return; }
+              setShowSend(true);
+            }}
+          >Send</button>
+          <button type="button" className="secondary" disabled={!selected} onClick={() => setShowPreview(true)}>Preview</button>
+        </>}
 
-          {/* Diagnostic summary + notes */}
-          <div className="quote-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h4 style={{ margin: 0 }}>Quote details</h4>
-              <button type="button" onClick={handleSaveFields} disabled={saving} style={{ fontSize: '0.8rem', padding: '4px 14px' }}>
-                {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
-              </button>
-            </div>
-            <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: 4 }}>Diagnostic summary</label>
-            <textarea
-              rows={3}
-              style={{ width: '100%', boxSizing: 'border-box', marginBottom: 10 }}
-              placeholder="Summary of diagnosis for the customer…"
-              value={quoteFields.diagnosticSummary}
-              onChange={(e) => setQuoteFields((f) => ({ ...f, diagnosticSummary: e.target.value }))}
-            />
-            <label style={{ fontSize: '0.8rem', color: '#6b7280', display: 'block', marginBottom: 4 }}>Notes</label>
-            <textarea
-              rows={2}
-              style={{ width: '100%', boxSizing: 'border-box' }}
-              placeholder="Internal notes or customer-facing comments…"
-              value={quoteFields.notes}
-              onChange={(e) => setQuoteFields((f) => ({ ...f, notes: e.target.value }))}
-            />
-          </div>
+        {/* Bulk actions — shown when any checkboxes are ticked */}
+        {hasChecked && <>
+          <span className="quote-toolbar-count">{checkedList.length} checked</span>
+          <span className="quote-toolbar-sep" />
+          <button type="button" className="secondary" disabled={!deletable || bulkBusy} onClick={handleDelete}>Delete</button>
+          <button type="button" className="secondary" disabled={!canBulkMarkSent || bulkBusy} onClick={() => bulkSetStatus('sent')}>Mark sent</button>
+          <button type="button" className="secondary" disabled={!canBulkAccept || bulkBusy} onClick={() => bulkSetStatus('approved')}>Customer accepted</button>
+          <button type="button" className="secondary" disabled={!canBulkUnaccept || bulkBusy} onClick={() => bulkSetStatus('sent')}>Unaccept</button>
+          <button type="button" className="secondary" onClick={() => setCheckedIds(new Set())}>Clear</button>
+        </>}
+      </div>
 
-          {/* Parts search */}
-          <div className="quote-section">
-            <h4>Add parts</h4>
-            <PartsSearch
-              project={project}
-              token={token}
-              onAdd={handleAddPart}
-              defaultMarkupPct={settings.defaultMarkupPct}
-            />
-          </div>
+      {/* ── Quote list ── */}
+      <div className="quote-list-panel">
+        {quotes.length === 0 ? (
+          <p className="quote-empty-hint">No quotes yet — click &ldquo;+ Add quote&rdquo; to create one.</p>
+        ) : (
+          <>
+            <div className="quote-select-all-row">
+              <input type="checkbox" id="ql-select-all" checked={allChecked} onChange={toggleAll} />
+              <label htmlFor="ql-select-all">Select all</label>
+            </div>
+            {quotes.map((q) => (
+              <QuoteListRow
+                key={q.id}
+                quote={q}
+                checked={checkedIds.has(q.id)}
+                selected={q.id === selectedId}
+                onToggle={() => toggleCheck(q.id)}
+                onSelect={() => setSelectedId((prev) => (prev === q.id ? null : q.id))}
+              />
+            ))}
+          </>
+        )}
+      </div>
 
-          {/* Lines */}
-          <div className="quote-section">
-            <h4>Quote lines</h4>
-            <QuoteLines quote={activeQuote} token={token} onUpdated={handleUpdated} />
-            <div className="labour-add-row">
-              <AddLabourForm quoteId={activeQuote.id} token={token} settings={settings} onUpdated={handleUpdated} />
-            </div>
-          </div>
-
-          {/* Totals */}
-          <div className="quote-totals">
-            <div className="quote-total-row">
-              <span>Subtotal</span>
-              <span>£{activeQuote.totals.subtotal.toFixed(2)}</span>
-            </div>
-            <div className="quote-total-row">
-              <span>VAT ({activeQuote.totals.vatRate}%)</span>
-              <span>£{activeQuote.totals.vat.toFixed(2)}</span>
-            </div>
-            <div className="quote-total-row total">
-              <span>Total</span>
-              <span>£{activeQuote.totals.total.toFixed(2)}</span>
-            </div>
-          </div>
-        </>
+      {/* ── Detail panel ── */}
+      {selected && (
+        <QuoteDetail
+          quote={selected}
+          project={project}
+          settings={settings}
+          token={token}
+          onUpdated={handleUpdated}
+          onDeleted={handleDeleted}
+        />
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 const express = require('express');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
-const { generateRepairAdvice, generateTrainingChat, extractKnowledgeFromText } = require('../services/aiService');
+const { generateRepairAdvice, generateTrainingChat, extractKnowledgeFromText, generateAdminChat } = require('../services/aiService');
 const { getVehicleHistory } = require('../services/vehicleService');
 const router = express.Router();
 
@@ -155,6 +155,17 @@ router.post('/confirm-suggestion', requireAuth, async (req, res) => {
   );
 
   return res.json({ confirmed: true, id: rows[0].id });
+});
+
+router.post('/admin-agent', requireAuth, async (req, res) => {
+  const { question, history = [] } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    const result = await generateAdminChat(history, question, req.user.id);
+    res.json({ answer: result.answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
