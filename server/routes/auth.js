@@ -42,14 +42,42 @@ router.post('/login', async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
+  const workshopSlug = req.headers['x-workshop-slug'] || req.body.workshopSlug || null;
   try {
     const user = await loginUser(email, password);
+
+    // If login came from a workshop subdomain, enforce the user belongs to it
+    if (workshopSlug) {
+      const { query } = require('../services/db');
+      const { rows } = await query(
+        `SELECT w.id FROM workshops w
+         JOIN users u ON u.workshop_id = w.id
+         WHERE w.slug = $1 AND u.id = $2`,
+        [workshopSlug, user.id]
+      );
+      if (!rows.length) {
+        return res.status(403).json({ error: 'Your account does not belong to this workshop.' });
+      }
+    }
+
     logLogin(user.id, req.ip, req.headers['user-agent']);
     return res.json(formatUserResponse(user));
   } catch (error) {
     const isConcurrent = error.message.includes('already active');
     return res.status(isConcurrent ? 409 : 401).json({ error: error.message });
   }
+});
+
+// Resolve workshop name from slug — used by the login page for branding
+router.get('/workshop', async (req, res) => {
+  const slug = req.query.slug;
+  if (!slug) return res.status(400).json({ error: 'slug required' });
+  const { query } = require('../services/db');
+  const { rows } = await query(
+    `SELECT id, name, slug FROM workshops WHERE slug = $1 AND active = true`, [slug]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Workshop not found' });
+  return res.json(rows[0]);
 });
 
 router.post('/logout', async (req, res) => {

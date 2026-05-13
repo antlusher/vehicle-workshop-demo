@@ -28,8 +28,21 @@ async function request(path, options = {}, token = null) {
   return data;
 }
 
-export async function login(email, password) {
-  return request('/api/auth/login', { method: 'POST', body: { email, password } });
+// Returns the workshop slug from the subdomain (e.g. acme.yourgofer.com → 'acme'), or null
+export function getWorkshopSlug() {
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  // subdomain present if 3+ parts and not 'www'
+  if (parts.length >= 3 && parts[0] !== 'www') return parts[0];
+  return null;
+}
+
+export async function getWorkshopBySlug(slug) {
+  return request(`/api/auth/workshop?slug=${encodeURIComponent(slug)}`);
+}
+
+export async function login(email, password, workshopSlug = null) {
+  return request('/api/auth/login', { method: 'POST', body: { email, password, workshopSlug } });
 }
 
 export async function register(email, password) {
