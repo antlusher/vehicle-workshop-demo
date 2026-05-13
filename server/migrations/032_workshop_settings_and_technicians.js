@@ -1,28 +1,40 @@
 exports.up = (pgm) => {
-  pgm.addColumns('workshop_settings', {
-    workshop_name: { type: 'text' },
-    address_line1: { type: 'text' },
-    address_line2: { type: 'text' },
-    city: { type: 'text' },
-    postcode: { type: 'text' },
-    phone: { type: 'text' },
-    email: { type: 'text' },
-    payment_notes: { type: 'text' },
-  });
-
-  pgm.createTable('technicians', {
-    id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
-    name: { type: 'text', notNull: true },
-    role: { type: 'text' },
-    email: { type: 'text' },
-    phone: { type: 'text' },
-    hourly_rate: { type: 'numeric(8,2)' },
-    active: { type: 'boolean', notNull: true, default: true },
-    created_at: { type: 'timestamptz', notNull: true, default: pgm.func('now()') },
-  });
+  pgm.sql(`
+    ALTER TABLE workshop_settings
+      ADD COLUMN IF NOT EXISTS workshop_name  TEXT,
+      ADD COLUMN IF NOT EXISTS address_line1  TEXT,
+      ADD COLUMN IF NOT EXISTS address_line2  TEXT,
+      ADD COLUMN IF NOT EXISTS city           TEXT,
+      ADD COLUMN IF NOT EXISTS postcode       TEXT,
+      ADD COLUMN IF NOT EXISTS phone          TEXT,
+      ADD COLUMN IF NOT EXISTS email          TEXT,
+      ADD COLUMN IF NOT EXISTS payment_notes  TEXT
+  `);
+  pgm.sql(`
+    CREATE TABLE IF NOT EXISTS technicians (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name        TEXT NOT NULL,
+      role        TEXT,
+      email       TEXT,
+      phone       TEXT,
+      hourly_rate NUMERIC(8,2),
+      active      BOOLEAN NOT NULL DEFAULT true,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 };
 
 exports.down = (pgm) => {
-  pgm.dropTable('technicians');
-  pgm.dropColumns('workshop_settings', ['workshop_name', 'address_line1', 'address_line2', 'city', 'postcode', 'phone', 'email', 'payment_notes']);
+  pgm.sql(`DROP TABLE IF EXISTS technicians`);
+  pgm.sql(`
+    ALTER TABLE workshop_settings
+      DROP COLUMN IF EXISTS workshop_name,
+      DROP COLUMN IF EXISTS address_line1,
+      DROP COLUMN IF EXISTS address_line2,
+      DROP COLUMN IF EXISTS city,
+      DROP COLUMN IF EXISTS postcode,
+      DROP COLUMN IF EXISTS phone,
+      DROP COLUMN IF EXISTS email,
+      DROP COLUMN IF EXISTS payment_notes
+  `);
 };
