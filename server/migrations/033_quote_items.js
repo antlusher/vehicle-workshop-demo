@@ -1,21 +1,20 @@
 exports.up = (pgm) => {
-  pgm.createTable('quote_items', {
-    id: { type: 'uuid', primaryKey: true, default: pgm.func('gen_random_uuid()') },
-    quote_id: { type: 'uuid', notNull: true, references: '"quotes"', onDelete: 'CASCADE' },
-    title: { type: 'text', notNull: true },
-    description: { type: 'text' },
-    notes: { type: 'text' },
-    sort_order: { type: 'integer', default: 0 },
-    created_at: { type: 'timestamptz', notNull: true, default: pgm.func('now()') },
-  });
-  pgm.createIndex('quote_items', 'quote_id');
-
-  pgm.addColumn('quote_lines', {
-    quote_item_id: { type: 'uuid', references: '"quote_items"', onDelete: 'SET NULL' },
-  });
+  pgm.sql(`
+    CREATE TABLE IF NOT EXISTS quote_items (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      quote_id   UUID NOT NULL REFERENCES quotes ON DELETE CASCADE,
+      title      TEXT NOT NULL,
+      description TEXT,
+      notes      TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  pgm.sql(`CREATE INDEX IF NOT EXISTS quote_items_quote_id_idx ON quote_items (quote_id)`);
+  pgm.sql(`ALTER TABLE quote_lines ADD COLUMN IF NOT EXISTS quote_item_id UUID REFERENCES quote_items ON DELETE SET NULL`);
 };
 
 exports.down = (pgm) => {
-  pgm.dropColumn('quote_lines', 'quote_item_id');
-  pgm.dropTable('quote_items');
+  pgm.sql(`ALTER TABLE quote_lines DROP COLUMN IF EXISTS quote_item_id`);
+  pgm.sql(`DROP TABLE IF EXISTS quote_items`);
 };
