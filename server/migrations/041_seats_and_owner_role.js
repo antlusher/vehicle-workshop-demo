@@ -16,13 +16,13 @@ async function up() {
     END
   `);
 
-  // Rename manager → owner in users role check constraint
+  // Rename manager → owner: drop constraint, update data, re-add constraint
   await query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check`);
+  await query(`UPDATE users SET role = 'owner' WHERE role = 'manager'`);
   await query(`
     ALTER TABLE users ADD CONSTRAINT users_role_check
       CHECK (role IN ('owner','admin','tech','customer','sysadmin'))
   `);
-  await query(`UPDATE users SET role = 'owner' WHERE role = 'manager'`);
 
   console.log('Migration 041: seat_limit added, manager→owner renamed');
 }
