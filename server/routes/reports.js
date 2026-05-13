@@ -60,7 +60,7 @@ function toImage(row) {
 }
 
 async function canAccessProject(projectId, user) {
-  if (['manager', 'admin', 'sysadmin'].includes(user.role)) {
+  if (['owner', 'admin', 'sysadmin'].includes(user.role)) {
     const { rows } = await query('SELECT id FROM projects WHERE id = $1 AND workshop_id = $2', [projectId, user.workshopId]);
     return rows.length > 0;
   }

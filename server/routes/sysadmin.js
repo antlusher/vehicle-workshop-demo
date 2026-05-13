@@ -34,7 +34,7 @@ router.post('/bootstrap', async (req, res) => {
 router.get('/workshops', async (req, res) => {
   const { rows } = await query(
     `SELECT w.*,
-            COUNT(DISTINCT u.id) FILTER (WHERE u.role IN ('manager','admin','tech'))::int AS staff_count,
+            COUNT(DISTINCT u.id) FILTER (WHERE u.role IN ('owner','admin','tech'))::int AS staff_count,
             COUNT(DISTINCT p.id)::int AS project_count,
             COUNT(DISTINCT u2.id) FILTER (WHERE u2.role = 'customer')::int AS customer_count,
             (SELECT MAX(ai.created_at) FROM ai_requests ai WHERE ai.workshop_id = w.id) AS last_ai_at
@@ -48,6 +48,8 @@ router.get('/workshops', async (req, res) => {
   return res.json(rows);
 });
 
+const PLAN_SEATS = { starter: 3, professional: 10, enterprise: 0 };
+
 router.post('/workshops', async (req, res) => {
   const { name, slug, plan, aiModel, aiMonthlyTokenLimit } = req.body;
   if (!name) return res.status(400).json({ error: 'Workshop name is required' });
@@ -57,12 +59,14 @@ router.post('/workshops', async (req, res) => {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+  const resolvedPlan = plan || 'professional';
+  const seatLimit = PLAN_SEATS[resolvedPlan] ?? 10;
   const { rows } = await query(
-    `INSERT INTO workshops (name, slug, plan, ai_model, ai_monthly_token_limit)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO workshops (name, slug, plan, ai_model, ai_monthly_token_limit, seat_limit)
+     VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
-    [name, autoSlug, plan || 'professional', aiModel || 'claude-haiku-4-5-20251001',
-     aiMonthlyTokenLimit || 100000]
+    [name, autoSlug, resolvedPlan, aiModel || 'claude-haiku-4-5-20251001',
+     aiMonthlyTokenLimit || 100000, seatLimit]
   );
   const workshop = rows[0];
 
@@ -101,6 +105,8 @@ router.patch('/workshops/:id', async (req, res) => {
   if (aiMonthlyTokenLimit !== undefined){ fields.push(`ai_monthly_token_limit = $${i++}`);  vals.push(aiMonthlyTokenLimit); }
   if (features !== undefined)           { fields.push(`features = $${i++}`);                vals.push(JSON.stringify(features)); }
   if (active !== undefined)             { fields.push(`active = $${i++}`);                  vals.push(active); }
+  // Auto-update seat_limit when plan changes
+  if (plan !== undefined)               { fields.push(`seat_limit = $${i++}`);               vals.push(PLAN_SEATS[plan] ?? 10); }
   if (!fields.length) return res.status(400).json({ error: 'Nothing to update' });
   vals.push(req.params.id);
   const { rows } = await query(
@@ -156,7 +162,7 @@ router.get('/workshops/:id/users', async (req, res) => {
   const { rows } = await query(
     `SELECT id, email, name, role, created_at,
             (SELECT MAX(created_at) FROM login_history WHERE user_id = users.id) AS last_login
-     FROM users WHERE workshop_id = $1 AND role IN ('manager','admin','tech')
+     FROM users WHERE workshop_id = $1 AND role IN ('owner','admin','tech')
      ORDER BY created_at ASC`,
     [req.params.id]
   );
@@ -166,9 +172,23 @@ router.get('/workshops/:id/users', async (req, res) => {
 router.post('/workshops/:id/users', async (req, res) => {
   const { email, password, name, role } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  const userRole = role || 'manager';
-  if (!['manager', 'admin', 'tech'].includes(userRole)) {
+  const userRole = role || 'owner';
+  if (!['owner', 'admin', 'tech'].includes(userRole)) {
     return res.status(400).json({ error: 'Invalid role' });
+  }
+  // Check seat availability
+  const seatCheck = await query(
+    `SELECT w.seat_limit, COUNT(u.id)::int AS used
+     FROM workshops w
+     LEFT JOIN users u ON u.workshop_id = w.id AND u.role IN ('owner','admin','tech')
+     WHERE w.id = $1 GROUP BY w.seat_limit`,
+    [req.params.id]
+  );
+  if (seatCheck.rows.length) {
+    const { seat_limit, used } = seatCheck.rows[0];
+    if (seat_limit > 0 && used >= seat_limit) {
+      return res.status(403).json({ error: `Seat limit reached (${used}/${seat_limit}). Upgrade the workshop plan to add more staff.` });
+    }
   }
   const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
   if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
@@ -185,7 +205,7 @@ router.post('/workshops/:id/users', async (req, res) => {
 
 router.patch('/workshops/:wid/users/:uid', async (req, res) => {
   const { role } = req.body;
-  if (!role || !['manager', 'admin', 'tech'].includes(role)) {
+  if (!role || !['owner', 'admin', 'tech'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role' });
   }
   const { rows } = await query(
@@ -199,7 +219,7 @@ router.patch('/workshops/:wid/users/:uid', async (req, res) => {
 
 router.delete('/workshops/:wid/users/:uid', async (req, res) => {
   const { rows } = await query(
-    `SELECT id FROM users WHERE id = $1 AND workshop_id = $2 AND role IN ('manager','admin','tech')`,
+    `SELECT id FROM users WHERE id = $1 AND workshop_id = $2 AND role IN ('owner','admin','tech')`,
     [req.params.uid, req.params.wid]
   );
   if (!rows.length) return res.status(404).json({ error: 'User not found in this workshop' });
@@ -212,7 +232,7 @@ router.delete('/workshops/:wid/users/:uid', async (req, res) => {
 router.get('/stats', async (req, res) => {
   const [workshops, users, projects, ai] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE active)::int AS active FROM workshops`),
-    query(`SELECT COUNT(*) FILTER (WHERE role IN ('manager','admin','tech'))::int AS staff,
+    query(`SELECT COUNT(*) FILTER (WHERE role IN ('owner','admin','tech'))::int AS staff,
                   COUNT(*) FILTER (WHERE role = 'customer')::int AS customers FROM users`),
     query(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE created_at > now()-interval '7 days')::int AS this_week FROM projects`),
     query(`SELECT COUNT(*)::int AS requests, COALESCE(SUM(input_tokens+output_tokens),0)::int AS tokens,

@@ -310,8 +310,8 @@ function App() {
     return <SysAdminShell token={token} userEmail={user.email} onLogout={handleLogout} />;
   }
 
-  const isWorkshopStaff = ['manager', 'admin', 'tech'].includes(user?.role);
-  const canEnterAdmin = ['manager', 'admin'].includes(user?.role);
+  const isWorkshopStaff = ['owner', 'admin', 'tech'].includes(user?.role);
+  const canEnterAdmin = ['owner', 'admin'].includes(user?.role);
 
   if (adminView && canEnterAdmin) {
     return (

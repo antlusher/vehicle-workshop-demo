@@ -174,7 +174,7 @@ function StaffRow({ user, workshopId, token, onUpdated, onDeleted }) {
       <td>
         {editing ? (
           <select value={role} onChange={(e) => setRole(e.target.value)} style={{ fontSize: '0.8rem', padding: '2px 6px' }}>
-            <option value="manager">Manager</option>
+            <option value="owner">Owner</option>
             <option value="admin">Admin</option>
             <option value="tech">Tech</option>
           </select>
@@ -224,7 +224,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
   const [saved, setSaved] = useState(false);
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
-  const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'manager' });
+  const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'owner' });
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState('');
 
@@ -251,7 +251,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
     try {
       const u = await createWorkshopUser(workshop.id, newUser, token);
       setUsers((prev) => [...prev, u]);
-      setNewUser({ email: '', password: '', name: '', role: 'manager' });
+      setNewUser({ email: '', password: '', name: '', role: 'owner' });
     } catch (err) { setCreateErr(err.message); }
     finally { setCreating(false); }
   };
@@ -303,7 +303,11 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
             <div className="kb-form-group">
               <label>Plan</label>
               <select {...f('plan')}>
-                {PLANS.map((p) => <option key={p} value={p} style={{ textTransform: 'capitalize' }}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                {PLANS.map((p) => {
+                  const seats = { starter: 3, professional: 10, enterprise: 0 }[p];
+                  const label = `${p.charAt(0).toUpperCase()+p.slice(1)} — ${seats === 0 ? 'Unlimited' : seats} seats`;
+                  return <option key={p} value={p}>{label}</option>;
+                })}
               </select>
             </div>
             <div className="kb-form-group">
@@ -358,7 +362,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
                 <div className="kb-form-group">
                   <label>Role</label>
                   <select value={newUser.role} onChange={(e) => setNewUser((s) => ({ ...s, role: e.target.value }))}>
-                    <option value="manager">Manager</option>
+                    <option value="owner">Owner</option>
                     <option value="admin">Admin</option>
                     <option value="tech">Tech</option>
                   </select>
@@ -390,7 +394,8 @@ function WorkshopsPage({ token }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: '', slug: '', plan: 'professional', managerEmail: '', managerPassword: '', managerName: '' });
+  const PLAN_SEATS = { starter: 3, professional: 10, enterprise: 'Unlimited' };
+  const [form, setForm] = useState({ name: '', slug: '', plan: 'professional', ownerEmail: '', ownerPassword: '', ownerName: '' });
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState('');
 
@@ -402,16 +407,17 @@ function WorkshopsPage({ token }) {
     setCreating(true); setCreateErr('');
     try {
       const ws = await createWorkshop({ name: form.name, slug: form.slug || undefined, plan: form.plan }, token);
-      if (form.managerEmail && form.managerPassword) {
+      if (form.ownerEmail && form.ownerPassword) {
         await createWorkshopUser(ws.id, {
-          email: form.managerEmail,
-          password: form.managerPassword,
-          name: form.managerName || undefined,
-          role: 'manager',
+          email: form.ownerEmail,
+          password: form.ownerPassword,
+          name: form.ownerName || undefined,
+          role: 'owner',
         }, token);
       }
       setWorkshops((prev) => [ws, ...prev]);
-      setForm({ name: '', slug: '', plan: 'professional', managerEmail: '', managerPassword: '', managerName: '' });
+      setForm({ name: '', slug: '', plan: 'professional', ownerEmail: '', ownerPassword: '', ownerName: '' });
+      setShowCreate(false);
       setShowCreate(false);
     } catch (err) { setCreateErr(err.message); }
     finally { setCreating(false); }
@@ -446,20 +452,20 @@ function WorkshopsPage({ token }) {
               <label>Slug <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>(optional, auto-generated if blank)</span></label>
               <input placeholder="acme-auto" {...ff('slug')} />
             </div>
-            <h4 className="admin-section-title" style={{ marginTop: 8, marginBottom: 4 }}>Initial manager account</h4>
+            <h4 className="admin-section-title" style={{ marginTop: 8, marginBottom: 4 }}>Initial owner account</h4>
             <div className="kb-form-row">
               <div className="kb-form-group">
                 <label>Manager name</label>
-                <input placeholder="Jane Smith" {...ff('managerName')} />
+                <input placeholder="Jane Smith" {...ff('ownerName')} />
               </div>
               <div className="kb-form-group">
                 <label>Manager email</label>
-                <input type="email" placeholder="jane@acmeauto.co.uk" {...ff('managerEmail')} />
+                <input type="email" placeholder="jane@acmeauto.co.uk" {...ff('ownerEmail')} />
               </div>
             </div>
             <div className="kb-form-group">
               <label>Temporary password</label>
-              <input type="password" placeholder="They can change this on first login" {...ff('managerPassword')} />
+              <input type="password" placeholder="They can change this on first login" {...ff('ownerPassword')} />
             </div>
             {createErr && <p className="error">{createErr}</p>}
             <div className="kb-form-actions">

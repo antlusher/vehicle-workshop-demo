@@ -18,7 +18,7 @@ function requireAuth(req, res, next) {
 
 // Managers/admins can access any project in their workshop; techs only their own
 async function canAccessProject(projectId, user) {
-  const isWide = ['manager', 'admin', 'sysadmin'].includes(user.role);
+  const isWide = ['owner', 'admin', 'sysadmin'].includes(user.role);
   if (isWide) {
     const { rows } = await query(
       'SELECT id FROM projects WHERE id = $1 AND workshop_id = $2',
@@ -82,7 +82,7 @@ router.get('/', requireAuth, async (req, res) => {
   const user = req.user;
 
   // Managers/admins see all workshop projects; techs see only their own
-  const isWideRole = ['manager', 'admin', 'sysadmin'].includes(user.role);
+  const isWideRole = ['owner', 'admin', 'sysadmin'].includes(user.role);
   const scopeClause = isWideRole
     ? `p.workshop_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}`
     : `p.user_id = $1 AND p.archived_at IS ${showArchived ? 'NOT NULL' : 'NULL'}`;

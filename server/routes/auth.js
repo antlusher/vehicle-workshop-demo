@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
       const { rows } = await query(
         `SELECT w.id FROM workshops w
          JOIN users u ON u.workshop_id = w.id
-         WHERE w.slug = $1 AND u.id = $2`,
+         WHERE w.slug = $1 AND u.id = $2 AND u.role IN ('owner','admin','tech')`,
         [workshopSlug, user.id]
       );
       if (!rows.length) {

@@ -8,16 +8,16 @@ import Customers from './Customers';
 import WorkshopSettings from './WorkshopSettings';
 import Inventory from './Inventory';
 
-// manager: all nav | admin: no Users/Workshop | tech: not in AdminShell
+// owner: all nav | admin: no Staff/Workshop | tech: not in AdminShell
 const ALL_NAV = [
-  { id: 'dashboard',  label: 'Dashboard',        roles: ['manager', 'admin'] },
-  { id: 'projects',   label: 'Projects',          roles: ['manager', 'admin'] },
-  { id: 'customers',  label: 'Customers',         roles: ['manager', 'admin'] },
-  { id: 'ai',         label: 'AI & Knowledge',    roles: ['manager', 'admin'] },
-  { id: 'registry',   label: 'Vehicle Registry',  roles: ['manager', 'admin'] },
-  { id: 'inventory',  label: 'Inventory',         roles: ['manager', 'admin'] },
-  { id: 'staff',      label: 'Staff',             roles: ['manager'] },
-  { id: 'workshop',   label: 'Workshop',          roles: ['manager'] },
+  { id: 'dashboard',  label: 'Dashboard',        roles: ['owner', 'admin'] },
+  { id: 'projects',   label: 'Projects',          roles: ['owner', 'admin'] },
+  { id: 'customers',  label: 'Customers',         roles: ['owner', 'admin'] },
+  { id: 'ai',         label: 'AI & Knowledge',    roles: ['owner', 'admin'] },
+  { id: 'registry',   label: 'Vehicle Registry',  roles: ['owner', 'admin'] },
+  { id: 'inventory',  label: 'Inventory',         roles: ['owner', 'admin'] },
+  { id: 'staff',      label: 'Staff',             roles: ['owner'] },
+  { id: 'workshop',   label: 'Workshop',          roles: ['owner'] },
 ];
 
 export default function AdminShell({ token, userEmail, userRole = 'admin', onExit }) {
@@ -25,7 +25,6 @@ export default function AdminShell({ token, userEmail, userRole = 'admin', onExi
   const nav = ALL_NAV.filter((n) => n.roles.includes(role));
   const [page, setPage] = useState(nav[0]?.id || 'dashboard');
 
-  // If current page is not accessible for this role, reset
   const activePage = nav.find((n) => n.id === page) ? page : nav[0]?.id;
 
   return (
@@ -33,7 +32,7 @@ export default function AdminShell({ token, userEmail, userRole = 'admin', onExi
       <header className="admin-header">
         <div className="admin-header-left">
           <span className="admin-brand">Ask Bob</span>
-          <span className="admin-brand-sub">{role === 'manager' ? 'Manager' : 'Admin'}</span>
+          <span className="admin-brand-sub">{role === 'owner' ? 'Owner' : 'Admin'}</span>
         </div>
         <nav className="admin-nav">
           {nav.map((n) => (
