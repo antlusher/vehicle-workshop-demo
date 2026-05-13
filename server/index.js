@@ -50,6 +50,8 @@ app.post('/api/bootstrap', async (req, res) => {
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
   const existing = await query(`SELECT id FROM users WHERE role = 'sysadmin'`);
   if (existing.rows.length) return res.status(409).json({ error: 'A sysadmin already exists' });
+  const emailCheck = await query(`SELECT id FROM users WHERE email = $1`, [email]);
+  if (emailCheck.rows.length) return res.status(409).json({ error: 'A user with that email already exists. Promote them via the database instead.' });
   const hashed = await bcrypt.hash(password, 10);
   const token = crypto.randomBytes(32).toString('hex');
   const { rows } = await query(
