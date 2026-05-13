@@ -51,7 +51,7 @@ router.use(requireAdmin);
 
 // Dashboard
 router.get('/dashboard', async (req, res) => {
-  const stats = await admin.getDashboardStats();
+  const stats = await admin.getDashboardStats(req.workshopId);
   return res.json(stats);
 });
 
@@ -59,12 +59,12 @@ router.get('/dashboard', async (req, res) => {
 router.get('/users', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 50, 200);
   const offset = parseInt(req.query.offset) || 0;
-  const users = await admin.listUsers({ limit, offset });
+  const users = await admin.listUsers({ limit, offset, workshopId: req.workshopId });
   return res.json(users);
 });
 
 router.get('/users/:id', async (req, res) => {
-  const user = await admin.getUser(req.params.id);
+  const user = await admin.getUser(req.params.id, req.workshopId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   return res.json(user);
 });
@@ -102,25 +102,25 @@ router.get('/ai-requests', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 100, 500);
   const offset = parseInt(req.query.offset) || 0;
   const userId = req.query.userId || null;
-  const requests = await admin.listAiRequests({ limit, offset, userId });
+  const requests = await admin.listAiRequests({ limit, offset, userId, workshopId: req.workshopId });
   return res.json(requests);
 });
 
 router.get('/ai-requests/stats', async (req, res) => {
-  const stats = await admin.getAiStats();
+  const stats = await admin.getAiStats(req.workshopId);
   return res.json(stats);
 });
 
 // Conversations
 router.get('/projects/:projectId/conversation', async (req, res) => {
-  const convo = await admin.getProjectConversation(req.params.projectId);
+  const convo = await admin.getProjectConversation(req.params.projectId, req.workshopId);
   if (!convo) return res.status(404).json({ error: 'Project not found' });
   return res.json(convo);
 });
 
 // Learning stats
 router.get('/learning', async (req, res) => {
-  const data = await admin.getLearningStats();
+  const data = await admin.getLearningStats(req.workshopId);
   return res.json(data);
 });
 
@@ -128,20 +128,20 @@ router.get('/learning', async (req, res) => {
 router.get('/projects', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 100, 500);
   const offset = parseInt(req.query.offset) || 0;
-  const projects = await admin.listProjects({ limit, offset });
+  const projects = await admin.listProjects({ limit, offset, workshopId: req.workshopId });
   return res.json(projects);
 });
 
 // Knowledge base
 router.get('/knowledge-base', async (req, res) => {
   const { category, make, search } = req.query;
-  const entries = await admin.listKnowledgeBase({ category, make, search });
+  const entries = await admin.listKnowledgeBase({ category, make, search, workshopId: req.workshopId });
   return res.json(entries);
 });
 
 router.post('/knowledge-base', async (req, res) => {
   try {
-    const entry = await admin.createKnowledgeBaseEntry(req.body, req.admin.id);
+    const entry = await admin.createKnowledgeBaseEntry(req.body, req.admin.id, req.workshopId);
     return res.status(201).json(entry);
   } catch (err) {
     return res.status(400).json({ error: err.message });
@@ -150,7 +150,7 @@ router.post('/knowledge-base', async (req, res) => {
 
 router.put('/knowledge-base/:id', async (req, res) => {
   try {
-    const entry = await admin.updateKnowledgeBaseEntry(req.params.id, req.body);
+    const entry = await admin.updateKnowledgeBaseEntry(req.params.id, req.body, req.workshopId);
     if (!entry) return res.status(404).json({ error: 'Entry not found' });
     return res.json(entry);
   } catch (err) {
@@ -159,7 +159,7 @@ router.put('/knowledge-base/:id', async (req, res) => {
 });
 
 router.delete('/knowledge-base/:id', async (req, res) => {
-  await admin.deleteKnowledgeBaseEntry(req.params.id);
+  await admin.deleteKnowledgeBaseEntry(req.params.id, req.workshopId);
   return res.json({ deleted: true });
 });
 
@@ -271,7 +271,7 @@ router.get('/customers', async (req, res) => {
             ), 0) AS total_spend
      FROM users u
      LEFT JOIN customer_vehicles cv ON cv.customer_id = u.id
-     WHERE u.role = 'customer' AND (u.workshop_id = $1 OR $1 IS NULL)
+     WHERE u.role = 'customer' AND u.workshop_id = $1
      GROUP BY u.id
      ORDER BY u.created_at DESC`,
     [wid]
