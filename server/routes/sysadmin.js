@@ -52,11 +52,16 @@ router.post('/workshops', async (req, res) => {
   const { name, slug, plan, aiModel, aiMonthlyTokenLimit } = req.body;
   if (!name) return res.status(400).json({ error: 'Workshop name is required' });
 
+  const autoSlug = (slug || name)
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
   const { rows } = await query(
     `INSERT INTO workshops (name, slug, plan, ai_model, ai_monthly_token_limit)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [name, slug || null, plan || 'professional', aiModel || 'claude-haiku-4-5-20251001',
+    [name, autoSlug, plan || 'professional', aiModel || 'claude-haiku-4-5-20251001',
      aiMonthlyTokenLimit || 100000]
   );
   const workshop = rows[0];
