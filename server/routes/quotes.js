@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { applyMarkup, getWorkshopSettings } = require('../services/partsService');
@@ -319,6 +320,14 @@ router.post('/:id/send', requireAuth, async (req, res) => {
     const settings = await getWorkshopSettings();
     const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
+    // Generate a single-use magic link token (24h expiry)
+    const magicToken = crypto.randomBytes(32).toString('hex');
+    await query(
+      `UPDATE users SET magic_token = $1, magic_token_expires_at = now() + interval '24 hours' WHERE id = $2`,
+      [magicToken, quote.customer.id]
+    );
+    const portalUrl = `${clientOrigin}/portal?magic=${magicToken}&project=${quote.projectId}`;
+
     await sendQuoteToCustomer({
       to: quote.customer.email,
       customerName: quote.customer.name,
@@ -327,7 +336,7 @@ router.post('/:id/send', requireAuth, async (req, res) => {
       quoteRef: quote.reference,
       quoteTitle: quote.title,
       total: quote.totals.total.toFixed(2),
-      portalUrl: clientOrigin,
+      portalUrl,
     });
 
     await query(

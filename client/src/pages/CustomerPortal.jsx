@@ -246,7 +246,15 @@ export default function CustomerPortal({ user, token, onLogout }) {
   const [selectedJobId, setSelectedJobId] = useState(null);
 
   useEffect(() => {
-    getMyVehicles(token).then(setVehicles).finally(() => setLoading(false));
+    getMyVehicles(token).then((v) => {
+      setVehicles(v);
+      // If magic link included a project ID, jump straight to it
+      const linkedProjectId = localStorage.getItem('portalProjectId');
+      if (linkedProjectId) {
+        localStorage.removeItem('portalProjectId');
+        setSelectedJobId(linkedProjectId);
+      }
+    }).finally(() => setLoading(false));
   }, [token]);
 
   return (

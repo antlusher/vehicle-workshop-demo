@@ -32,6 +32,34 @@ function App() {
     return () => window.removeEventListener('auth:logout', handleForcedLogout);
   }, []);
 
+  // Magic link auto-login: ?magic=TOKEN&project=ID
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magic = params.get('magic');
+    const projectId = params.get('project');
+    if (!magic) return;
+
+    // Clear the URL immediately so refresh doesn't re-use the token
+    window.history.replaceState({}, '', '/portal');
+
+    fetch('/api/customer/magic-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: magic }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('portalProjectId', projectId || '');
+          setToken(data.token);
+          setUser({ email: data.email, role: data.role });
+          setStatus('ready');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (!token) {
       setStatus('idle');

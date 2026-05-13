@@ -1,8 +1,27 @@
 const express = require('express');
+const crypto = require('crypto');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 
 const router = express.Router();
+
+// POST /api/customer/magic-login — exchange a magic token for a session token
+router.post('/magic-login', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE magic_token = $1 AND magic_token_expires_at > now()`,
+    [token]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Link expired or invalid' });
+
+  const user = rows[0];
+  // Burn the token immediately — single use
+  await query(`UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL WHERE id = $1`, [user.id]);
+
+  return res.json({ token: user.token, role: user.role, email: user.email, name: user.name });
+});
 
 function requireCustomer(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
