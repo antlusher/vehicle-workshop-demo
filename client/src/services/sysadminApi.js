@@ -16,6 +16,15 @@ export const getWorkshops     = (token) => request('/api/sysadmin/workshops', {}
 export const getWorkshop      = (id, token) => request(`/api/sysadmin/workshops/${id}`, {}, token);
 export const createWorkshop   = (data, token) => request('/api/sysadmin/workshops', { method: 'POST', body: data }, token);
 export const updateWorkshop   = (id, data, token) => request(`/api/sysadmin/workshops/${id}`, { method: 'PATCH', body: data }, token);
-export const getWorkshopUsers = (id, token) => request(`/api/sysadmin/workshops/${id}/users`, {}, token);
+
+export const getSysAdmins     = (token) => request('/api/sysadmin/sysadmins', {}, token);
+export const createSysAdmin   = (data, token) => request('/api/sysadmin/sysadmins', { method: 'POST', body: data }, token);
+export const deleteSysAdmin   = (id, token) => request(`/api/sysadmin/sysadmins/${id}`, { method: 'DELETE' }, token);
+
+export const getWorkshopUsers   = (id, token) => request(`/api/sysadmin/workshops/${id}/users`, {}, token);
 export const createWorkshopUser = (workshopId, data, token) =>
   request(`/api/sysadmin/workshops/${workshopId}/users`, { method: 'POST', body: data }, token);
+export const updateWorkshopUser = (workshopId, userId, data, token) =>
+  request(`/api/sysadmin/workshops/${workshopId}/users/${userId}`, { method: 'PATCH', body: data }, token);
+export const deleteWorkshopUser = (workshopId, userId, token) =>
+  request(`/api/sysadmin/workshops/${workshopId}/users/${userId}`, { method: 'DELETE' }, token);

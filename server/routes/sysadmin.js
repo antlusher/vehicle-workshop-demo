@@ -106,6 +106,45 @@ router.patch('/workshops/:id', async (req, res) => {
   return res.json(rows[0]);
 });
 
+// ── Sysadmin user management ────────────────────────────────────────────────
+
+router.get('/sysadmins', async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, email, name, created_at,
+            (SELECT MAX(created_at) FROM login_history WHERE user_id = users.id) AS last_login
+     FROM users WHERE role = 'sysadmin' ORDER BY created_at ASC`
+  );
+  return res.json(rows);
+});
+
+router.post('/sysadmins', async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+  const hashed = await bcrypt.hash(password, 10);
+  const token = crypto.randomBytes(32).toString('hex');
+  const { rows } = await query(
+    `INSERT INTO users (email, password, role, subscribed, name, token)
+     VALUES ($1,$2,'sysadmin',true,$3,$4)
+     RETURNING id, email, name, created_at`,
+    [email, hashed, name || null, token]
+  );
+  return res.status(201).json(rows[0]);
+});
+
+router.delete('/sysadmins/:id', async (req, res) => {
+  if (req.user.id === req.params.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+  const { rows } = await query(
+    `SELECT id FROM users WHERE id = $1 AND role = 'sysadmin'`, [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Sysadmin not found' });
+  await query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  return res.json({ ok: true });
+});
+
 // ── Workshop users (from sysadmin perspective) ──────────────────────────────
 
 router.get('/workshops/:id/users', async (req, res) => {
@@ -119,7 +158,6 @@ router.get('/workshops/:id/users', async (req, res) => {
   return res.json(rows);
 });
 
-// POST create initial manager for a workshop
 router.post('/workshops/:id/users', async (req, res) => {
   const { email, password, name, role } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
@@ -138,6 +176,30 @@ router.post('/workshops/:id/users', async (req, res) => {
     [email, hashed, userRole, name || null, req.params.id, token]
   );
   return res.status(201).json(rows[0]);
+});
+
+router.patch('/workshops/:wid/users/:uid', async (req, res) => {
+  const { role } = req.body;
+  if (!role || !['manager', 'admin', 'tech'].includes(role)) {
+    return res.status(400).json({ error: 'Invalid role' });
+  }
+  const { rows } = await query(
+    `UPDATE users SET role = $1 WHERE id = $2 AND workshop_id = $3
+     RETURNING id, email, name, role, created_at`,
+    [role, req.params.uid, req.params.wid]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'User not found in this workshop' });
+  return res.json(rows[0]);
+});
+
+router.delete('/workshops/:wid/users/:uid', async (req, res) => {
+  const { rows } = await query(
+    `SELECT id FROM users WHERE id = $1 AND workshop_id = $2 AND role IN ('manager','admin','tech')`,
+    [req.params.uid, req.params.wid]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'User not found in this workshop' });
+  await query('DELETE FROM users WHERE id = $1', [req.params.uid]);
+  return res.json({ ok: true });
 });
 
 // ── System stats ────────────────────────────────────────────────────────────

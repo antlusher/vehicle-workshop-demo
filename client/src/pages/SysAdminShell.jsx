@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
-import { getSysStats, getWorkshops, createWorkshop, updateWorkshop, getWorkshopUsers, createWorkshopUser } from '../services/sysadminApi';
+import {
+  getSysStats, getWorkshops, createWorkshop, updateWorkshop,
+  getSysAdmins, createSysAdmin, deleteSysAdmin,
+  getWorkshopUsers, createWorkshopUser, updateWorkshopUser, deleteWorkshopUser,
+} from '../services/sysadminApi';
 
 const PLANS = ['starter', 'professional', 'enterprise'];
 const AI_MODELS = [
@@ -42,6 +46,166 @@ function OverviewPage({ token }) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Sysadmins page ───────────────────────────────────────────────────────────
+function SysAdminsPage({ token, currentUserEmail }) {
+  const [admins, setAdmins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ email: '', password: '', name: '' });
+  const [creating, setCreating] = useState(false);
+  const [err, setErr] = useState('');
+  const [deleting, setDeleting] = useState(null);
+
+  const load = () => getSysAdmins(token).then(setAdmins).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setCreating(true); setErr('');
+    try {
+      const u = await createSysAdmin(form, token);
+      setAdmins((prev) => [...prev, u]);
+      setForm({ email: '', password: '', name: '' });
+    } catch (e) { setErr(e.message); }
+    finally { setCreating(false); }
+  };
+
+  const handleDelete = async (id) => {
+    setDeleting(id);
+    try {
+      await deleteSysAdmin(id, token);
+      setAdmins((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) { setErr(e.message); }
+    finally { setDeleting(null); }
+  };
+
+  return (
+    <div>
+      <h2 className="admin-page-title">System Administrators</h2>
+      <div className="admin-table-wrap" style={{ marginBottom: 28 }}>
+        {loading ? <p className="admin-loading">Loading…</p> : (
+          <table className="admin-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Created</th><th>Last login</th><th></th></tr></thead>
+            <tbody>
+              {admins.map((a) => (
+                <tr key={a.id}>
+                  <td>{a.name || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+                  <td style={{ fontSize: '0.82rem' }}>{a.email}</td>
+                  <td style={{ fontSize: '0.78rem', color: '#6b7280' }}>{fmtDate(a.created_at)}</td>
+                  <td style={{ fontSize: '0.78rem', color: '#6b7280' }}>{fmtDate(a.last_login)}</td>
+                  <td>
+                    {a.email !== currentUserEmail && (
+                      <button
+                        className="secondary"
+                        style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#dc2626', borderColor: '#dc2626' }}
+                        disabled={deleting === a.id}
+                        onClick={() => { if (window.confirm(`Remove sysadmin ${a.email}?`)) handleDelete(a.id); }}
+                      >
+                        {deleting === a.id ? '…' : 'Remove'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!admins.length && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9ca3af', padding: 24 }}>No sysadmins found.</td></tr>}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+      <h3 className="admin-section-title">Add sysadmin</h3>
+      <div className="kb-form-wrap">
+        <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="kb-form-row">
+            <div className="kb-form-group">
+              <label>Name</label>
+              <input placeholder="Jane Smith" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+            </div>
+            <div className="kb-form-group">
+              <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
+              <input type="email" required value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} />
+            </div>
+          </div>
+          <div className="kb-form-group">
+            <label>Password <span style={{ color: '#b91c1c' }}>*</span></label>
+            <input type="password" required value={form.password} onChange={(e) => setForm((s) => ({ ...s, password: e.target.value }))} />
+          </div>
+          <div className="kb-form-actions">
+            <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create sysadmin'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Staff row with inline role edit + delete ─────────────────────────────────
+function StaffRow({ user, workshopId, token, onUpdated, onDeleted }) {
+  const [editing, setEditing] = useState(false);
+  const [role, setRole] = useState(user.role);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleSaveRole = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateWorkshopUser(workshopId, user.id, { role }, token);
+      onUpdated(updated);
+      setEditing(false);
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Remove ${user.email} from this workshop?`)) return;
+    setDeleting(true);
+    try {
+      await deleteWorkshopUser(workshopId, user.id, token);
+      onDeleted(user.id);
+    } finally { setDeleting(false); }
+  };
+
+  return (
+    <tr>
+      <td>{user.name || <span style={{ color: '#9ca3af' }}>—</span>}</td>
+      <td style={{ fontSize: '0.82rem' }}>{user.email}</td>
+      <td>
+        {editing ? (
+          <select value={role} onChange={(e) => setRole(e.target.value)} style={{ fontSize: '0.8rem', padding: '2px 6px' }}>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+            <option value="tech">Tech</option>
+          </select>
+        ) : (
+          <span className={`sys-role-badge sys-role-badge--${user.role}`}>{user.role}</span>
+        )}
+      </td>
+      <td style={{ fontSize: '0.78rem', color: '#6b7280' }}>{fmtDate(user.last_login)}</td>
+      <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
+        {editing ? (
+          <>
+            <button style={{ fontSize: '0.72rem', padding: '2px 8px' }} disabled={saving} onClick={handleSaveRole}>
+              {saving ? '…' : 'Save'}
+            </button>
+            <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px' }} onClick={() => { setEditing(false); setRole(user.role); }}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px' }} onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px', color: '#dc2626', borderColor: '#dc2626' }}
+              disabled={deleting} onClick={handleDelete}>
+              {deleting ? '…' : 'Remove'}
+            </button>
+          </>
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -167,17 +331,19 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
             {loadingUsers ? <p className="admin-loading">Loading…</p> : (
               <div className="admin-table-wrap" style={{ marginBottom: 20 }}>
                 <table className="admin-table">
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th><th></th></tr></thead>
                   <tbody>
                     {users.map((u) => (
-                      <tr key={u.id}>
-                        <td>{u.name || <span style={{ color: '#9ca3af' }}>—</span>}</td>
-                        <td style={{ fontSize: '0.82rem' }}>{u.email}</td>
-                        <td><span className={`sys-role-badge sys-role-badge--${u.role}`}>{u.role}</span></td>
-                        <td style={{ fontSize: '0.78rem', color: '#6b7280' }}>{fmtDate(u.last_login)}</td>
-                      </tr>
+                      <StaffRow
+                        key={u.id}
+                        user={u}
+                        workshopId={workshop.id}
+                        token={token}
+                        onUpdated={(updated) => setUsers((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
+                        onDeleted={(id) => setUsers((prev) => prev.filter((x) => x.id !== id))}
+                      />
                     ))}
-                    {!users.length && <tr><td colSpan={4} style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No staff yet.</td></tr>}
+                    {!users.length && <tr><td colSpan={5} style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>No staff yet.</td></tr>}
                   </tbody>
                 </table>
               </div>
@@ -358,8 +524,9 @@ function WorkshopsPage({ token }) {
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'workshops', label: 'Workshops' },
+  { id: 'overview',   label: 'Overview' },
+  { id: 'workshops',  label: 'Workshops' },
+  { id: 'sysadmins', label: 'Sysadmins' },
 ];
 
 export default function SysAdminShell({ token, userEmail, onLogout }) {
@@ -387,6 +554,7 @@ export default function SysAdminShell({ token, userEmail, onLogout }) {
       <main className="sys-content">
         {page === 'overview'   && <OverviewPage token={token} />}
         {page === 'workshops'  && <WorkshopsPage token={token} />}
+        {page === 'sysadmins' && <SysAdminsPage token={token} currentUserEmail={userEmail} />}
       </main>
     </div>
   );
