@@ -15,6 +15,10 @@ export const getMyVehicles = (token) => request('/api/customer/vehicles', {}, to
 export const getVehicleJobs = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/jobs`, {}, token);
 export const getJobReport = (projectId, token) => request(`/api/customer/jobs/${projectId}`, {}, token);
 export const getJobQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote`, {}, token);
+export const getVehicleMot = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/mot`, {}, token);
+export const getVehicleGallery = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/gallery`, {}, token);
+export const getVehicleInvoices = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/invoices`, {}, token);
+export const getInvoiceDetail = (quoteId, token) => request(`/api/customer/invoices/${quoteId}`, {}, token);
 
 // Admin customer management
 export const getCustomers = (token) => request('/api/admin/customers', {}, token);

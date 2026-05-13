@@ -2,28 +2,22 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
+const { s3Available, makeKey, uploadToS3, deleteFromS3 } = require('../services/mediaService');
 
 const router = express.Router();
 
+// Fallback local storage when S3 is not configured
 const uploadsDir = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${crypto.randomBytes(16).toString('hex')}${ext}`);
-  },
-});
 const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('Only image files are allowed'));
+    if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) cb(null, true);
+    else cb(new Error('Only image or video files are allowed'));
   },
 });
 
@@ -60,6 +54,7 @@ function toImage(row) {
     filename: row.filename,
     originalName: row.original_name,
     caption: row.caption || '',
+    mediaType: row.media_type || 'image',
     createdAt: row.created_at,
   };
 }
@@ -137,22 +132,46 @@ router.get('/:projectId/images', requireAuth, async (req, res) => {
   return res.json(rows.map(toImage));
 });
 
-// POST upload image(s)
+// GET presigned URL for an S3 media file
+router.get('/media/url', requireAuth, async (req, res) => {
+  const { key } = req.query;
+  if (!key) return res.status(400).json({ error: 'key required' });
+  try {
+    const { getPresignedUrl } = require('../services/mediaService');
+    const url = await getPresignedUrl(key);
+    return res.json({ url });
+  } catch {
+    return res.status(500).json({ error: 'Could not generate URL' });
+  }
+});
+
+// POST upload images/videos (S3 if configured, local fallback)
 router.post('/:projectId/images', requireAuth, upload.array('images', 10), async (req, res) => {
   if (!await ownsProject(req.params.projectId, req.user.id)) {
-    req.files?.forEach((f) => fs.unlink(f.path, () => {}));
     return res.status(404).json({ error: 'Project not found' });
   }
-  if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
+  if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
 
   const captions = [].concat(req.body.captions || []);
   const saved = [];
   for (let i = 0; i < req.files.length; i++) {
     const file = req.files[i];
     const caption = captions[i] || '';
+    const mediaType = file.mimetype.startsWith('video/') ? 'video' : 'image';
+    let filename;
+
+    if (s3Available()) {
+      filename = await uploadToS3(file.buffer, makeKey(req.params.projectId, file.originalname), file.mimetype);
+    } else {
+      // Local fallback
+      const ext = path.extname(file.originalname).toLowerCase();
+      filename = `${require('crypto').randomBytes(16).toString('hex')}${ext}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
+    }
+
     const { rows } = await query(
-      'INSERT INTO job_images (project_id, filename, original_name, caption, uploaded_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [req.params.projectId, file.filename, file.originalname, caption, req.user.id]
+      'INSERT INTO job_images (project_id, filename, original_name, caption, uploaded_by, media_type) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [req.params.projectId, filename, file.originalname, caption, req.user.id, mediaType]
     );
     saved.push(toImage(rows[0]));
   }

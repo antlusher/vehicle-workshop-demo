@@ -239,4 +239,159 @@ router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
   });
 });
 
+// GET /api/customer/vehicles/:vehicleId/mot — MOT history + vehicle meta for customer
+router.get('/vehicles/:vehicleId/mot', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    'SELECT mot_tests, mot_vehicle_meta, make, model, year, fuel_type, registration FROM vehicles WHERE id=$1',
+    [req.params.vehicleId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Vehicle not found' });
+  const v = rows[0];
+  return res.json({
+    make: v.make,
+    model: v.model,
+    year: v.year,
+    fuelType: v.fuel_type,
+    registration: v.registration,
+    motTests: v.mot_tests || [],
+    motMeta: v.mot_vehicle_meta || {},
+  });
+});
+
+// GET /api/customer/vehicles/:vehicleId/gallery — all media across all jobs
+router.get('/vehicles/:vehicleId/gallery', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    `SELECT ji.id, ji.filename, ji.original_name, ji.caption, ji.media_type, ji.created_at,
+            p.registration_snapshot, p.registration, p.created_at as job_date
+     FROM job_images ji
+     JOIN projects p ON p.id = ji.project_id
+     WHERE p.vehicle_id = $1
+     ORDER BY ji.created_at DESC`,
+    [req.params.vehicleId]
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    originalName: r.original_name,
+    caption: r.caption || '',
+    mediaType: r.media_type || 'image',
+    createdAt: r.created_at,
+    jobRegistration: r.registration_snapshot || r.registration,
+    jobDate: r.job_date,
+  })));
+});
+
+// GET /api/customer/vehicles/:vehicleId/invoices — all approved quotes (invoices)
+router.get('/vehicles/:vehicleId/invoices', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    `SELECT q.id, q.reference, q.title, q.status, q.vat_rate, q.updated_at, q.sent_at,
+            p.registration_snapshot, p.registration, p.make, p.model, p.year,
+            (SELECT SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct/100)))
+             FROM quote_lines ql WHERE ql.quote_id = q.id) AS subtotal
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE p.vehicle_id = $1
+       AND q.status IN ('approved', 'sent')
+       AND q.customer_id = $2
+     ORDER BY q.updated_at DESC`,
+    [req.params.vehicleId, req.user.id]
+  );
+  return res.json(rows.map((r) => {
+    const subtotal = parseFloat(r.subtotal) || 0;
+    const vat = Math.round(subtotal * (parseFloat(r.vat_rate) / 100) * 100) / 100;
+    return {
+      id: r.id,
+      reference: r.reference,
+      title: r.title || null,
+      status: r.status,
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat,
+      total: Math.round((subtotal + vat) * 100) / 100,
+      vatRate: parseFloat(r.vat_rate),
+      date: r.updated_at,
+      registration: r.registration_snapshot || r.registration,
+      vehicle: [r.make, r.model, r.year].filter(Boolean).join(' '),
+    };
+  }));
+});
+
+// GET /api/customer/invoices/:quoteId — full invoice detail (line items + totals)
+router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
+  // Verify customer owns this quote
+  const { rows: quoteRows } = await query(
+    `SELECT q.*, p.vehicle_id, p.registration_snapshot, p.registration, p.make, p.model, p.year
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+    [req.params.quoteId, req.user.id]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
+  const quote = quoteRows[0];
+
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+
+  const formatLine = (row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+  const items = itemRows.map((item) => {
+    const lines = allLines.filter((l) => l.quoteItemId === item.id);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    return { id: item.id, title: item.title, description: item.description || '', notes: item.notes || '', lines, subtotal };
+  });
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  return res.json({
+    id: quote.id,
+    reference: quote.reference,
+    title: quote.title || null,
+    status: quote.status,
+    notes: quote.notes || '',
+    diagnosticSummary: quote.diagnostic_summary || '',
+    vatRate,
+    createdAt: quote.created_at,
+    updatedAt: quote.updated_at,
+    registration: quote.registration_snapshot || quote.registration,
+    vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+    items,
+    ungroupedLines,
+    lines: allLines,
+    totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+  });
+});
+
 module.exports = router;
