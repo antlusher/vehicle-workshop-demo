@@ -162,10 +162,11 @@ router.post('/', requireAuth, async (req, res) => {
 
     const { rows } = await query(
       `INSERT INTO projects
-         (user_id, vehicle_id, registration_snapshot, registration, vin,
+         (user_id, workshop_id, vehicle_id, registration_snapshot, registration, vin,
           make, model, year, engine_code, fuel_type, trim, body_type, source, vehicle_data, active, closed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true,false) RETURNING *`,
-      [req.user.id, vehicle.id, vehicleData.registration || null, vehicleData.registration,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,false) RETURNING *`,
+      [req.user.id, req.user.workshopId || null, vehicle.id,
+       vehicleData.registration || null, vehicleData.registration,
        vehicleData.vin, vehicleData.make, vehicleData.model, vehicleData.year,
        vehicleData.engineCode, vehicleData.fuelType, vehicleData.trim,
        vehicleData.bodyType, vehicleData.source,

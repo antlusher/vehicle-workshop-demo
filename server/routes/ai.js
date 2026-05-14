@@ -20,9 +20,13 @@ router.post('/ask', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Project ID and question are required' });
   }
 
+  // Wide roles (owner/admin) access by workshop_id; tech accesses by user_id
+  const isWide = ['owner', 'admin', 'sysadmin'].includes(req.user.role);
   const { rows: projectRows } = await query(
-    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-    [projectId, req.user.id]
+    isWide
+      ? 'SELECT * FROM projects WHERE id = $1 AND workshop_id = $2'
+      : 'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [projectId, isWide ? req.user.workshopId : req.user.id]
   );
   if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
@@ -68,9 +72,9 @@ router.post('/ask', requireAuth, async (req, res) => {
     );
     await query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId]);
     query(
-      `INSERT INTO ai_requests (user_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [req.user.id, projectId,
+      `INSERT INTO ai_requests (user_id, workshop_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [req.user.id, req.user.workshopId || null, projectId,
        question.slice(0, 200), answer.slice(0, 200),
        inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs]
     ).catch(() => {});
