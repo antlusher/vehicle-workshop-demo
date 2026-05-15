@@ -5,6 +5,7 @@ import Projects from './Projects';
 import AiKnowledge from './AiKnowledge';
 import VehicleRegistry from './VehicleRegistry';
 import Customers from './Customers';
+import EmailManager from './EmailManager';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -13,6 +14,7 @@ const NAV = [
   { id: 'ai', label: 'AI & Knowledge' },
   { id: 'registry', label: 'Vehicle Registry' },
   { id: 'customers', label: 'Customers' },
+  { id: 'email', label: 'Email' },
 ];
 
 export default function AdminShell({ token, userEmail, onExit }) {
@@ -51,6 +53,7 @@ export default function AdminShell({ token, userEmail, onExit }) {
         {page === 'ai' && <AiKnowledge token={token} />}
         {page === 'registry' && <VehicleRegistry token={token} />}
         {page === 'customers' && <Customers token={token} />}
+        {page === 'email' && <EmailManager token={token} />}
       </main>
     </div>
   );

@@ -80,6 +80,12 @@ export async function parsePdf(file, token) {
 export const importPdfChunks = (chunks, token) =>
   request('/api/admin/knowledge/import-chunks', { method: 'POST', body: { chunks } }, token);
 
+export const getEmailStatus = (token) =>
+  request('/api/admin/email/status', {}, token);
+
+export const sendEmail = (data, token) =>
+  request('/api/admin/email/send', { method: 'POST', body: data }, token);
+
 export function estimateCost(inputTokens, outputTokens) {
   const cost = (inputTokens * 0.000003) + (outputTokens * 0.000015);
   return cost.toFixed(4);

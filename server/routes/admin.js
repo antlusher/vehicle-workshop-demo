@@ -4,6 +4,7 @@ const pdfParse = require('pdf-parse');
 const { findUserByToken, createUser } = require('../services/authService');
 const { query } = require('../services/db');
 const admin = require('../services/adminService');
+const { sendEmail, getTransportStatus } = require('../services/emailService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -324,6 +325,30 @@ router.post('/customers/:id/vehicles', async (req, res) => {
 router.delete('/customers/:id/vehicles/:vehicleId', async (req, res) => {
   await query('DELETE FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2', [req.params.id, req.params.vehicleId]);
   return res.json({ deleted: true });
+});
+
+// ── Email manager ────────────────────────────────────────────────────────────
+
+router.get('/email/status', (req, res) => {
+  return res.json(getTransportStatus());
+});
+
+router.post('/email/send', async (req, res) => {
+  const { to, subject, body, isHtml } = req.body || {};
+  if (!to || !subject || !body) {
+    return res.status(400).json({ error: 'to, subject and body are required' });
+  }
+  try {
+    const result = await sendEmail({
+      to: String(to).trim(),
+      subject: String(subject),
+      html: isHtml ? String(body) : undefined,
+      text: isHtml ? undefined : String(body),
+    });
+    return res.json({ sent: true, ...result });
+  } catch (err) {
+    return res.status(502).json({ error: err.message });
+  }
 });
 
 // Search vehicles for customer linking
