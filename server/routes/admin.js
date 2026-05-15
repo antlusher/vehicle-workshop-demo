@@ -181,40 +181,52 @@ router.post('/knowledge/scrape-url', async (req, res) => {
     return res.status(400).json({ error: 'Only HTTP and HTTPS URLs are supported' });
   }
 
-  let html;
+  let resp;
   try {
-    const resp = await fetch(url, {
+    resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AutomotiveKnowledgeBot/1.0)' },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20000),
       redirect: 'follow',
     });
     if (!resp.ok) return res.status(400).json({ error: `Page returned ${resp.status}` });
-    html = await resp.text();
   } catch (err) {
-    const msg = err.name === 'TimeoutError' ? 'Page fetch timed out (15s)' : err.message;
+    const msg = err.name === 'TimeoutError' ? 'Page fetch timed out (20s)' : err.message;
     return res.status(400).json({ error: msg });
   }
 
-  const $ = cheerio.load(html);
-  // Strip non-content chrome
-  $('script, style, noscript, nav, header, footer, aside, iframe, [class*="nav"], [class*="menu"], [class*="sidebar"], [class*="cookie"], [class*="banner"], [id*="nav"], [id*="menu"], [id*="sidebar"]').remove();
+  const contentType = resp.headers.get('content-type') || '';
+  const isPdf = contentType.includes('application/pdf') || parsed.pathname.toLowerCase().endsWith('.pdf');
 
-  const pageTitle = $('title').text().trim() || parsed.hostname;
-
-  // Prefer semantic content containers
-  const CONTENT_SELECTORS = ['article', 'main', '[role="main"]', '.content', '.article-body', '.post-content', '.entry-content', '#content', '#main'];
   let text = '';
-  for (const sel of CONTENT_SELECTORS) {
-    const el = $(sel);
-    if (el.length) { text = el.text(); break; }
-  }
-  if (!text) text = $('body').text();
+  let pageTitle = parsed.hostname;
 
-  // Collapse whitespace
-  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  if (isPdf) {
+    // Direct PDF URL — pipe through pdf-parse
+    try {
+      const buffer = Buffer.from(await resp.arrayBuffer());
+      const { text: pdfText } = await pdfParse(buffer);
+      text = pdfText.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+      pageTitle = parsed.pathname.split('/').pop() || parsed.hostname;
+    } catch (err) {
+      return res.status(422).json({ error: 'Could not parse PDF from URL: ' + err.message });
+    }
+  } else {
+    // HTML page — cheerio extraction
+    const html = await resp.text();
+    const $ = cheerio.load(html);
+    $('script, style, noscript, nav, header, footer, aside, iframe, [class*="nav"], [class*="menu"], [class*="sidebar"], [class*="cookie"], [class*="banner"], [id*="nav"], [id*="menu"], [id*="sidebar"]').remove();
+    pageTitle = $('title').text().trim() || parsed.hostname;
+    const CONTENT_SELECTORS = ['article', 'main', '[role="main"]', '.content', '.article-body', '.post-content', '.entry-content', '#content', '#main'];
+    for (const sel of CONTENT_SELECTORS) {
+      const el = $(sel);
+      if (el.length) { text = el.text(); break; }
+    }
+    if (!text) text = $('body').text();
+    text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  }
 
   if (text.length < 150) {
-    return res.status(400).json({ error: 'Could not extract meaningful text from this page — it may require JavaScript to render or block bots.' });
+    return res.status(400).json({ error: 'Could not extract meaningful text from this URL — the page may require JavaScript to render or block bots.' });
   }
 
   // Cap at ~18 000 chars to stay well inside token limits
