@@ -80,6 +80,9 @@ export async function parsePdf(file, token) {
 export const importPdfChunks = (chunks, token) =>
   request('/api/admin/knowledge/import-chunks', { method: 'POST', body: { chunks } }, token);
 
+export const scrapeUrl = (url, token) =>
+  request('/api/admin/knowledge/scrape-url', { method: 'POST', body: { url } }, token);
+
 export const trainingChat = (question, history, token) =>
   request('/api/ai/training', { method: 'POST', body: { question, history } }, token);
 

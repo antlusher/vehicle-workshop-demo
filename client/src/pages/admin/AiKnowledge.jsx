@@ -4,7 +4,7 @@ import {
   getAiRequests, getAiStats, getConversation, estimateCost,
   getLearningStats,
   getKnowledgeBase, createKbEntry, updateKbEntry, deleteKbEntry,
-  parsePdf, importPdfChunks,
+  parsePdf, importPdfChunks, scrapeUrl,
   trainingChat, extractKnowledge,
 } from '../../services/adminApi';
 import { getEngines, getTransmissions } from '../../services/registryApi';
@@ -388,10 +388,12 @@ function KbForm({ initial, engines, transmissions, onSave, onCancel }) {
   );
 }
 
-// ── PDF Import sub-tab ────────────────────────────────────────────────────────
+// ── Import tab (PDF + URL) ────────────────────────────────────────────────────
 
-function PdfImport({ token }) {
+function ImportTab({ token }) {
   const fileRef = useRef(null);
+  const [mode, setMode] = useState('pdf'); // 'pdf' | 'url'
+  const [urlInput, setUrlInput] = useState('');
   const [chunks, setChunks] = useState([]);
   const [engines, setEngines] = useState([]);
   const [transmissions, setTransmissions] = useState([]);
@@ -408,10 +410,12 @@ function PdfImport({ token }) {
       .then(([e, t]) => { setEngines(e); setTransmissions(t); });
   }, [token]);
 
+  const resetChunks = () => { setChunks([]); setImported(null); setError(''); };
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setError(''); setChunks([]); setImported(null); setLoading(true);
+    resetChunks(); setLoading(true);
     try {
       const { chunks: parsed } = await parsePdf(file, token);
       setChunks(parsed.map((c) => ({ ...c, included: true })));
@@ -420,6 +424,21 @@ function PdfImport({ token }) {
     } finally {
       setLoading(false);
       e.target.value = '';
+    }
+  };
+
+  const handleScrape = async () => {
+    if (!urlInput.trim()) return;
+    resetChunks(); setLoading(true);
+    try {
+      const { chunks: extracted, pageTitle, url } = await scrapeUrl(urlInput.trim(), token);
+      if (!extracted?.length) { setError('No knowledge entries could be extracted from this page.'); return; }
+      setChunks(extracted.map((c) => ({ ...c, included: true })));
+      setG('source', pageTitle || url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -437,7 +456,7 @@ function PdfImport({ token }) {
 
   const handleImport = async () => {
     const selected = chunks.filter((c) => c.included);
-    if (!selected.length) { setError('No chunks selected'); return; }
+    if (!selected.length) { setError('No entries selected'); return; }
     setImporting(true); setError('');
     try {
       const { imported: count } = await importPdfChunks(selected, token);
@@ -454,24 +473,61 @@ function PdfImport({ token }) {
 
   return (
     <div>
-      <h3 className="admin-section-title" style={{ marginTop: 0 }}>Import PDF</h3>
-      <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
-        Upload a PDF repair manual, technical service bulletin, or any automotive document. The text will be extracted and split into sections ready to review before saving to the knowledge base.
-      </p>
-
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
-        <button onClick={() => fileRef.current?.click()} disabled={loading}>{loading ? 'Parsing…' : 'Choose PDF…'}</button>
-        <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
-        {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} sections extracted</span>}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
+        {[['pdf', 'PDF document'], ['url', 'Web page / URL']].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => { setMode(id); resetChunks(); }}
+            style={{ padding: '8px 20px', fontSize: '0.88rem', background: mode === id ? '#1e40af' : 'white', color: mode === id ? 'white' : '#374151', border: 'none', borderRight: id === 'pdf' ? '1px solid #e2e8f0' : 'none', cursor: 'pointer', fontWeight: mode === id ? 600 : 400 }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {error && <p className="error">{error}</p>}
-      {imported !== null && <p style={{ color: '#16a34a', marginBottom: 16 }}>✓ {imported} entries imported to knowledge base.</p>}
+      {mode === 'pdf' && (
+        <div>
+          <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
+            Upload a PDF repair manual, technical service bulletin, or parts catalogue. Text is extracted and structured by AI before you review and save.
+          </p>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+            <button onClick={() => fileRef.current?.click()} disabled={loading}>{loading ? 'Parsing…' : 'Choose PDF…'}</button>
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
+            {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} sections extracted</span>}
+          </div>
+        </div>
+      )}
+
+      {mode === 'url' && (
+        <div>
+          <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
+            Paste a URL from a Dayco or Gates bulletin, parts manufacturer procedure, engine code database, or any public automotive article. The page is fetched server-side, text extracted, and structured by AI for review.
+          </p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+            <input
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.9rem' }}
+              type="url"
+              placeholder="https://www.daycoaftermkt.com/..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleScrape()}
+              disabled={loading}
+            />
+            <button onClick={handleScrape} disabled={loading || !urlInput.trim()}>
+              {loading ? 'Fetching…' : 'Fetch & extract'}
+            </button>
+          </div>
+          {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} entries extracted</span>}
+        </div>
+      )}
+
+      {error && <p className="error" style={{ marginTop: 8 }}>{error}</p>}
+      {imported !== null && <p style={{ color: '#16a34a', marginTop: 8, marginBottom: 0 }}>✓ {imported} entries imported to knowledge base.</p>}
 
       {chunks.length > 0 && (
         <>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 20 }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#374151' }}>Apply scope to all sections</h4>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, margin: '20px 0' }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#374151' }}>Apply scope to all entries</h4>
             <div className="kb-form-row" style={{ marginBottom: 8 }}>
               <div className="kb-form-group">
                 <label>Category</label>
@@ -481,7 +537,7 @@ function PdfImport({ token }) {
               </div>
               <div className="kb-form-group">
                 <label>Source / document name</label>
-                <input value={globalScope.source} onChange={(e) => setG('source', e.target.value)} placeholder="e.g. Haynes Manual, TSB-2023-001" />
+                <input value={globalScope.source} onChange={(e) => setG('source', e.target.value)} placeholder="e.g. Dayco EcoBlue Bulletin, Gates TSB-2024" />
               </div>
               <div className="kb-form-group">
                 <label>Engine (cross-make)</label>
@@ -496,10 +552,10 @@ function PdfImport({ token }) {
               </div>
               <div className="kb-form-group">
                 <label>Model</label>
-                <input value={globalScope.model} onChange={(e) => setG('model', e.target.value)} placeholder="e.g. Focus" />
+                <input value={globalScope.model} onChange={(e) => setG('model', e.target.value)} placeholder="e.g. Transit" />
               </div>
             </div>
-            <button className="secondary" onClick={applyGlobalScope}>Apply to all sections</button>
+            <button className="secondary" onClick={applyGlobalScope}>Apply to all entries</button>
           </div>
 
           <div className="admin-toolbar" style={{ marginBottom: 12 }}>
@@ -508,7 +564,7 @@ function PdfImport({ token }) {
               <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: true })))}>Select all</button>
               <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: false })))}>Deselect all</button>
               <button onClick={handleImport} disabled={importing || !selectedCount}>
-                {importing ? 'Importing…' : `Import ${selectedCount} section${selectedCount !== 1 ? 's' : ''}`}
+                {importing ? 'Importing…' : `Import ${selectedCount} entr${selectedCount !== 1 ? 'ies' : 'y'}`}
               </button>
             </div>
           </div>
@@ -848,7 +904,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'requests', label: 'Request Log' },
   { id: 'kb', label: 'Knowledge Base' },
-  { id: 'pdf', label: 'PDF Import' },
+  { id: 'pdf', label: 'Import' },
   { id: 'training', label: 'Training Chat' },
 ];
 
@@ -869,7 +925,7 @@ export default function AiKnowledge({ token }) {
       {tab === 'overview' && <Overview token={token} />}
       {tab === 'requests' && <RequestLog token={token} />}
       {tab === 'kb' && <KnowledgeBaseTab token={token} />}
-      {tab === 'pdf' && <PdfImport token={token} />}
+      {tab === 'pdf' && <ImportTab token={token} />}
       {tab === 'training' && <TrainingChat token={token} />}
     </div>
   );

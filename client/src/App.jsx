@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as api from './services/api';
+import { exitActAs } from './services/sysadminApi';
 import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
@@ -268,6 +269,14 @@ function App() {
   };
 
   const [showAssistant, setShowAssistant] = useState(false);
+  const [actorState, setActorState] = useState(null);
+
+  const handleExitActor = async () => {
+    if (actorState?.token) {
+      try { await exitActAs(actorState.token, token); } catch (_) {}
+    }
+    setActorState(null);
+  };
 
   if (!token) {
     return <Login onLogin={handleLogin} error={error} />;
@@ -307,7 +316,23 @@ function App() {
   }
 
   if (user?.role === 'sysadmin') {
-    return <SysAdminShell token={token} userEmail={user.email} onLogout={handleLogout} />;
+    if (actorState) {
+      return (
+        <>
+          <div className="actor-banner">
+            Acting as <strong>{actorState.workshopName}</strong>
+            <button onClick={handleExitActor}>Exit</button>
+          </div>
+          <AdminShell
+            token={actorState.token}
+            userEmail={user.email}
+            userRole="owner"
+            onExit={handleExitActor}
+          />
+        </>
+      );
+    }
+    return <SysAdminShell token={token} userEmail={user.email} onLogout={handleLogout} onActAs={setActorState} />;
   }
 
   const isWorkshopStaff = ['owner', 'admin', 'tech'].includes(user?.role);

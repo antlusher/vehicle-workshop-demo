@@ -31,7 +31,27 @@ async function findUserByEmail(email) {
 async function findUserByToken(token) {
   if (!token) return null;
   const { rows } = await query('SELECT * FROM users WHERE token = $1', [token]);
-  return toUser(rows[0]);
+  if (rows[0]) return toUser(rows[0]);
+
+  // Actor session — sysadmin impersonating a workshop
+  const { rows: actor } = await query(
+    `SELECT s.workshop_id, u.email AS sysadmin_email
+     FROM actor_sessions s
+     JOIN users u ON u.id = s.sysadmin_id
+     WHERE s.token = $1 AND s.expires_at > now()`,
+    [token]
+  );
+  if (!actor[0]) return null;
+  return {
+    id: null,
+    email: actor[0].sysadmin_email,
+    role: 'owner',
+    workshopId: actor[0].workshop_id,
+    token,
+    subscribed: true,
+    sessionActive: true,
+    isActor: true,
+  };
 }
 
 async function createUser(email, password) {

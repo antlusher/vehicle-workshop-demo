@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { query } = require('./db');
+const { vectorSearch } = require('./embeddingService');
 
 async function resolveEngineId(engine_code) {
   if (!engine_code) return null;
@@ -43,7 +44,8 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
   const engineId = await resolveEngineId(engine_code);
   const transmissionId = await resolveTransmissionId(transmission_code);
 
-  const [csRows, kbRows] = await Promise.all([
+  // Run confirmed-fixes query and semantic + FTS KB queries in parallel
+  const [csRows, vecRows, ftsRows] = await Promise.all([
     // Confirmed fixes: match by engine_code directly or make/model
     query(
       `SELECT cs.text, p.make, p.model, p.year, p.engine_code,
@@ -60,7 +62,9 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
        LIMIT 5`,
       [engine_code || null, make, model, year || null, `%${symptom}%`]
     ),
-    // Knowledge base: match by engine_id, or fall back to full-text search
+    // Semantic vector search — returns null if OPENAI_API_KEY not set or pgvector unavailable
+    vectorSearch(symptom, { engineId }),
+    // FTS fallback — always runs
     query(
       `SELECT title, content, category, fault_code, source,
               CASE WHEN ($1::uuid IS NOT NULL AND engine_id = $1) THEN 0
@@ -80,6 +84,9 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
     ),
   ]);
 
+  // Prefer vector results (semantically ranked) when available; fall back to FTS
+  const kbSource = vecRows && vecRows.length > 0 ? vecRows : ftsRows.rows;
+
   const results = [];
   if (csRows.rows.length) {
     results.push(...csRows.rows.map((r) => ({
@@ -89,8 +96,8 @@ async function searchKnowledgeBase({ make, model, year, symptom, engine_code, tr
       confirmedCount: parseInt(r.frequency),
     })));
   }
-  if (kbRows.rows.length) {
-    results.push(...kbRows.rows.map((r) => ({
+  if (kbSource.length) {
+    results.push(...kbSource.map((r) => ({
       source: r.source || 'knowledge_base',
       title: r.title,
       answer: r.content,

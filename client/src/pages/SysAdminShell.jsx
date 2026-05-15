@@ -4,6 +4,7 @@ import {
   getSysAdmins, createSysAdmin, deleteSysAdmin,
   getWorkshopUsers, createWorkshopUser, updateWorkshopUser, deleteWorkshopUser,
   getBrainEntries, createBrainEntry, updateBrainEntry, deleteBrainEntry,
+  actAs,
 } from '../services/sysadminApi';
 
 const PLANS = ['starter', 'professional', 'enterprise'];
@@ -528,7 +529,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
 }
 
 // ── Workshops list page ───────────────────────────────────────────────────────
-function WorkshopsPage({ token }) {
+function WorkshopsPage({ token, onActAs }) {
   const [workshops, setWorkshops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -537,6 +538,7 @@ function WorkshopsPage({ token }) {
   const [form, setForm] = useState({ name: '', slug: '', plan: 'professional', ownerEmail: '', ownerPassword: '', ownerName: '' });
   const [creating, setCreating] = useState(false);
   const [createErr, setCreateErr] = useState('');
+  const [actingAs, setActingAs] = useState(null);
 
   const load = () => getWorkshops(token).then(setWorkshops).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
@@ -636,10 +638,25 @@ function WorkshopsPage({ token }) {
                         </span>
                       </td>
                       <td style={{ fontSize: '0.8rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>{fmtDate(w.created_at)}</td>
-                      <td>
+                      <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
                         <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 12px' }}
                           onClick={() => setSelected(selected?.id===w.id ? null : w)}>
                           {selected?.id===w.id ? 'Close' : 'Manage'}
+                        </button>
+                        <button
+                          className="secondary"
+                          style={{ fontSize: '0.75rem', padding: '3px 12px', color: '#7c3aed', borderColor: '#7c3aed' }}
+                          disabled={actingAs === w.id}
+                          onClick={async () => {
+                            setActingAs(w.id);
+                            try {
+                              const result = await actAs(w.id, token);
+                              onActAs({ token: result.token, workshopName: result.workshopName });
+                            } catch (e) { alert(e.message); }
+                            finally { setActingAs(null); }
+                          }}
+                        >
+                          {actingAs === w.id ? '…' : 'Act as'}
                         </button>
                       </td>
                     </tr>
@@ -675,7 +692,7 @@ const NAV = [
   { id: 'sysadmins', label: 'Sysadmins' },
 ];
 
-export default function SysAdminShell({ token, userEmail, onLogout }) {
+export default function SysAdminShell({ token, userEmail, onLogout, onActAs }) {
   const [page, setPage] = useState('overview');
 
   return (
@@ -699,7 +716,7 @@ export default function SysAdminShell({ token, userEmail, onLogout }) {
       </header>
       <main className="sys-content">
         {page === 'overview'   && <OverviewPage token={token} />}
-        {page === 'workshops'  && <WorkshopsPage token={token} />}
+        {page === 'workshops'  && <WorkshopsPage token={token} onActAs={onActAs} />}
         {page === 'brain'      && <BrainPage token={token} />}
         {page === 'sysadmins' && <SysAdminsPage token={token} currentUserEmail={userEmail} />}
       </main>

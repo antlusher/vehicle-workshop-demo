@@ -1,9 +1,12 @@
 const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const cheerio = require('cheerio');
 const { findUserByToken, createUser } = require('../services/authService');
 const { query } = require('../services/db');
 const admin = require('../services/adminService');
+const { extractKnowledgeFromText } = require('../services/aiService');
+const { embedKbEntry, backfillEmbeddings } = require('../services/embeddingService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -163,6 +166,68 @@ router.delete('/knowledge-base/:id', async (req, res) => {
   return res.json({ deleted: true });
 });
 
+// URL scrape → AI extract → review chunks (same flow as PDF)
+router.post('/knowledge/scrape-url', async (req, res) => {
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url is required' });
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return res.status(400).json({ error: 'Only HTTP and HTTPS URLs are supported' });
+  }
+
+  let html;
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AutomotiveKnowledgeBot/1.0)' },
+      signal: AbortSignal.timeout(15000),
+      redirect: 'follow',
+    });
+    if (!resp.ok) return res.status(400).json({ error: `Page returned ${resp.status}` });
+    html = await resp.text();
+  } catch (err) {
+    const msg = err.name === 'TimeoutError' ? 'Page fetch timed out (15s)' : err.message;
+    return res.status(400).json({ error: msg });
+  }
+
+  const $ = cheerio.load(html);
+  // Strip non-content chrome
+  $('script, style, noscript, nav, header, footer, aside, iframe, [class*="nav"], [class*="menu"], [class*="sidebar"], [class*="cookie"], [class*="banner"], [id*="nav"], [id*="menu"], [id*="sidebar"]').remove();
+
+  const pageTitle = $('title').text().trim() || parsed.hostname;
+
+  // Prefer semantic content containers
+  const CONTENT_SELECTORS = ['article', 'main', '[role="main"]', '.content', '.article-body', '.post-content', '.entry-content', '#content', '#main'];
+  let text = '';
+  for (const sel of CONTENT_SELECTORS) {
+    const el = $(sel);
+    if (el.length) { text = el.text(); break; }
+  }
+  if (!text) text = $('body').text();
+
+  // Collapse whitespace
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+  if (text.length < 150) {
+    return res.status(400).json({ error: 'Could not extract meaningful text from this page — it may require JavaScript to render or block bots.' });
+  }
+
+  // Cap at ~18 000 chars to stay well inside token limits
+  const truncated = text.length > 18000 ? text.slice(0, 18000) + '\n[content truncated]' : text;
+
+  try {
+    const { entries } = await extractKnowledgeFromText(truncated);
+    return res.json({ chunks: entries, pageTitle, url });
+  } catch (err) {
+    return res.status(500).json({ error: 'AI extraction failed: ' + err.message });
+  }
+});
+
 // PDF knowledge import
 router.post('/knowledge/parse-pdf', upload.single('pdf'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No PDF file uploaded' });
@@ -203,8 +268,19 @@ router.post('/knowledge/import-chunks', async (req, res) => {
       ]
     );
     saved.push(rows[0].id);
+    embedKbEntry(rows[0].id, chunk);
   }
   return res.json({ imported: saved.length });
+});
+
+// Trigger embedding backfill for existing KB entries lacking embeddings
+router.post('/knowledge/backfill-embeddings', async (req, res) => {
+  try {
+    const result = await backfillEmbeddings();
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 function chunkPdfText(text) {

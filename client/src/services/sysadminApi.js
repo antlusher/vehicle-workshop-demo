@@ -12,6 +12,8 @@ async function request(path, options = {}, token) {
 }
 
 export const getSysStats      = (token) => request('/api/sysadmin/stats', {}, token);
+export const actAs            = (workshopId, token) => request(`/api/sysadmin/act-as/${workshopId}`, { method: 'POST' }, token);
+export const exitActAs        = (actorToken, token) => request('/api/sysadmin/act-as', { method: 'DELETE', body: { actorToken } }, token);
 export const getWorkshops     = (token) => request('/api/sysadmin/workshops', {}, token);
 export const getWorkshop      = (id, token) => request(`/api/sysadmin/workshops/${id}`, {}, token);
 export const createWorkshop   = (data, token) => request('/api/sysadmin/workshops', { method: 'POST', body: data }, token);

@@ -7,6 +7,50 @@ const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleS
 const { fetchAndStoreMotHistory } = require('../services/motService');
 const router = express.Router();
 
+async function fetchAndStoreNhtsaRecalls(make, model, year) {
+  try {
+    const url = `https://api.nhtsa.gov/recalls/recallsByVehicle?make=${encodeURIComponent(make)}&model=${encodeURIComponent(model)}&modelYear=${encodeURIComponent(year)}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const recalls = data.results || [];
+    for (const recall of recalls) {
+      const campaignNumber = recall.NHTSACampaignNumber || recall.campaignNumber;
+      if (!campaignNumber) continue;
+      // Deduplicate by fault_code = campaignNumber (global entries only)
+      const { rows: existing } = await query(
+        `SELECT id FROM knowledge_base WHERE fault_code = $1 AND workshop_id IS NULL LIMIT 1`,
+        [campaignNumber]
+      );
+      if (existing.length) continue;
+      const component = recall.Component || recall.component || '';
+      const description = recall.Summary || recall.summary || recall.Consequence || '';
+      const remedy = recall.Remedy || recall.remedy || '';
+      const content = [
+        `Campaign: ${campaignNumber}`,
+        component ? `Component: ${component}` : null,
+        description ? `Summary: ${description}` : null,
+        remedy ? `Remedy: ${remedy}` : null,
+      ].filter(Boolean).join('\n');
+      await query(
+        `INSERT INTO knowledge_base
+           (category, make, model, fault_code, title, content, source, workshop_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'nhtsa_recall',NULL)`,
+        [
+          'Common Fix',
+          make,
+          model,
+          campaignNumber,
+          `NHTSA Recall ${campaignNumber}: ${component}`.slice(0, 120),
+          content,
+        ]
+      );
+    }
+  } catch (err) {
+    console.error('[nhtsa] recall fetch failed:', err.message);
+  }
+}
+
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   findUserByToken(token).then((user) => {
@@ -239,6 +283,14 @@ router.post('/', requireAuth, async (req, res) => {
           await query('UPDATE projects SET specs = $1, updated_at = now() WHERE id = $2',
             [JSON.stringify(specs), project.id]);
         }
+      }
+
+      // NHTSA recall lookup — store any recalls as global KB entries
+      const recallMake = vehicleData.make;
+      const recallModel = vehicleData.model;
+      const recallYear = vehicleData.year;
+      if (recallMake && recallModel && recallYear) {
+        fetchAndStoreNhtsaRecalls(recallMake, recallModel, recallYear).catch(() => {});
       }
     };
     runBackground().catch(() => {});

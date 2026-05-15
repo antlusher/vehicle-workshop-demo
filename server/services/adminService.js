@@ -1,4 +1,5 @@
 const { query } = require('./db');
+const { embedKbEntry } = require('./embeddingService');
 
 async function getDashboardStats(workshopId) {
   const wid = workshopId;
@@ -174,6 +175,7 @@ async function createKnowledgeBaseEntry(data, adminId, workshopId) {
     [category, make || null, model || null, year_from || null, year_to || null,
      fault_code || null, title, content, source || null, adminId, workshopId]
   );
+  embedKbEntry(rows[0].id, rows[0]);
   return rows[0];
 }
 
@@ -182,11 +184,13 @@ async function updateKnowledgeBaseEntry(id, data, workshopId) {
   const { rows } = await query(
     `UPDATE knowledge_base
      SET category=$1, make=$2, model=$3, year_from=$4, year_to=$5,
-         fault_code=$6, title=$7, content=$8, source=$9, updated_at=now()
+         fault_code=$6, title=$7, content=$8, source=$9, updated_at=now(),
+         embedding=NULL
      WHERE id=$10 AND workshop_id=$11 RETURNING *`,
     [category, make || null, model || null, year_from || null, year_to || null,
      fault_code || null, title, content, source || null, id, workshopId]
   );
+  if (rows[0]) embedKbEntry(rows[0].id, rows[0]);
   return rows[0] || null;
 }
 

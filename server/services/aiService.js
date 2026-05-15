@@ -212,7 +212,7 @@ function buildMessages(history, question) {
   return messages;
 }
 
-async function fetchEngineDocSummary(engineCode) {
+async function fetchEngineDocSummary(engineCode, question = '') {
   if (!engineCode) return '';
   try {
     const { rows: eRows } = await query(
@@ -220,11 +220,23 @@ async function fetchEngineDocSummary(engineCode) {
       [engineCode]
     );
     if (!eRows.length) return '';
+    const engineId = eRows[0].id;
+
+    // When a question is provided, use semantic search to pick the most relevant docs
+    if (question) {
+      const { vectorSearch } = require('./embeddingService');
+      const vecDocs = await vectorSearch(question, { engineId, limit: 3 });
+      if (vecDocs && vecDocs.length > 0) {
+        return vecDocs.map((r) => r.content).join('\n\n---\n\n');
+      }
+    }
+
+    // Fall back to the top docs for this engine ordered by title
     const { rows: docRows } = await query(
       `SELECT content FROM knowledge_base
        WHERE engine_id = $1 AND source = 'tech_doc' AND category = 'procedure'
-       ORDER BY title LIMIT 8`,
-      [eRows[0].id]
+       ORDER BY title LIMIT 5`,
+      [engineId]
     );
     if (!docRows.length) return '';
     return docRows.map((r) => r.content).join('\n\n---\n\n');
@@ -235,7 +247,7 @@ async function fetchEngineDocSummary(engineCode) {
 
 async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], chatMode = 'diagnose') {
   const techDocSummary = chatMode !== 'workshop'
-    ? await fetchEngineDocSummary(project.engineCode)
+    ? await fetchEngineDocSummary(project.engineCode, question)
     : '';
   const messages = buildMessages(history, question);
   const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode, techDocSummary);
@@ -436,7 +448,15 @@ async function generateTrainingChat(history, question) {
 async function extractKnowledgeFromText(rawText) {
   if (!client) return { entries: [] };
 
-  const prompt = `You are a knowledge base assistant for an automotive workshop. Extract structured knowledge entries from the following text written by an experienced technician.
+  const prompt = `You are a knowledge base assistant for an automotive workshop. Your job is to extract ONLY genuinely useful automotive technical knowledge from the text below.
+
+STRICT RULES:
+- Include ONLY content that is directly useful to a vehicle technician: repair procedures, diagnostic steps, part specifications, service intervals, known faults, DTC codes, fluid specs, torque values, timing data.
+- DISCARD completely: table of contents, index pages, legal disclaimers, copyright notices, warranty text, promotional copy, contact details, serial numbers, part catalogue lists with no technical context, navigation menus, adverts, or any content that does not convey actionable technical knowledge.
+- If the text contains no extractable technical knowledge, return an empty array [].
+- Do NOT invent or embellish — only extract what is explicitly stated.
+- Split into separate entries by distinct topic (e.g. one entry per fault code, one per procedure, one per fluid spec). Do not merge unrelated topics.
+- Keep content concise but complete — a technician must be able to act on it without the original document.
 
 Return ONLY a valid JSON array — no extra text, no markdown fences:
 [
@@ -452,8 +472,6 @@ Return ONLY a valid JSON array — no extra text, no markdown fences:
     "source": "Technician Experience"
   }
 ]
-
-If the text contains multiple distinct pieces of knowledge, return multiple entries. If it is a single topic, return one entry.
 
 Text:
 ${rawText}`;

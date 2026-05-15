@@ -342,4 +342,28 @@ router.get('/stats', async (req, res) => {
   });
 });
 
+// ── Act as workshop ───────────────────────────────────────────────────────────
+
+router.post('/act-as/:workshopId', async (req, res) => {
+  const workshopId = parseInt(req.params.workshopId, 10);
+  const { rows } = await query('SELECT id, name FROM workshops WHERE id = $1', [workshopId]);
+  if (!rows[0]) return res.status(404).json({ error: 'Workshop not found' });
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  await query(
+    'INSERT INTO actor_sessions (sysadmin_id, workshop_id, token, expires_at) VALUES ($1,$2,$3,$4)',
+    [req.user.id, workshopId, token, expiresAt]
+  );
+  return res.json({ token, workshopId: rows[0].id, workshopName: rows[0].name });
+});
+
+router.delete('/act-as', async (req, res) => {
+  const { actorToken } = req.body || {};
+  if (actorToken) {
+    await query('DELETE FROM actor_sessions WHERE token = $1', [actorToken]);
+  }
+  return res.json({ ok: true });
+});
+
 module.exports = router;

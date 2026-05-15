@@ -1020,6 +1020,7 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
   const [error, setError] = useState('');
   const [tab, setTab] = useState('diagnosis');
   const [chatMode, setChatMode] = useState(() => localStorage.getItem('chatMode') || 'diagnose');
+  const [chatExpanded, setChatExpanded] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
@@ -1039,6 +1040,13 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [project?.history?.length, status]);
+
+  useEffect(() => {
+    if (!chatExpanded) return;
+    const handler = (e) => { if (e.key === 'Escape') setChatExpanded(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [chatExpanded]);
 
   const selectMode = (mode) => {
     setChatMode(mode);
@@ -1097,7 +1105,11 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
     .filter(Boolean).join(' · ');
 
   return (
-    <div className="chat-shell">
+    <>
+      {chatExpanded && (
+        <div className="chat-expand-overlay" onClick={() => setChatExpanded(false)} />
+      )}
+    <div className={`chat-shell${chatExpanded ? ' chat-shell--expanded' : ''}`}>
 
       <div className="chat-header">
         <div className="chat-header-info">
@@ -1110,6 +1122,16 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
           </button>
         )}
       </div>
+
+      {project.make && !project.engineCode && (
+        <button
+          type="button"
+          className="engine-code-nudge"
+          onClick={() => setTab('vehicle')}
+        >
+          Add engine code for more accurate AI diagnosis
+        </button>
+      )}
 
       <div className="chat-tabs">
         <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
@@ -1255,16 +1277,20 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
             <button type="button" className={`chat-verbosity-btn${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>Diagnose</button>
             <button type="button" className={`chat-verbosity-btn${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>How To</button>
             <button type="button" className={`chat-verbosity-btn${chatMode === 'workshop' ? ' active' : ''}`} onClick={() => selectMode('workshop')}>Workshop</button>
+            {chatExpanded && (
+              <button type="button" className="chat-collapse-btn" onClick={() => setChatExpanded(false)} title="Collapse (Esc)">✕</button>
+            )}
           </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
               ref={textareaRef}
               id="question"
               name="question"
-              rows="2"
+              rows={chatExpanded ? 4 : 2}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
+              onFocus={() => setChatExpanded(true)}
               placeholder={chatMode === 'workshop'
                 ? 'Ask a workshop question or request a task… (Enter to send)'
                 : 'Ask for repair guidance... (Enter to send, Shift+Enter for new line)'}
@@ -1279,6 +1305,7 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
       )}
 
     </div>
+    </>
   );
 }
 
