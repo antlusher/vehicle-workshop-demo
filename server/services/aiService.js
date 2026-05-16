@@ -492,7 +492,7 @@ ${rawText}`;
   }
 }
 
-async function generateAdminChat(history, question, userId) {
+async function generateAdminChat(history, question, userId, workshopId) {
   if (!client) return { answer: 'No API key configured.', inputTokens: 0, outputTokens: 0 };
 
   const { adminToolDefinitions, createAdminToolHandlers } = require('./adminAgentTools');
@@ -521,7 +521,7 @@ async function generateAdminChat(history, question, userId) {
   }));
   messages.push({ role: 'user', content: question });
 
-  const handlers = createAdminToolHandlers(userId);
+  const handlers = createAdminToolHandlers(userId, workshopId);
 
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',

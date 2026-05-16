@@ -25,9 +25,9 @@ async function searchVehicles({ registration, make, model }) {
   return rows.length ? { vehicles: rows } : { message: 'No matching vehicles found.' };
 }
 
-async function searchCustomers({ name, email }) {
-  const conditions = ["role = 'customer'"];
-  const params = [];
+async function searchCustomers({ name, email }, workshopId) {
+  const conditions = ["role = 'customer'", `workshop_id = $${1}`];
+  const params = [workshopId];
   if (name) { conditions.push(`LOWER(name) LIKE $${params.length + 1}`); params.push(`%${name.toLowerCase()}%`); }
   if (email) { conditions.push(`LOWER(email) LIKE $${params.length + 1}`); params.push(`%${email.toLowerCase()}%`); }
 
@@ -38,17 +38,20 @@ async function searchCustomers({ name, email }) {
   return rows.length ? { customers: rows } : { message: 'No matching customers found.' };
 }
 
-async function createCustomer({ name, email, phone }) {
+async function createCustomer({ name, email, phone }, workshopId) {
   if (!email) return { error: 'email is required' };
-  const { rows: existing } = await query('SELECT id, name FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+  const { rows: existing } = await query(
+    `SELECT id, name FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = 'customer'`,
+    [email, workshopId]
+  );
   if (existing.length) {
-    return { error: `A customer with that email already exists (${existing[0].name || email}).` };
+    return { error: `A customer with that email already exists at this workshop (${existing[0].name || email}).` };
   }
   const hashed = await bcrypt.hash(Math.random().toString(36) + Date.now(), 10);
   const { rows } = await query(
-    `INSERT INTO users (email, password, role, name, phone, subscribed, session_active)
-     VALUES ($1, $2, 'customer', $3, $4, false, false) RETURNING id, name, email, phone`,
-    [email.toLowerCase().trim(), hashed, name?.trim() || null, phone?.trim() || null]
+    `INSERT INTO users (email, password, role, name, phone, subscribed, workshop_id)
+     VALUES ($1, $2, 'customer', $3, $4, false, $5) RETURNING id, name, email, phone`,
+    [email.toLowerCase().trim(), hashed, name?.trim() || null, phone?.trim() || null, workshopId]
   );
   return { created: true, customer: rows[0], message: `Customer ${rows[0].name || rows[0].email} created.` };
 }
@@ -209,11 +212,11 @@ const adminToolDefinitions = [
   },
 ];
 
-function createAdminToolHandlers(userId) {
+function createAdminToolHandlers(userId, workshopId) {
   return {
     search_vehicles: searchVehicles,
-    search_customers: searchCustomers,
-    create_customer: createCustomer,
+    search_customers: (input) => searchCustomers(input, workshopId),
+    create_customer: (input) => createCustomer(input, workshopId),
     create_project: (input) => createProject(input, userId),
     list_projects: (input) => listProjects(input, userId),
   };

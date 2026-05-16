@@ -165,7 +165,7 @@ router.post('/admin-agent', requireAuth, async (req, res) => {
   const { question, history = [] } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
   try {
-    const result = await generateAdminChat(history, question, req.user.id);
+    const result = await generateAdminChat(history, question, req.user.id, req.user.workshopId);
     res.json({ answer: result.answer });
   } catch (err) {
     res.status(500).json({ error: err.message });
