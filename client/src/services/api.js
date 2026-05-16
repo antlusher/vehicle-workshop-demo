@@ -17,7 +17,8 @@ async function request(path, options = {}, token = null) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const data = await response.json();
+  let data;
+  try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem('token');
