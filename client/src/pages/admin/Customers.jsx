@@ -280,7 +280,7 @@ export default function Customers({ token }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ email: '', password: '', ...EMPTY_DETAILS });
+  const [form, setForm] = useState({ email: '', ...EMPTY_DETAILS });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -289,12 +289,12 @@ export default function Customers({ token }) {
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!form.email || !form.password) return;
+    if (!form.email) return;
     setCreating(true); setCreateError('');
     try {
       const c = await createCustomer(form, token);
       setCustomers((cs) => [c, ...cs]);
-      setForm({ email: '', password: '', ...EMPTY_DETAILS });
+      setForm({ email: '', ...EMPTY_DETAILS });
       setShowCreate(false);
     } catch (err) { setCreateError(err.message); }
     finally { setCreating(false); }
@@ -333,15 +333,10 @@ export default function Customers({ token }) {
                 <input type="tel" placeholder="07700 900000" {...f('phone')} />
               </div>
             </div>
-            <div className="kb-form-row">
-              <div className="kb-form-group">
-                <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
-                <input type="email" required {...f('email')} placeholder="customer@example.com" />
-              </div>
-              <div className="kb-form-group">
-                <label>Password <span style={{ color: '#b91c1c' }}>*</span></label>
-                <input type="password" required {...f('password')} placeholder="Temporary password" />
-              </div>
+            <div className="kb-form-group">
+              <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
+              <input type="email" required {...f('email')} placeholder="customer@example.com" />
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '4px 0 0' }}>An activation email will be sent automatically.</p>
             </div>
             <div className="kb-form-group">
               <label>Address line 1</label>

@@ -1,9 +1,95 @@
 const express = require('express');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
+const { sendCustomerActivation } = require('../services/emailService');
 
 const router = express.Router();
+
+// POST /api/customer/activate — set password via magic token (first login / password reset)
+router.post('/activate', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE magic_token = $1 AND magic_token_expires_at > now() AND role = 'customer'`,
+    [token]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Activation link has expired or already been used' });
+
+  const user = rows[0];
+  const hashed = await bcrypt.hash(password, 10);
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+
+  await query(
+    `UPDATE users SET password=$1, magic_token=NULL, magic_token_expires_at=NULL,
+     token=$2, session_active=true, last_seen_at=now() WHERE id=$3`,
+    [hashed, sessionToken, user.id]
+  );
+
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
+});
+
+// POST /api/customer/login — email + password login
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND role = 'customer' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+    [email]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Invalid email or password' });
+
+  const user = rows[0];
+  if (!user.password) return res.status(401).json({ error: 'Account not yet activated — check your email for an activation link' });
+
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid email or password' });
+
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+  await query(
+    `UPDATE users SET token=$1, session_active=true, last_seen_at=now() WHERE id=$2`,
+    [sessionToken, user.id]
+  );
+
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
+});
+
+// POST /api/customer/forgot-password — send new activation link
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND role = 'customer' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+    [email]
+  );
+  // Always return success — avoid email enumeration
+  if (!rows.length) return res.json({ ok: true });
+
+  const user = rows[0];
+  const magicToken = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await query(
+    `UPDATE users SET magic_token=$1, magic_token_expires_at=$2 WHERE id=$3`,
+    [magicToken, expires, user.id]
+  );
+
+  const { rows: wsRows } = await query('SELECT name FROM workshops WHERE id=$1', [user.workshop_id]);
+  const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+  sendCustomerActivation({
+    to: user.email,
+    customerName: user.name,
+    workshopName: wsRows[0]?.name || '',
+    activationUrl: `${customerOrigin}/?activate=${magicToken}`,
+    isReset: true,
+  }).catch((err) => console.error('[forgot-password email]', err.message));
+
+  return res.json({ ok: true });
+});
 
 // POST /api/customer/magic-login — exchange a magic token for a session token
 router.post('/magic-login', async (req, res) => {

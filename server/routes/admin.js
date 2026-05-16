@@ -369,22 +369,38 @@ router.get('/customers', async (req, res) => {
 
 router.post('/customers', async (req, res) => {
   const wid = req.workshopId;
-  const { email, password, name, phone, addressLine1, addressLine2, city, postcode } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const { email, name, phone, addressLine1, addressLine2, city, postcode } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
   try {
-    const bcrypt = require('bcrypt');
+    const crypto = require('crypto');
+    const { sendCustomerActivation } = require('../services/emailService');
+
     const existing = await query(
-      'SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = \'customer\'',
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = 'customer'`,
       [email, wid]
     );
     if (existing.rows.length) return res.status(409).json({ error: 'A customer with this email already exists at this workshop' });
-    const hashed = await bcrypt.hash(password, 10);
+
+    const magicToken = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
     const { rows } = await query(
-      `INSERT INTO users (email, password, role, subscribed, name, phone, address_line1, address_line2, city, postcode, workshop_id)
-       VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7,$8,$9)
+      `INSERT INTO users (email, role, subscribed, name, phone, address_line1, address_line2, city, postcode, workshop_id, magic_token, magic_token_expires_at)
+       VALUES ($1,'customer',true,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING id, email, name, phone, address_line1, address_line2, city, postcode, created_at`,
-      [email, hashed, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, wid]
+      [email, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, wid, magicToken, expires]
     );
+
+    // Fire activation email — non-blocking
+    const { rows: wsRows } = await query('SELECT name FROM workshops WHERE id=$1', [wid]);
+    const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    sendCustomerActivation({
+      to: email,
+      customerName: name || null,
+      workshopName: wsRows[0]?.name || '',
+      activationUrl: `${customerOrigin}/?activate=${magicToken}`,
+    }).catch((err) => console.error('[customer activation email]', err.message));
+
     return res.status(201).json({ ...formatCustomer(rows[0]), vehicleCount: 0 });
   } catch (err) {
     return res.status(400).json({ error: err.message });

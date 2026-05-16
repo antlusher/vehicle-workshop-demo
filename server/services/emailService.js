@@ -136,9 +136,47 @@ async function sendReportPublished({ to, customerName, workshopName, vehicleDesc
   });
 }
 
+async function sendCustomerActivation({ to, customerName, workshopName, activationUrl, isReset = false }) {
+  const displayName = customerName || to;
+  const displayWorkshop = workshopName || 'Your Workshop';
+  const subject = isReset
+    ? `Reset your ${displayWorkshop} portal password`
+    : `Activate your ${displayWorkshop} customer account`;
+  const heading = isReset ? 'Reset your password' : 'Welcome to your customer portal';
+  const intro = isReset
+    ? `You requested a password reset for your ${displayWorkshop} account.`
+    : `${displayWorkshop} has set up a customer account for you.`;
+  const btnText = isReset ? 'Reset password' : 'Set your password';
+
+  await sendEmail({
+    to,
+    subject,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111;">
+        <h2 style="color:#1e40af;">${displayWorkshop}</h2>
+        <p>Hi ${displayName},</p>
+        <p>${intro}</p>
+        <p>Click below to ${isReset ? 'choose a new password' : 'set your password and access your vehicle history, reports, and quotes'}.</p>
+        <p>
+          <a href="${activationUrl}" style="display:inline-block;background:#1e40af;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+            ${btnText}
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">This link expires in 24 hours. If you didn't expect this email, you can ignore it.</p>
+        <p style="color:#6b7280;font-size:0.85em;">
+          If the button doesn't work, copy this link:<br>
+          <a href="${activationUrl}">${activationUrl}</a>
+        </p>
+      </div>
+    `,
+    text: `Hi ${displayName},\n\n${intro}\n\n${btnText}: ${activationUrl}\n\nThis link expires in 24 hours.`,
+  });
+}
+
 module.exports = {
   sendSubscriptionConfirmation,
   sendPasswordReset,
   sendQuoteToCustomer,
   sendReportPublished,
+  sendCustomerActivation,
 };

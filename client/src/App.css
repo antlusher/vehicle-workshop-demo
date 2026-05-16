@@ -3056,3 +3056,94 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .perm-toggle--on .perm-toggle-knob { left: 20px; }
+
+/* ── Customer login / activate / forgot-password ── */
+.customer-login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  padding: 24px;
+}
+.customer-login-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 400px;
+}
+.customer-login-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e40af;
+  letter-spacing: -0.02em;
+  margin-bottom: 20px;
+}
+.customer-login-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px;
+}
+.customer-login-sub {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0 0 24px;
+}
+.customer-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.customer-login-form label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 8px;
+}
+.customer-login-form input {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.customer-login-form input:focus { border-color: #1e40af; }
+.customer-login-btn {
+  margin-top: 16px;
+  padding: 12px;
+  background: #1e40af;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.customer-login-btn:hover:not(:disabled) { background: #1d3a9e; }
+.customer-login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.customer-login-error {
+  font-size: 0.82rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 4px 0 0;
+}
+.customer-login-back {
+  display: block;
+  margin-top: 16px;
+  background: none;
+  border: none;
+  color: #6b7280;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+.customer-login-back:hover { color: #374151; }

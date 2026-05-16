@@ -7,6 +7,7 @@ import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
 import SysAdminShell from './pages/SysAdminShell';
 import CustomerPortal from './pages/CustomerPortal';
+import CustomerLogin from './pages/CustomerLogin';
 import AdminAgent from './pages/AdminAgent';
 import './App.css';
 
@@ -279,18 +280,24 @@ function App() {
   };
 
   const isCustomerSubdomain = window.location.hostname.startsWith('customer.');
+  const activateToken = new URLSearchParams(window.location.search).get('activate');
+
+  const handleCustomerLoginSuccess = (data) => {
+    localStorage.setItem('token', data.token);
+    // Clear activate param from URL without reload
+    window.history.replaceState({}, '', '/');
+    setToken(data.token);
+    setUser({ email: data.email, role: data.role, name: data.name });
+    setStatus('ready');
+  };
 
   if (!token) {
-    if (isCustomerSubdomain) {
+    if (isCustomerSubdomain || activateToken) {
       return (
-        <div className="app-shell">
-          <header className="app-header"><h1>Your Gofer</h1></header>
-          <section className="card" style={{ maxWidth: 420, margin: '80px auto', textAlign: 'center' }}>
-            <h2>Customer Portal</h2>
-            <p style={{ color: '#6b7280' }}>Use the link sent to your email to access your vehicle history and reports.</p>
-            {error && <p className="error">{error}</p>}
-          </section>
-        </div>
+        <CustomerLogin
+          activateToken={activateToken}
+          onSuccess={handleCustomerLoginSuccess}
+        />
       );
     }
     return <Login onLogin={handleLogin} error={error} />;
