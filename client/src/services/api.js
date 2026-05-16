@@ -109,6 +109,10 @@ export async function restoreProject(projectId, token) {
   return request(`/api/projects/${projectId}/restore`, { method: 'POST' }, token);
 }
 
+export async function setProjectCustomer(projectId, customerId, token) {
+  return request(`/api/projects/${projectId}/customer`, { method: 'PATCH', body: { customerId } }, token);
+}
+
 export async function getProjects(token, { archived = false } = {}) {
   return request(`/api/projects${archived ? '?archived=true' : ''}`, {}, token);
 }

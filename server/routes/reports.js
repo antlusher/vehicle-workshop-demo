@@ -2,9 +2,11 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { s3Available, makeKey, uploadToS3, deleteFromS3 } = require('../services/mediaService');
+const { sendReportPublished } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -107,6 +109,48 @@ router.post('/:projectId/publish', requireAuth, async (req, res) => {
     [req.params.projectId]
   );
   if (!rows.length) return res.status(404).json({ error: 'Report not found — save it first' });
+
+  // Fire-and-forget email to project customer if one is attached
+  (async () => {
+    try {
+      const { rows: projRows } = await query(
+        `SELECT p.make, p.model, p.year, p.registration_snapshot, p.registration,
+                cu.id AS customer_id, cu.email AS customer_email, cu.name AS customer_name,
+                w.name AS workshop_name, w.slug AS workshop_slug
+         FROM projects p
+         LEFT JOIN users cu ON cu.id = p.customer_id
+         LEFT JOIN workshops w ON w.id = p.workshop_id
+         WHERE p.id = $1`,
+        [req.params.projectId]
+      );
+      const proj = projRows[0];
+      if (!proj?.customer_email) return;
+
+      // Generate magic link for customer portal
+      const token = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      await query(
+        `UPDATE users SET magic_token=$1, magic_token_expires_at=$2 WHERE id=$3`,
+        [token, expires, proj.customer_id]
+      );
+
+      const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+      const portalUrl = `${clientOrigin}/portal?token=${token}`;
+      const vehicleDesc = [proj.year, proj.make, proj.model].filter(Boolean).join(' ') ||
+                          proj.registration_snapshot || proj.registration || '';
+
+      await sendReportPublished({
+        to: proj.customer_email,
+        customerName: proj.customer_name,
+        workshopName: proj.workshop_name,
+        vehicleDesc,
+        portalUrl,
+      });
+    } catch (err) {
+      console.error('[publish] email failed:', err.message);
+    }
+  })();
+
   return res.json(toReport(rows[0]));
 });
 

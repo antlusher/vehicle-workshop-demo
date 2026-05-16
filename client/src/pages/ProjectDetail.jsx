@@ -1014,6 +1014,86 @@ function VehicleHistoryTab({ history, currentProjectId }) {
   );
 }
 
+function ProjectCustomerBar({ project, token, onUpdated }) {
+  const [open, setOpen] = useState(false);
+  const [customers, setCustomers] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    if (customers) { setOpen(true); return; }
+    try {
+      const list = await fetch(`/api/quotes/project-customers/${project.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json());
+      setCustomers(Array.isArray(list) ? list : []);
+      setOpen(true);
+    } catch { setCustomers([]); setOpen(true); }
+  };
+
+  const assign = async (customerId) => {
+    setSaving(true);
+    try {
+      await api.setProjectCustomer(project.id, customerId, token);
+      onUpdated(project.id);
+      setOpen(false);
+    } finally { setSaving(false); }
+  };
+
+  const remove = () => assign(null);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {project.customer ? (
+        <button
+          type="button"
+          className="secondary"
+          style={{ fontSize: '0.78rem', padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={load}
+        >
+          <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Customer</span>
+          <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{project.customer.name || project.customer.email}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="secondary"
+          style={{ fontSize: '0.78rem', padding: '3px 10px', color: '#f59e0b', borderColor: '#f59e0b' }}
+          onClick={load}
+        >
+          + Attach customer
+        </button>
+      )}
+
+      {open && (
+        <div className="customer-picker-dropdown" style={{ top: '100%', right: 0, left: 'auto', minWidth: 220 }}>
+          {!customers ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>Loading…</p>
+          ) : customers.length === 0 ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>
+              No customers linked to this vehicle yet.
+            </p>
+          ) : (
+            customers.map((c) => (
+              <button key={c.id} type="button" className="customer-picker-option" disabled={saving} onClick={() => assign(c.id)}>
+                <span className="cpo-name">{c.name || c.email}</span>
+                {c.name && <span className="cpo-email">{c.email}</span>}
+              </button>
+            ))
+          )}
+          {project.customer && (
+            <button type="button" className="customer-picker-option customer-picker-remove" onClick={remove} disabled={saving}>
+              Remove customer
+            </button>
+          )}
+          <button type="button" className="customer-picker-option" style={{ color: '#6b7280', fontSize: '0.75rem' }} onClick={() => setOpen(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject, token }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
@@ -1116,11 +1196,14 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
           <span className="chat-header-reg">{project.registration || project.vin || 'Project'}</span>
           {vehicleSummary && <span className="chat-header-meta">{vehicleSummary}</span>}
         </div>
-        {tab === 'diagnosis' && project.history?.length > 0 && (
-          <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
-            Start over
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ProjectCustomerBar project={project} token={token} onUpdated={onRefreshProject} />
+          {tab === 'diagnosis' && project.history?.length > 0 && (
+            <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
+              Start over
+            </button>
+          )}
+        </div>
       </div>
 
       {project.make && !project.engineCode && (

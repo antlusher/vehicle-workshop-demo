@@ -799,11 +799,18 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
       {/* Status actions */}
       <div className="qd-status-actions">
         {quote.status === 'draft' && (
-          <button type="button" onClick={() => {
-            if (!quote.customer) { alert('Attach a customer before sending.'); return; }
-            setShowSend(true);
-          }}>
-            Send to customer
+          <button
+            type="button"
+            title={!quote.customer ? 'Attach a customer to the project first (top of the job panel)' : ''}
+            style={!quote.customer ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+            onClick={() => {
+              if (!quote.customer) return;
+              setShowSend(true);
+            }}
+          >
+            {quote.customer
+              ? `Send to ${quote.customer.name || quote.customer.email}`
+              : 'Send to customer — attach customer first'}
           </button>
         )}
         {quote.status === 'sent' && (
@@ -859,7 +866,7 @@ function QuoteListRow({ quote, checked, selected, onToggle, onSelect }) {
 
 // ── Add quote modal ───────────────────────────────────────────────────────────
 
-function AddQuoteModal({ projectId, token, onCreated, onClose }) {
+function AddQuoteModal({ projectId, customerId, token, onCreated, onClose }) {
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
@@ -870,7 +877,7 @@ function AddQuoteModal({ projectId, token, onCreated, onClose }) {
     e.preventDefault();
     setSaving(true);
     try {
-      const q = await quotesApi.createQuote({ project_id: projectId, title: title.trim() || null }, token);
+      const q = await quotesApi.createQuote({ project_id: projectId, title: title.trim() || null, customer_id: customerId || null }, token);
       onCreated(q);
       onClose();
     } finally {
@@ -1010,7 +1017,7 @@ export default function QuoteTab({ project, token }) {
   return (
     <div className="quote-tab">
       {showAdd && (
-        <AddQuoteModal projectId={project.id} token={token} onCreated={handleCreated} onClose={() => setShowAdd(false)} />
+        <AddQuoteModal projectId={project.id} customerId={project.customerId} token={token} onCreated={handleCreated} onClose={() => setShowAdd(false)} />
       )}
       {showEdit && selected && (
         <EditQuoteModal quote={selected} token={token} onUpdated={handleUpdated} onClose={() => setShowEdit(false)} />

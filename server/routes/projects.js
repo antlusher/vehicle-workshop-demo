@@ -98,6 +98,12 @@ function toProject(row, history = [], confirmedFixes = [], vehicleHistory = null
     updatedAt: row.updated_at,
     specs: row.specs || null,
     vehicleData: row.vehicle_data || null,
+    customerId: row.customer_id || null,
+    customer: row.customer_id ? {
+      id: row.customer_id,
+      name: row.customer_name || null,
+      email: row.customer_email || null,
+    } : null,
     confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
     vehicleHistory: vehicleHistory,
     motTests: motTests,
@@ -142,9 +148,11 @@ router.get('/', requireAuth, async (req, res) => {
         p.engine_code,
         COALESCE(p.fuel_type, v.mot_vehicle_meta->>'fuelType')        AS fuel_type,
         p.trim, p.body_type, p.source, p.active, p.closed,
-        p.created_at, p.updated_at, p.specs, p.vehicle_data, p.archived_at
+        p.created_at, p.updated_at, p.specs, p.vehicle_data, p.archived_at,
+        p.customer_id, cu.name AS customer_name, cu.email AS customer_email
       FROM projects p
       LEFT JOIN vehicles v ON v.id = p.vehicle_id
+      LEFT JOIN users cu ON cu.id = p.customer_id
       WHERE ${scopeClause}
       ORDER BY p.updated_at DESC`,
     [scopeParam]
@@ -305,7 +313,12 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   if (!await canAccessProject(req.params.projectId, req.user)) {
     return res.status(404).json({ error: 'Project not found' });
   }
-  const { rows } = await query('SELECT * FROM projects WHERE id = $1', [req.params.projectId]);
+  const { rows } = await query(
+    `SELECT p.*, cu.name AS customer_name, cu.email AS customer_email
+     FROM projects p LEFT JOIN users cu ON cu.id = p.customer_id
+     WHERE p.id = $1`,
+    [req.params.projectId]
+  );
   if (!rows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = rows[0];
@@ -330,6 +343,20 @@ router.get('/:projectId', requireAuth, async (req, res) => {
   }
 
   return res.json(toProject(project, history, confirmedFixes, vehicleHistory, motData.motTests, motData.motVehicleMeta));
+});
+
+router.patch('/:projectId/customer', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { customerId } = req.body;
+  await query(`UPDATE projects SET customer_id=$1, updated_at=now() WHERE id=$2`, [customerId || null, req.params.projectId]);
+  const { rows } = await query(
+    `SELECT p.*, cu.name AS customer_name, cu.email AS customer_email
+     FROM projects p LEFT JOIN users cu ON cu.id = p.customer_id WHERE p.id = $1`,
+    [req.params.projectId]
+  );
+  return res.json(toProject(rows[0]));
 });
 
 router.patch('/:projectId/vehicle', requireAuth, async (req, res) => {

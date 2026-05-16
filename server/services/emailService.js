@@ -107,8 +107,38 @@ async function sendQuoteToCustomer({ to, customerName, workshopName, vehicleDesc
   });
 }
 
+async function sendReportPublished({ to, customerName, workshopName, vehicleDesc, portalUrl }) {
+  const displayName = customerName || to;
+  const displayWorkshop = workshopName || 'Your Workshop';
+
+  await sendEmail({
+    to,
+    subject: `Your vehicle report from ${displayWorkshop}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111;">
+        <h2 style="color:#1e40af;">${displayWorkshop}</h2>
+        <p>Hi ${displayName},</p>
+        <p>Your vehicle report${vehicleDesc ? ` for your ${vehicleDesc}` : ''} is now ready to view.</p>
+        <p>It includes our diagnosis, findings, and any recommendations from this visit.</p>
+        <p>
+          <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+            View your report
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">
+          If the button doesn't work, copy this link:<br>
+          <a href="${portalUrl}">${portalUrl}</a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">${displayWorkshop}</p>
+      </div>
+    `,
+    text: `Hi ${displayName},\n\nYour vehicle report${vehicleDesc ? ` for your ${vehicleDesc}` : ''} is now ready.\n\nView it here: ${portalUrl}\n\n${displayWorkshop}`,
+  });
+}
+
 module.exports = {
   sendSubscriptionConfirmation,
   sendPasswordReset,
   sendQuoteToCustomer,
+  sendReportPublished,
 };
