@@ -64,3 +64,6 @@ export const updateItem = (quoteId, itemId, data, token) =>
 
 export const deleteItem = (quoteId, itemId, token) =>
   request(`${BASE}/${quoteId}/items/${itemId}`, { method: 'DELETE' }, token);
+
+export const quickSend = (quoteId, data, token) =>
+  request(`${BASE}/${quoteId}/quick-send`, { method: 'POST', body: data }, token);

@@ -8,6 +8,7 @@ import AdminShell from './pages/admin/AdminShell';
 import SysAdminShell from './pages/SysAdminShell';
 import CustomerPortal from './pages/CustomerPortal';
 import CustomerLogin from './pages/CustomerLogin';
+import QuoteAcceptPage from './pages/QuoteAcceptPage';
 import AdminAgent from './pages/AdminAgent';
 import './App.css';
 
@@ -280,7 +281,14 @@ function App() {
   };
 
   const isCustomerSubdomain = window.location.hostname.startsWith('customer.');
-  const activateToken = new URLSearchParams(window.location.search).get('activate');
+  const urlParams = new URLSearchParams(window.location.search);
+  const activateToken = urlParams.get('activate');
+  const quoteToken = urlParams.get('quote');
+
+  // Public quote accept page — anyone with the link can view/accept, no auth needed
+  if (quoteToken) {
+    return <QuoteAcceptPage quoteToken={quoteToken} />;
+  }
 
   const handleCustomerLoginSuccess = (data) => {
     localStorage.setItem('token', data.token);

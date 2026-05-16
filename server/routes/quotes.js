@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { applyMarkup, getWorkshopSettings } = require('../services/partsService');
-const { sendQuoteToCustomer } = require('../services/emailService');
+const { sendQuoteToCustomer, sendQuickQuote } = require('../services/emailService');
+const { sendSMS } = require('../services/smsService');
 
 const router = express.Router();
 
@@ -450,6 +451,58 @@ router.delete('/:id/lines/:lineId', requireAuth, async (req, res) => {
     res.json(await getQuoteWithLines(req.params.id));
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /:id/quick-send — generate shareable quote link, optionally send via email/SMS
+router.post('/:id/quick-send', requireAuth, async (req, res) => {
+  try {
+    const { email, phone } = req.body;
+    const quote = await getQuoteWithLines(req.params.id);
+    if (!quote) return res.status(404).json({ error: 'Quote not found' });
+
+    // Generate / refresh token (30-day expiry)
+    const token = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await query(
+      `UPDATE quotes SET quote_token=$1, quote_token_expires_at=$2, quote_email=$3 WHERE id=$4`,
+      [token, expires, email || null, quote.id]
+    );
+
+    const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const quoteUrl = `${customerOrigin}/?quote=${token}`;
+
+    // Fetch project + workshop for context
+    const { rows: projRows } = await query(
+      `SELECT p.make, p.model, p.year, p.registration, p.registration_snapshot, w.name as workshop_name
+       FROM projects p JOIN workshops w ON w.id = p.workshop_id WHERE p.id = $1`,
+      [quote.projectId]
+    );
+    const proj = projRows[0] || {};
+    const vehicleDesc = [proj.year, proj.make, proj.model].filter(Boolean).join(' ') || proj.registration_snapshot || proj.registration || '';
+    const workshopName = proj.workshop_name || '';
+
+    // Fire email if address provided
+    if (email) {
+      sendQuickQuote({
+        to: email,
+        workshopName,
+        vehicleDesc,
+        quoteRef: quote.reference,
+        total: quote.totals.total.toFixed(2),
+        quoteUrl,
+      }).catch((err) => console.error('[quick-send email]', err.message));
+    }
+
+    // Fire SMS if phone provided
+    if (phone) {
+      const smsMsg = `${workshopName ? workshopName + ': ' : ''}Your quote${vehicleDesc ? ' for ' + vehicleDesc : ''} — £${quote.totals.total.toFixed(2)}. View & accept: ${quoteUrl}`;
+      sendSMS(phone, smsMsg).catch((err) => console.error('[quick-send sms]', err.message));
+    }
+
+    return res.json({ quoteUrl, token });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

@@ -485,4 +485,153 @@ router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
   });
 });
 
+// ── Public quick-quote routes (no auth required) ──────────────────────────────
+
+// GET /api/customer/quick-quote/:token — view quote details by token
+router.get('/quick-quote/:token', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT q.id, q.reference, q.title, q.notes, q.diagnostic_summary,
+              q.vat_rate, q.status, q.quote_email, q.created_at,
+              p.id as project_id, p.make, p.model, p.year,
+              p.registration, p.registration_snapshot,
+              w.name as workshop_name, w.id as workshop_id
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN workshops w ON w.id = p.workshop_id
+       WHERE q.quote_token = $1 AND q.quote_token_expires_at > now()`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Quote not found or link has expired' });
+    const q = rows[0];
+
+    const { rows: itemRows } = await query(
+      'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+      [q.id]
+    );
+    const { rows: lineRows } = await query(
+      'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+      [q.id]
+    );
+
+    const formatLine = (row) => {
+      const unitCost = parseFloat(row.unit_cost);
+      const markupPct = parseFloat(row.markup_pct);
+      const qty = parseFloat(row.qty);
+      const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+      const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+      return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+    };
+
+    const allLines = lineRows.map(formatLine);
+    const vatRate = parseFloat(q.vat_rate);
+    const items = itemRows.map((item) => {
+      const lines = allLines.filter((l) => l.quoteItemId === item.id);
+      const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+      return { id: item.id, title: item.title, description: item.description || '', notes: item.notes || '', lines, subtotal };
+    });
+    const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+    const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+    return res.json({
+      id: q.id,
+      reference: q.reference,
+      title: q.title || null,
+      notes: q.notes || '',
+      diagnosticSummary: q.diagnostic_summary || '',
+      status: q.status,
+      quoteEmail: q.quote_email,
+      workshopName: q.workshop_name,
+      workshopId: q.workshop_id,
+      projectId: q.project_id,
+      vehicle: [q.year, q.make, q.model].filter(Boolean).join(' ') || q.registration_snapshot || q.registration || '',
+      registration: q.registration_snapshot || q.registration || '',
+      createdAt: q.created_at,
+      items,
+      ungroupedLines,
+      totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/customer/quick-quote/:token/accept — accept quote, create customer
+router.post('/quick-quote/:token/accept', async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const { rows } = await query(
+      `SELECT q.id, q.project_id, q.quote_email, q.customer_id,
+              p.vehicle_id, p.customer_id as project_customer_id,
+              w.id as workshop_id, w.name as workshop_name
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN workshops w ON w.id = p.workshop_id
+       WHERE q.quote_token = $1 AND q.quote_token_expires_at > now()`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Quote not found or link has expired' });
+    const q = rows[0];
+
+    if (!q.quote_email) return res.status(400).json({ error: 'No email address on this quote link' });
+
+    // Find or create customer scoped to this workshop
+    let customerId;
+    const { rows: existing } = await query(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = 'customer'`,
+      [q.quote_email, q.workshop_id]
+    );
+
+    if (existing.length) {
+      customerId = existing[0].id;
+      // Update name/phone if provided
+      await query(
+        `UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone) WHERE id=$3`,
+        [name || null, phone || null, customerId]
+      );
+    } else {
+      // Create new customer — no password yet, activation email sent below
+      const magicToken = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const { rows: created } = await query(
+        `INSERT INTO users (email, role, subscribed, name, phone, workshop_id, magic_token, magic_token_expires_at)
+         VALUES ($1,'customer',true,$2,$3,$4,$5,$6) RETURNING id`,
+        [q.quote_email, name || null, phone || null, q.workshop_id, magicToken, expires]
+      );
+      customerId = created[0].id;
+
+      // Send activation email (non-blocking)
+      const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+      sendCustomerActivation({
+        to: q.quote_email,
+        customerName: name,
+        workshopName: q.workshop_name,
+        activationUrl: `${customerOrigin}/?activate=${magicToken}`,
+      }).catch((err) => console.error('[quick-quote activation email]', err.message));
+    }
+
+    // Link customer to project + vehicle
+    await query(`UPDATE projects SET customer_id=$1 WHERE id=$2 AND customer_id IS NULL`, [customerId, q.project_id]);
+    if (q.vehicle_id) {
+      await query(
+        `INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [customerId, q.vehicle_id]
+      );
+    }
+
+    // Mark quote approved + clear token
+    await query(
+      `UPDATE quotes SET status='approved', customer_id=$1, quote_token=NULL, quote_token_expires_at=NULL WHERE id=$2`,
+      [customerId, q.id]
+    );
+
+    return res.json({ accepted: true, email: q.quote_email });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

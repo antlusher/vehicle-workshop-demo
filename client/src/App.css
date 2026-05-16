@@ -3147,3 +3147,53 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   padding: 0;
 }
 .customer-login-back:hover { color: #374151; }
+
+/* ── Public quote accept page ── */
+.qap-wrap { min-height: 100vh; background: #f8fafc; display: flex; flex-direction: column; }
+.qap-header { background: white; border-bottom: 1px solid #e2e8f0; padding: 14px 24px; display: flex; align-items: center; gap: 16px; }
+.qap-logo { font-size: 1rem; font-weight: 700; color: #1e40af; }
+.qap-workshop { font-size: 0.85rem; color: #6b7280; }
+.qap-body { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; width: 100%; display: flex; flex-direction: column; gap: 24px; }
+.qap-loading { color: #9ca3af; text-align: center; padding: 48px; }
+.qap-expired { background: white; border-radius: 12px; padding: 32px; text-align: center; }
+.qap-expired h2 { color: #1e293b; margin: 0 0 8px; }
+.qap-expired p { color: #6b7280; margin: 0; }
+
+.qap-quote { background: white; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+.qap-quote-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 20px 0; gap: 12px; }
+.qap-quote-title { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin: 0 0 4px; }
+.qap-quote-vehicle { font-size: 0.82rem; color: #6b7280; margin: 0; }
+.qap-quote-ref { font-size: 0.78rem; font-weight: 600; color: #94a3b8; font-family: monospace; white-space: nowrap; }
+.qap-quote-summary { font-size: 0.85rem; color: #475569; padding: 12px 20px 0; margin: 0; line-height: 1.5; }
+
+.qap-item { border-top: 1px solid #f1f5f9; padding: 16px 20px; }
+.qap-item-title { font-weight: 600; font-size: 0.9rem; color: #1e293b; margin-bottom: 4px; }
+.qap-item-desc { font-size: 0.8rem; color: #6b7280; margin: 0 0 8px; }
+.qap-lines { width: 100%; border-collapse: collapse; }
+.qap-line-desc { font-size: 0.82rem; color: #374151; padding: 3px 0; }
+.qap-line-qty { font-size: 0.78rem; color: #9ca3af; padding: 3px 8px; text-align: right; white-space: nowrap; }
+.qap-line-total { font-size: 0.82rem; font-weight: 500; text-align: right; padding: 3px 0; white-space: nowrap; }
+.qap-item-subtotal { display: flex; justify-content: space-between; font-size: 0.8rem; color: #6b7280; margin-top: 8px; border-top: 1px dashed #e2e8f0; padding-top: 6px; }
+
+.qap-totals { border-top: 1px solid #e2e8f0; padding: 16px 20px; display: flex; flex-direction: column; gap: 6px; }
+.qap-total-row { display: flex; justify-content: space-between; font-size: 0.875rem; color: #6b7280; }
+.qap-total-grand { font-size: 1.05rem; font-weight: 700; color: #0f172a; margin-top: 4px; }
+
+.qap-accept-form { background: white; border-radius: 12px; border: 1px solid #e2e8f0; padding: 24px; }
+.qap-accept-title { font-size: 1rem; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
+.qap-accept-sub { font-size: 0.85rem; color: #6b7280; margin: 0 0 20px; }
+.qap-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.qap-field label { font-size: 0.8rem; font-weight: 600; color: #374151; }
+.qap-req { color: #b91c1c; }
+.qap-field input { padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; outline: none; }
+.qap-field input:focus { border-color: #1e40af; }
+.qap-error { font-size: 0.82rem; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; }
+.qap-accept-btn { width: 100%; padding: 13px; background: #15803d; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: background 0.15s; }
+.qap-accept-btn:hover:not(:disabled) { background: #166534; }
+.qap-accept-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.qap-accepted { background: white; border-radius: 12px; border: 1px solid #bbf7d0; padding: 40px 24px; text-align: center; }
+.qap-accepted-icon { width: 56px; height: 56px; background: #dcfce7; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: #15803d; margin: 0 auto 16px; }
+.qap-accepted h2 { color: #0f172a; margin: 0 0 8px; }
+.qap-accepted p { color: #374151; margin: 0 0 8px; }
+.qap-accepted-sub { font-size: 0.85rem; color: #6b7280; }

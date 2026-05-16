@@ -136,6 +136,37 @@ async function sendReportPublished({ to, customerName, workshopName, vehicleDesc
   });
 }
 
+async function sendQuickQuote({ to, workshopName, vehicleDesc, quoteRef, total, quoteUrl }) {
+  const displayWorkshop = workshopName || 'Your Workshop';
+  const vehicleLine = vehicleDesc ? ` for your ${vehicleDesc}` : '';
+
+  await sendEmail({
+    to,
+    subject: `Your quote from ${displayWorkshop}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111;">
+        <h2 style="color:#1e40af;">${displayWorkshop}</h2>
+        <p>Hi,</p>
+        <p>We've prepared a quote${vehicleLine}.</p>
+        ${quoteRef ? `<p style="color:#6b7280;font-size:0.9em;">Reference: <strong>${quoteRef}</strong></p>` : ''}
+        <p style="font-size:1.2em;font-weight:700;">Total (inc. VAT): £${total}</p>
+        <p>Click below to view the full quote and accept it online.</p>
+        <p>
+          <a href="${quoteUrl}" style="display:inline-block;background:#1e40af;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+            View &amp; accept quote
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">
+          If the button doesn't work, copy this link:<br>
+          <a href="${quoteUrl}">${quoteUrl}</a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">${displayWorkshop}</p>
+      </div>
+    `,
+    text: `Hi,\n\nWe've prepared a quote${vehicleLine}.\n\nTotal (inc. VAT): £${total}\n\nView and accept: ${quoteUrl}\n\n${displayWorkshop}`,
+  });
+}
+
 async function sendCustomerActivation({ to, customerName, workshopName, activationUrl, isReset = false }) {
   const displayName = customerName || to;
   const displayWorkshop = workshopName || 'Your Workshop';
@@ -179,4 +210,5 @@ module.exports = {
   sendQuoteToCustomer,
   sendReportPublished,
   sendCustomerActivation,
+  sendQuickQuote,
 };

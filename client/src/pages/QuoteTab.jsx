@@ -713,9 +713,90 @@ function EditQuoteModal({ quote, token, onUpdated, onClose }) {
 
 // ── Quote detail panel ────────────────────────────────────────────────────────
 
+function QuickSendModal({ quote, token, onClose, onUpdated }) {
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const handleGenerate = async (e) => {
+    e.preventDefault();
+    setSending(true); setError('');
+    try {
+      const data = await quotesApi.quickSend(quote.id, { email: email || undefined, phone: phone || undefined }, token);
+      setResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(result.quoteUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 6px' }}>Quick send</h3>
+        <p style={{ fontSize: '0.85rem', color: '#6b7280', margin: '0 0 20px' }}>
+          Generate a shareable link anyone can open to view and accept this quote — no account needed.
+        </p>
+
+        {!result ? (
+          <form onSubmit={handleGenerate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Email <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional — sends quote by email)</span></label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="customer@example.com" />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 600 }}>Mobile number <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional — sends link by SMS)</span></label>
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07700 900000" />
+            </div>
+            {error && <p className="error" style={{ margin: 0 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" disabled={sending}>{sending ? 'Generating…' : 'Generate link'}</button>
+            </div>
+          </form>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ fontSize: '0.82rem', color: '#15803d', fontWeight: 600, margin: 0 }}>
+              ✓ Link generated{email ? ' — email sent' : ''}{phone ? ' — SMS sent' : ''}
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                readOnly
+                value={result.quoteUrl}
+                style={{ flex: 1, fontSize: '0.78rem', padding: '8px 10px', background: '#f8fafc', color: '#374151' }}
+                onClick={(e) => e.target.select()}
+              />
+              <button type="button" onClick={handleCopy} style={{ whiteSpace: 'nowrap', minWidth: 70 }}>
+                {copied ? 'Copied ✓' : 'Copy'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: '#9ca3af', margin: 0 }}>
+              Link expires in 30 days. You can regenerate it any time.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="secondary" onClick={onClose}>Done</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) {
-  const [showSend, setShowSend]       = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [showSend, setShowSend]             = useState(false);
+  const [showPreview, setShowPreview]       = useState(false);
+  const [showQuickSend, setShowQuickSend]   = useState(false);
 
   const isReadOnly = quote.status === 'invoiced';
 
@@ -744,6 +825,7 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
     <div className="quote-detail">
       {showPreview && <QuotePreviewModal quote={quote} onClose={() => setShowPreview(false)} />}
       {showSend && <SendModal quote={quoteForModal} onClose={() => setShowSend(false)} onSent={handleSend} />}
+      {showQuickSend && <QuickSendModal quote={quote} token={token} onClose={() => setShowQuickSend(false)} onUpdated={onUpdated} />}
 
       {/* Detail header */}
       <div className="qd-header">
@@ -832,6 +914,7 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
                 Send to customer
               </button>
             )}
+            <button type="button" className="secondary" onClick={() => setShowQuickSend(true)}>Quick send</button>
             <button type="button" className="secondary" onClick={() => handleStatusChange('draft')}>Back to draft</button>
           </>
         )}
