@@ -30,3 +30,5 @@ export const unlinkVehicle = (customerId, vehicleId, token) =>
   request(`/api/admin/customers/${customerId}/vehicles/${vehicleId}`, { method: 'DELETE' }, token);
 export const updateCustomer = (customerId, data, token) =>
   request(`/api/admin/customers/${customerId}`, { method: 'PATCH', body: data }, token);
+export const deleteCustomer = (customerId, token) =>
+  request(`/api/admin/customers/${customerId}`, { method: 'DELETE' }, token);

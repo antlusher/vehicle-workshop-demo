@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getCustomers, createCustomer, updateCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
+import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
 import { getCustomerStats } from '../../services/adminApi';
 
 const EMPTY_DETAILS = { name: '', phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '', email: '' };
@@ -224,9 +224,22 @@ function DetailsTab({ customer, token, onUpdated }) {
   );
 }
 
-function CustomerDetail({ customer, token, onClose, onUpdated }) {
+function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   const [tab, setTab] = useState('activity');
+  const [deleting, setDeleting] = useState(false);
   const TABS = [{ id: 'activity', label: 'Activity' }, { id: 'details', label: 'Details' }, { id: 'vehicles', label: 'Vehicles' }];
+
+  const handleDelete = async () => {
+    if (!confirm(`Delete ${customer.name || customer.email}? This cannot be undone. Their vehicles and job history will remain but the customer record will be removed.`)) return;
+    setDeleting(true);
+    try {
+      await deleteCustomer(customer.id, token);
+      onDeleted(customer.id);
+    } catch (err) {
+      alert(err.message);
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="detail-panel">
@@ -246,6 +259,17 @@ function CustomerDetail({ customer, token, onClose, onUpdated }) {
         {tab === 'activity' && <ActivityTab customerId={customer.id} token={token} />}
         {tab === 'details' && <DetailsTab customer={customer} token={token} onUpdated={onUpdated} />}
         {tab === 'vehicles' && <VehiclesTab customer={customer} token={token} />}
+      </div>
+
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
+        <button
+          className="secondary"
+          style={{ fontSize: '0.8rem', background: '#fee2e2', color: '#b91c1c', borderColor: '#fecaca' }}
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? 'Deleting…' : 'Delete customer'}
+        </button>
       </div>
     </div>
   );
@@ -279,6 +303,11 @@ export default function Customers({ token }) {
   const handleUpdated = (updated) => {
     setCustomers((cs) => cs.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
     setSelected((prev) => prev ? { ...prev, ...updated } : prev);
+  };
+
+  const handleDeleted = (id) => {
+    setCustomers((cs) => cs.filter((c) => c.id !== id));
+    setSelected(null);
   };
 
   const f = (key) => ({ value: form[key], onChange: (e) => setForm((s) => ({ ...s, [key]: e.target.value })) });
@@ -382,6 +411,7 @@ export default function Customers({ token }) {
             customer={selected} token={token}
             onClose={() => setSelected(null)}
             onUpdated={handleUpdated}
+            onDeleted={handleDeleted}
           />
         )}
       </div>

@@ -456,6 +456,25 @@ router.delete('/customers/:id/vehicles/:vehicleId', async (req, res) => {
   return res.json({ deleted: true });
 });
 
+router.delete('/customers/:id', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT id FROM users WHERE id=$1 AND role='customer' AND workshop_id=$2`,
+      [req.params.id, req.workshopId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+
+    await query('DELETE FROM customer_vehicles WHERE customer_id=$1', [req.params.id]);
+    await query('UPDATE quotes SET customer_id=NULL WHERE customer_id=$1', [req.params.id]);
+    await query('UPDATE projects SET customer_id=NULL WHERE customer_id=$1', [req.params.id]);
+    await query('DELETE FROM users WHERE id=$1', [req.params.id]);
+
+    return res.json({ deleted: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/admin/customers/:id/stats — spend, activity, job history
 router.get('/customers/:id/stats', async (req, res) => {
   const customerId = req.params.id;
