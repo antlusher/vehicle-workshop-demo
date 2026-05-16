@@ -1579,10 +1579,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .quote-status-dot {
   width: 8px; height: 8px; border-radius: 50%; display: inline-block;
 }
-.quote-status-dot.draft    { background: #94a3b8; }
-.quote-status-dot.sent     { background: #f59e0b; }
-.quote-status-dot.approved { background: #10b981; }
-.quote-status-dot.invoiced { background: #6366f1; }
+.quote-status-dot.draft     { background: #94a3b8; }
+.quote-status-dot.published { background: #3b82f6; }
+.quote-status-dot.sent      { background: #f59e0b; }
+.quote-status-dot.approved  { background: #10b981; }
+.quote-status-dot.invoiced  { background: #6366f1; }
 
 .quote-empty-state { text-align: center; padding: 40px 0; color: #6b7280; }
 .quote-empty-state textarea { width: 100%; max-width: 560px; margin: 12px 0; }
@@ -1607,10 +1608,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.quote-status-badge.draft    { background: #f1f5f9; color: #475569; }
-.quote-status-badge.sent     { background: #fef3c7; color: #92400e; }
-.quote-status-badge.approved { background: #d1fae5; color: #065f46; }
-.quote-status-badge.invoiced { background: #ede9fe; color: #4c1d95; }
+.quote-status-badge.draft     { background: #f1f5f9; color: #475569; }
+.quote-status-badge.published { background: #dbeafe; color: #1d4ed8; }
+.quote-status-badge.sent      { background: #fef3c7; color: #92400e; }
+.quote-status-badge.approved  { background: #d1fae5; color: #065f46; }
+.quote-status-badge.invoiced  { background: #ede9fe; color: #4c1d95; }
 .cp-status-badge--quote      { background: #fef3c7; color: #92400e; }
 
 .diag-summary-block {
@@ -1746,10 +1748,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   font-size: 0.72rem; font-weight: 700; padding: 2px 9px; border-radius: 10px;
   text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
 }
-.qa-status.draft    { background: #f1f5f9; color: #475569; }
-.qa-status.sent     { background: #fef3c7; color: #92400e; }
-.qa-status.approved { background: #d1fae5; color: #065f46; }
-.qa-status.invoiced { background: #ede9fe; color: #4c1d95; }
+.qa-status.draft     { background: #f1f5f9; color: #475569; }
+.qa-status.published { background: #dbeafe; color: #1d4ed8; }
+.qa-status.sent      { background: #fef3c7; color: #92400e; }
+.qa-status.approved  { background: #d1fae5; color: #065f46; }
+.qa-status.invoiced  { background: #ede9fe; color: #4c1d95; }
 
 .qa-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 
@@ -1800,10 +1803,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   text-transform: uppercase; letter-spacing: 0.04em;
 }
 .quote-selector-tab.active .qst-badge { background: rgba(255,255,255,0.2); color: white; }
-.quote-selector-tab:not(.active) .qst-badge.draft    { background: #f1f5f9; color: #64748b; }
-.quote-selector-tab:not(.active) .qst-badge.sent     { background: #fef3c7; color: #92400e; }
-.quote-selector-tab:not(.active) .qst-badge.approved { background: #d1fae5; color: #065f46; }
-.quote-selector-tab:not(.active) .qst-badge.invoiced { background: #ede9fe; color: #4c1d95; }
+.quote-selector-tab:not(.active) .qst-badge.draft     { background: #f1f5f9; color: #64748b; }
+.quote-selector-tab:not(.active) .qst-badge.published { background: #dbeafe; color: #1d4ed8; }
+.quote-selector-tab:not(.active) .qst-badge.sent      { background: #fef3c7; color: #92400e; }
+.quote-selector-tab:not(.active) .qst-badge.approved  { background: #d1fae5; color: #065f46; }
+.quote-selector-tab:not(.active) .qst-badge.invoiced  { background: #ede9fe; color: #4c1d95; }
 .quote-selector-add {
   padding: 6px 12px;
   border: 1px dashed #cbd5e1;
@@ -2434,11 +2438,12 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .qlr-body:hover .qlr-ref { border-color: #93c5fd; }
 
 /* Status-based left border accent */
-.quote-list-row.status-draft    { border-left-color: #d1d5db; }
-.quote-list-row.status-sent     { border-left-color: #3b82f6; }
-.quote-list-row.status-approved { border-left-color: #10b981; background: #f0fdf4; }
+.quote-list-row.status-draft     { border-left-color: #d1d5db; }
+.quote-list-row.status-published { border-left-color: #3b82f6; background: #eff6ff; }
+.quote-list-row.status-sent      { border-left-color: #f59e0b; }
+.quote-list-row.status-approved  { border-left-color: #10b981; background: #f0fdf4; }
 .quote-list-row.status-approved.checked { background: #dcfce7; }
-.quote-list-row.status-invoiced { border-left-color: #8b5cf6; }
+.quote-list-row.status-invoiced  { border-left-color: #8b5cf6; }
 
 .qlr-checkbox {
   width: 16px;
@@ -2481,10 +2486,11 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   border-radius: 999px;
   white-space: nowrap;
 }
-.qlr-status.draft    { background: #f3f4f6; color: #6b7280; }
-.qlr-status.sent     { background: #dbeafe; color: #1d4ed8; }
-.qlr-status.approved { background: #d1fae5; color: #065f46; }
-.qlr-status.invoiced { background: #ede9fe; color: #5b21b6; }
+.qlr-status.draft     { background: #f3f4f6; color: #6b7280; }
+.qlr-status.published { background: #dbeafe; color: #1d4ed8; }
+.qlr-status.sent      { background: #fef3c7; color: #92400e; }
+.qlr-status.approved  { background: #d1fae5; color: #065f46; }
+.qlr-status.invoiced  { background: #ede9fe; color: #5b21b6; }
 
 /* Detail panel */
 .quote-detail {

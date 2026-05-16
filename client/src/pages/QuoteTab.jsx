@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as quotesApi from '../services/quotesApi';
 
-const STATUS_LABELS = { draft: 'Draft', sent: 'Sent', approved: 'Customer accepted', invoiced: 'Invoiced' };
+const STATUS_LABELS = { draft: 'Draft', published: 'Published', sent: 'Sent', approved: 'Customer accepted', invoiced: 'Invoiced' };
 const TYPE_LABELS   = { part: 'Part', labour: 'Labour', other: 'Other' };
 
 // ── Preview modal ─────────────────────────────────────────────────────────────
@@ -813,21 +813,27 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
       {/* Status actions */}
       <div className="qd-status-actions">
         {quote.status === 'draft' && (
-          effectiveCustomer ? (
-            <button type="button" onClick={() => setShowSend(true)}>
-              Send to {effectiveCustomer.name || effectiveCustomer.email}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="secondary"
-              style={{ opacity: 0.55, cursor: 'not-allowed' }}
-              title="Attach a customer to this job first — use the '+ Attach customer' button at the top of the panel"
-              onClick={() => {}}
-            >
-              Send to customer
-            </button>
-          )
+          <button type="button" onClick={() => handleStatusChange('published')}>Publish quote</button>
+        )}
+        {quote.status === 'published' && (
+          <>
+            {effectiveCustomer ? (
+              <button type="button" onClick={() => setShowSend(true)}>
+                Send to {effectiveCustomer.name || effectiveCustomer.email}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="secondary"
+                style={{ opacity: 0.55, cursor: 'not-allowed' }}
+                title="Attach a customer to this job first — use the '+ Attach customer' button at the top of the panel"
+                onClick={() => {}}
+              >
+                Send to customer
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={() => handleStatusChange('draft')}>Back to draft</button>
+          </>
         )}
         {quote.status === 'sent' && (
           <>
