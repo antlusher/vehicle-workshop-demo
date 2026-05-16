@@ -719,21 +719,31 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
 
   const isReadOnly = quote.status === 'invoiced';
 
+  // Customer can live on the quote itself OR inherited from the project
+  const effectiveCustomer = quote.customer || project.customer;
+
   const handleStatusChange = async (status) => {
     const updated = await quotesApi.updateQuote(quote.id, { status }, token);
     onUpdated(updated);
   };
 
   const handleSend = async () => {
+    // If quote has no customer but project does, assign it first
+    if (!quote.customer && project.customer) {
+      await quotesApi.updateQuote(quote.id, { customer_id: project.customer.id }, token);
+    }
     const updated = await quotesApi.sendQuote(quote.id, token);
     onUpdated(updated);
     setShowSend(false);
   };
 
+  // Build quote object with effective customer for the send modal
+  const quoteForModal = effectiveCustomer ? { ...quote, customer: effectiveCustomer } : quote;
+
   return (
     <div className="quote-detail">
       {showPreview && <QuotePreviewModal quote={quote} onClose={() => setShowPreview(false)} />}
-      {showSend && <SendModal quote={quote} onClose={() => setShowSend(false)} onSent={handleSend} />}
+      {showSend && <SendModal quote={quoteForModal} onClose={() => setShowSend(false)} onSent={handleSend} />}
 
       {/* Detail header */}
       <div className="qd-header">
@@ -746,8 +756,12 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
               · sent {new Date(quote.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
             </span>
           )}
+          {effectiveCustomer && (
+            <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginLeft: 6 }}>
+              · {effectiveCustomer.name || effectiveCustomer.email}
+            </span>
+          )}
         </div>
-        <CustomerPicker quote={quote} project={project} token={token} onUpdated={onUpdated} />
       </div>
 
       {/* Overview + notes (read display) */}
@@ -799,19 +813,21 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
       {/* Status actions */}
       <div className="qd-status-actions">
         {quote.status === 'draft' && (
-          <button
-            type="button"
-            title={!quote.customer ? 'Attach a customer to the project first (top of the job panel)' : ''}
-            style={!quote.customer ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
-            onClick={() => {
-              if (!quote.customer) return;
-              setShowSend(true);
-            }}
-          >
-            {quote.customer
-              ? `Send to ${quote.customer.name || quote.customer.email}`
-              : 'Send to customer — attach customer first'}
-          </button>
+          effectiveCustomer ? (
+            <button type="button" onClick={() => setShowSend(true)}>
+              Send to {effectiveCustomer.name || effectiveCustomer.email}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="secondary"
+              style={{ opacity: 0.55, cursor: 'not-allowed' }}
+              title="Attach a customer to this job first — use the '+ Attach customer' button at the top of the panel"
+              onClick={() => {}}
+            >
+              Send to customer
+            </button>
+          )
         )}
         {quote.status === 'sent' && (
           <>
