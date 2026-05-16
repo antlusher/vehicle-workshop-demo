@@ -316,7 +316,7 @@ router.post('/:id/send', requireAuth, async (req, res) => {
     const vehicleDesc = [proj.make, proj.model, proj.year, proj.registration].filter(Boolean).join(' ');
 
     const settings = await getWorkshopSettings();
-    const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+    const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 
     // Generate a single-use magic link token (24h expiry)
     const magicToken = crypto.randomBytes(32).toString('hex');
@@ -324,7 +324,7 @@ router.post('/:id/send', requireAuth, async (req, res) => {
       `UPDATE users SET magic_token = $1, magic_token_expires_at = now() + interval '24 hours' WHERE id = $2`,
       [magicToken, quote.customer.id]
     );
-    const portalUrl = `${clientOrigin}/portal?magic=${magicToken}&project=${quote.projectId}`;
+    const portalUrl = `${customerOrigin}/portal?magic=${magicToken}&project=${quote.projectId}`;
 
     await sendQuoteToCustomer({
       to: quote.customer.email,

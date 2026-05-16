@@ -278,7 +278,21 @@ function App() {
     setActorState(null);
   };
 
+  const isCustomerSubdomain = window.location.hostname.startsWith('customer.');
+
   if (!token) {
+    if (isCustomerSubdomain) {
+      return (
+        <div className="app-shell">
+          <header className="app-header"><h1>Your Gofer</h1></header>
+          <section className="card" style={{ maxWidth: 420, margin: '80px auto', textAlign: 'center' }}>
+            <h2>Customer Portal</h2>
+            <p style={{ color: '#6b7280' }}>Use the link sent to your email to access your vehicle history and reports.</p>
+            {error && <p className="error">{error}</p>}
+          </section>
+        </div>
+      );
+    }
     return <Login onLogin={handleLogin} error={error} />;
   }
 

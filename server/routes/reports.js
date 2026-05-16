@@ -134,8 +134,8 @@ router.post('/:projectId/publish', requireAuth, async (req, res) => {
         [token, expires, proj.customer_id]
       );
 
-      const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
-      const portalUrl = `${clientOrigin}/portal?token=${token}`;
+      const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+      const portalUrl = `${customerOrigin}/portal?magic=${token}&project=${projectId}`;
       const vehicleDesc = [proj.year, proj.make, proj.model].filter(Boolean).join(' ') ||
                           proj.registration_snapshot || proj.registration || '';
 
