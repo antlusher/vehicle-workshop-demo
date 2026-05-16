@@ -308,7 +308,7 @@ function App() {
     );
   }
 
-  if (user && !user.subscribed) {
+  if (user && !user.subscribed && user.role !== 'customer') {
     return (
       <div className="app-shell">
         <header className="app-header">
