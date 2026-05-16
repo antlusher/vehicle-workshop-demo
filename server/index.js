@@ -19,7 +19,16 @@ const sysadminRouter = require('./routes/sysadmin');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map((o) => o.trim());
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // non-browser / server-to-server
+    if (allowedOrigins.some((o) => origin === o || origin.endsWith('.' + o.replace(/^https?:\/\//, '')))) {
+      return cb(null, true);
+    }
+    cb(new Error('CORS: origin not allowed'));
+  },
+}));
 app.use(express.json());
 
 // Serve uploaded job images as static files
