@@ -83,15 +83,18 @@ function QuoteSummary({ quote }) {
 
 function AcceptForm({ token, quote, onAccepted }) {
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const needsEmail = !quote.quoteEmail;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      await apiPost(`/api/customer/quick-quote/${token}/accept`, { name, phone });
+      await apiPost(`/api/customer/quick-quote/${token}/accept`, { name, phone, email: needsEmail ? email : undefined });
       onAccepted();
     } catch (err) {
       setError(err.message);
@@ -118,6 +121,18 @@ function AcceptForm({ token, quote, onAccepted }) {
             autoFocus
           />
         </div>
+        {needsEmail && (
+          <div className="qap-field">
+            <label>Email address <span className="qap-req">*</span></label>
+            <input
+              required
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@example.com"
+            />
+          </div>
+        )}
         <div className="qap-field">
           <label>Phone number</label>
           <input

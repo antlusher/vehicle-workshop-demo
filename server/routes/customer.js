@@ -560,7 +560,7 @@ router.get('/quick-quote/:token', async (req, res) => {
 // POST /api/customer/quick-quote/:token/accept — accept quote, create customer
 router.post('/quick-quote/:token/accept', async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const { name, phone, email: bodyEmail } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
     const { rows } = await query(
@@ -576,37 +576,35 @@ router.post('/quick-quote/:token/accept', async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Quote not found or link has expired' });
     const q = rows[0];
 
-    if (!q.quote_email) return res.status(400).json({ error: 'No email address on this quote link' });
+    const customerEmail = q.quote_email || bodyEmail;
+    if (!customerEmail) return res.status(400).json({ error: 'Email address is required' });
 
     // Find or create customer scoped to this workshop
     let customerId;
     const { rows: existing } = await query(
       `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = 'customer'`,
-      [q.quote_email, q.workshop_id]
+      [customerEmail, q.workshop_id]
     );
 
     if (existing.length) {
       customerId = existing[0].id;
-      // Update name/phone if provided
       await query(
         `UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone) WHERE id=$3`,
         [name || null, phone || null, customerId]
       );
     } else {
-      // Create new customer — no password yet, activation email sent below
       const magicToken = crypto.randomBytes(32).toString('hex');
       const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       const { rows: created } = await query(
         `INSERT INTO users (email, role, subscribed, name, phone, workshop_id, magic_token, magic_token_expires_at)
          VALUES ($1,'customer',true,$2,$3,$4,$5,$6) RETURNING id`,
-        [q.quote_email, name || null, phone || null, q.workshop_id, magicToken, expires]
+        [customerEmail, name || null, phone || null, q.workshop_id, magicToken, expires]
       );
       customerId = created[0].id;
 
-      // Send activation email (non-blocking)
       const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
       sendCustomerActivation({
-        to: q.quote_email,
+        to: customerEmail,
         customerName: name,
         workshopName: q.workshop_name,
         activationUrl: `${customerOrigin}/?activate=${magicToken}`,
