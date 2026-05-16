@@ -117,11 +117,9 @@ router.get('/project-customers/:projectId', requireAuth, async (req, res) => {
     const { rows } = await query(
       `SELECT u.id, u.email, u.name, u.phone
        FROM users u
-       JOIN customer_vehicles cv ON cv.customer_id = u.id
-       JOIN projects p ON p.vehicle_id = cv.vehicle_id
-       WHERE p.id = $1 AND u.role = 'customer'
+       WHERE u.role = 'customer' AND u.workshop_id = $1
        ORDER BY u.name, u.email`,
-      [req.params.projectId]
+      [req.user.workshopId]
     );
     res.json(rows.map((r) => ({ id: r.id, email: r.email, name: r.name || null, phone: r.phone || null })));
   } catch (err) {

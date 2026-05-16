@@ -1017,17 +1017,18 @@ function VehicleHistoryTab({ history, currentProjectId }) {
 function ProjectCustomerBar({ project, token, onUpdated }) {
   const [open, setOpen] = useState(false);
   const [customers, setCustomers] = useState(null);
+  const [filter, setFilter] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
-    if (customers) { setOpen(true); return; }
+    setOpen(true);
+    if (customers) return;
     try {
       const list = await fetch(`/api/quotes/project-customers/${project.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       }).then((r) => r.json());
       setCustomers(Array.isArray(list) ? list : []);
-      setOpen(true);
-    } catch { setCustomers([]); setOpen(true); }
+    } catch { setCustomers([]); }
   };
 
   const assign = async (customerId) => {
@@ -1036,10 +1037,17 @@ function ProjectCustomerBar({ project, token, onUpdated }) {
       await api.setProjectCustomer(project.id, customerId, token);
       onUpdated(project.id);
       setOpen(false);
+      setFilter('');
     } finally { setSaving(false); }
   };
 
   const remove = () => assign(null);
+
+  const visible = (customers || []).filter((c) => {
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    return (c.name || '').toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+  });
 
   return (
     <div style={{ position: 'relative' }}>
@@ -1065,15 +1073,24 @@ function ProjectCustomerBar({ project, token, onUpdated }) {
       )}
 
       {open && (
-        <div className="customer-picker-dropdown" style={{ top: '100%', right: 0, left: 'auto', minWidth: 220 }}>
+        <div className="customer-picker-dropdown" style={{ top: '100%', right: 0, left: 'auto', minWidth: 240 }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
+            <input
+              autoFocus
+              placeholder="Search customers…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.82rem' }}
+            />
+          </div>
           {!customers ? (
             <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>Loading…</p>
-          ) : customers.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>
-              No customers linked to this vehicle yet.
+              {filter ? 'No matches.' : 'No customers in this workshop yet — add them under Customers.'}
             </p>
           ) : (
-            customers.map((c) => (
+            visible.map((c) => (
               <button key={c.id} type="button" className="customer-picker-option" disabled={saving} onClick={() => assign(c.id)}>
                 <span className="cpo-name">{c.name || c.email}</span>
                 {c.name && <span className="cpo-email">{c.email}</span>}
@@ -1085,7 +1102,7 @@ function ProjectCustomerBar({ project, token, onUpdated }) {
               Remove customer
             </button>
           )}
-          <button type="button" className="customer-picker-option" style={{ color: '#6b7280', fontSize: '0.75rem' }} onClick={() => setOpen(false)}>
+          <button type="button" className="customer-picker-option" style={{ color: '#6b7280', fontSize: '0.75rem' }} onClick={() => { setOpen(false); setFilter(''); }}>
             Cancel
           </button>
         </div>

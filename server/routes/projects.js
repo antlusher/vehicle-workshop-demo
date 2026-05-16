@@ -351,6 +351,19 @@ router.patch('/:projectId/customer', requireAuth, async (req, res) => {
   }
   const { customerId } = req.body;
   await query(`UPDATE projects SET customer_id=$1, updated_at=now() WHERE id=$2`, [customerId || null, req.params.projectId]);
+
+  // Auto-link customer to the vehicle if not already linked
+  if (customerId) {
+    const { rows: projRows } = await query(`SELECT vehicle_id FROM projects WHERE id=$1`, [req.params.projectId]);
+    const vehicleId = projRows[0]?.vehicle_id;
+    if (vehicleId) {
+      await query(
+        `INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [customerId, vehicleId]
+      );
+    }
+  }
+
   const { rows } = await query(
     `SELECT p.*, cu.name AS customer_name, cu.email AS customer_email
      FROM projects p LEFT JOIN users cu ON cu.id = p.customer_id WHERE p.id = $1`,
