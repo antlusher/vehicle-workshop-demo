@@ -368,18 +368,22 @@ router.get('/customers', async (req, res) => {
 });
 
 router.post('/customers', async (req, res) => {
+  const wid = req.workshopId;
   const { email, password, name, phone, addressLine1, addressLine2, city, postcode } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
   try {
     const bcrypt = require('bcrypt');
-    const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-    if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+    const existing = await query(
+      'SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = \'customer\'',
+      [email, wid]
+    );
+    if (existing.rows.length) return res.status(409).json({ error: 'A customer with this email already exists at this workshop' });
     const hashed = await bcrypt.hash(password, 10);
     const { rows } = await query(
-      `INSERT INTO users (email, password, role, subscribed, name, phone, address_line1, address_line2, city, postcode)
-       VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO users (email, password, role, subscribed, name, phone, address_line1, address_line2, city, postcode, workshop_id)
+       VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7,$8,$9)
        RETURNING id, email, name, phone, address_line1, address_line2, city, postcode, created_at`,
-      [email, hashed, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null]
+      [email, hashed, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, wid]
     );
     return res.status(201).json({ ...formatCustomer(rows[0]), vehicleCount: 0 });
   } catch (err) {
@@ -617,8 +621,10 @@ router.post('/staff', async (req, res) => {
   }
   const bcrypt = require('bcrypt');
   const crypto = require('crypto');
-  const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+  const existing = await query(
+    `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND role != 'customer'`, [email]
+  );
+  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use by a staff account' });
   const hashed = await bcrypt.hash(password, 10);
   const token = crypto.randomBytes(32).toString('hex');
   const { rows } = await query(

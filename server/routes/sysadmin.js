@@ -192,8 +192,10 @@ router.get('/sysadmins', async (req, res) => {
 router.post('/sysadmins', async (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+  const existing = await query(
+    `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND role != 'customer'`, [email]
+  );
+  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use by a staff account' });
   const hashed = await bcrypt.hash(password, 10);
   const token = crypto.randomBytes(32).toString('hex');
   const { rows } = await query(
@@ -251,8 +253,10 @@ router.post('/workshops/:id/users', async (req, res) => {
       return res.status(403).json({ error: `Seat limit reached (${used}/${seat_limit}). Upgrade the workshop plan to add more staff.` });
     }
   }
-  const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use' });
+  const existing = await query(
+    `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND role != 'customer'`, [email]
+  );
+  if (existing.rows.length) return res.status(409).json({ error: 'Email already in use by a staff account' });
   const hashed = await bcrypt.hash(password, 10);
   const token = crypto.randomBytes(32).toString('hex');
   const { rows } = await query(
