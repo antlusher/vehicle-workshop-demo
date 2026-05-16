@@ -1,4 +1,6 @@
 const express = require('express');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const cheerio = require('cheerio');
@@ -383,12 +385,13 @@ router.post('/customers', async (req, res) => {
 
     const magicToken = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const placeholderPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 
     const { rows } = await query(
-      `INSERT INTO users (email, role, subscribed, name, phone, address_line1, address_line2, city, postcode, workshop_id, magic_token, magic_token_expires_at)
-       VALUES ($1,'customer',true,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO users (email, password, role, subscribed, name, phone, address_line1, address_line2, city, postcode, workshop_id, magic_token, magic_token_expires_at)
+       VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id, email, name, phone, address_line1, address_line2, city, postcode, created_at`,
-      [email, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, wid, magicToken, expires]
+      [email, placeholderPassword, name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, wid, magicToken, expires]
     );
 
     // Fire activation email — non-blocking

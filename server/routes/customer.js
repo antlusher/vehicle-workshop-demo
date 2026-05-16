@@ -595,10 +595,11 @@ router.post('/quick-quote/:token/accept', async (req, res) => {
     } else {
       const magicToken = crypto.randomBytes(32).toString('hex');
       const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const placeholderPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
       const { rows: created } = await query(
-        `INSERT INTO users (email, role, subscribed, name, phone, workshop_id, magic_token, magic_token_expires_at)
-         VALUES ($1,'customer',true,$2,$3,$4,$5,$6) RETURNING id`,
-        [customerEmail, name || null, phone || null, q.workshop_id, magicToken, expires]
+        `INSERT INTO users (email, password, role, subscribed, name, phone, workshop_id, magic_token, magic_token_expires_at)
+         VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7) RETURNING id`,
+        [customerEmail, placeholderPassword, name || null, phone || null, q.workshop_id, magicToken, expires]
       );
       customerId = created[0].id;
 
