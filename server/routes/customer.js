@@ -17,13 +17,15 @@ router.post('/magic-login', async (req, res) => {
   if (!rows.length) return res.status(401).json({ error: 'Link expired or invalid' });
 
   const user = rows[0];
-  // Burn the token immediately — single use, stamp last_seen_at
+  // Generate a session token and burn the magic token in one update
+  const sessionToken = crypto.randomBytes(32).toString('hex');
   await query(
-    `UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL, last_seen_at = now() WHERE id = $1`,
-    [user.id]
+    `UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL,
+     token = $2, session_active = true, last_seen_at = now() WHERE id = $1`,
+    [user.id, sessionToken]
   );
 
-  return res.json({ token: user.token, role: user.role, email: user.email, name: user.name });
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
 });
 
 function requireCustomer(req, res, next) {
