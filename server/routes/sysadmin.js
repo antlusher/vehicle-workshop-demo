@@ -34,18 +34,63 @@ router.post('/bootstrap', async (req, res) => {
 router.get('/workshops', async (req, res) => {
   const { rows } = await query(
     `SELECT w.*,
-            COUNT(DISTINCT u.id) FILTER (WHERE u.role IN ('owner','admin','tech'))::int AS staff_count,
-            COUNT(DISTINCT p.id)::int AS project_count,
-            COUNT(DISTINCT u2.id) FILTER (WHERE u2.role = 'customer')::int AS customer_count,
-            (SELECT MAX(ai.created_at) FROM ai_requests ai WHERE ai.workshop_id = w.id) AS last_ai_at
+            (SELECT COUNT(*)::int FROM users u WHERE u.workshop_id = w.id AND u.role IN ('owner','admin','tech')) AS staff_count,
+            (SELECT COUNT(*)::int FROM projects p WHERE p.workshop_id = w.id) AS project_count,
+            (SELECT COUNT(*)::int FROM users u WHERE u.workshop_id = w.id AND u.role = 'customer') AS customer_count,
+            (SELECT COUNT(*)::int FROM ai_requests ai WHERE ai.workshop_id = w.id AND ai.created_at > now() - interval '30 days') AS ai_requests_30d,
+            (SELECT COALESCE(SUM(ai.input_tokens + ai.output_tokens), 0)::int FROM ai_requests ai WHERE ai.workshop_id = w.id AND ai.created_at > now() - interval '30 days') AS tokens_30d,
+            (SELECT COUNT(*)::int FROM knowledge_base kb WHERE kb.workshop_id = w.id) AS kb_entries,
+            (SELECT MAX(ai.created_at) FROM ai_requests ai WHERE ai.workshop_id = w.id) AS last_ai_at,
+            (SELECT MAX(lh.created_at) FROM login_history lh INNER JOIN users u ON u.id = lh.user_id WHERE u.workshop_id = w.id) AS last_login_at
      FROM workshops w
-     LEFT JOIN users u ON u.workshop_id = w.id
-     LEFT JOIN projects p ON p.workshop_id = w.id
-     LEFT JOIN users u2 ON u2.workshop_id = w.id
-     GROUP BY w.id
      ORDER BY w.created_at DESC`
   );
   return res.json(rows);
+});
+
+router.get('/workshops/:id/analytics', async (req, res) => {
+  const wid = req.params.id;
+  const [chatModes, dailyAi, recentLogins, topContributors] = await Promise.all([
+    query(
+      `SELECT COALESCE(chat_mode, 'diagnose') AS chat_mode,
+              COUNT(*)::int AS requests,
+              COALESCE(SUM(input_tokens + output_tokens), 0)::int AS tokens
+       FROM ai_requests WHERE workshop_id = $1 AND created_at > now() - interval '30 days'
+       GROUP BY 1 ORDER BY 2 DESC`,
+      [wid]
+    ),
+    query(
+      `SELECT date_trunc('day', created_at)::date AS day,
+              COUNT(*)::int AS requests,
+              COALESCE(SUM(input_tokens + output_tokens), 0)::int AS tokens
+       FROM ai_requests WHERE workshop_id = $1 AND created_at > now() - interval '30 days'
+       GROUP BY 1 ORDER BY 1 ASC`,
+      [wid]
+    ),
+    query(
+      `SELECT lh.created_at, lh.ip_address, u.email, u.name, u.role
+       FROM login_history lh
+       INNER JOIN users u ON u.id = lh.user_id
+       WHERE u.workshop_id = $1
+       ORDER BY lh.created_at DESC LIMIT 20`,
+      [wid]
+    ),
+    query(
+      `SELECT u.email, u.name, u.role, COUNT(kb.id)::int AS kb_count
+       FROM users u
+       LEFT JOIN knowledge_base kb ON kb.created_by = u.id AND kb.workshop_id = $1
+       WHERE u.workshop_id = $1 AND u.role IN ('owner','admin','tech')
+       GROUP BY u.id, u.email, u.name, u.role
+       ORDER BY kb_count DESC`,
+      [wid]
+    ),
+  ]);
+  return res.json({
+    chatModes: chatModes.rows,
+    dailyAi: dailyAi.rows,
+    recentLogins: recentLogins.rows,
+    topContributors: topContributors.rows,
+  });
 });
 
 const PLAN_SEATS = { starter: 3, professional: 10, enterprise: 0 };

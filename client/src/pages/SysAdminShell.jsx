@@ -4,6 +4,7 @@ import {
   getSysAdmins, createSysAdmin, deleteSysAdmin,
   getWorkshopUsers, createWorkshopUser, updateWorkshopUser, deleteWorkshopUser,
   getBrainEntries, createBrainEntry, updateBrainEntry, deleteBrainEntry,
+  getWorkshopAnalytics,
   actAs,
 } from '../services/sysadminApi';
 
@@ -349,6 +350,105 @@ function StaffRow({ user, workshopId, token, onUpdated, onDeleted }) {
   );
 }
 
+function fmtRelative(d) {
+  if (!d) return '—';
+  const diff = Date.now() - new Date(d).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'Just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d ago`;
+  return fmtDate(d);
+}
+
+function ActivityTab({ workshopId, token }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    getWorkshopAnalytics(workshopId, token).then(setData).finally(() => setLoading(false));
+  }, [workshopId]);
+
+  if (loading) return <p className="admin-loading">Loading…</p>;
+  if (!data) return <p style={{ color: '#dc2626' }}>Failed to load analytics.</p>;
+
+  const { chatModes, dailyAi, recentLogins, topContributors } = data;
+  const totalRequests = chatModes.reduce((s, r) => s + r.requests, 0);
+  const totalTokens = chatModes.reduce((s, r) => s + r.tokens, 0);
+
+  const modeLabels = { diagnose: 'Diagnose', howto: 'How-to', workshop: 'Workshop' };
+  const modeColors = { diagnose: '#3b82f6', howto: '#10b981', workshop: '#f59e0b' };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 10px' }}>AI FEATURE USAGE — LAST 30 DAYS</p>
+        {chatModes.length === 0 ? (
+          <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No AI activity yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {chatModes.map((r) => {
+              const pct = totalRequests > 0 ? Math.round((r.requests / totalRequests) * 100) : 0;
+              const color = modeColors[r.chat_mode] || '#6b7280';
+              return (
+                <div key={r.chat_mode}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 3 }}>
+                    <span style={{ fontWeight: 600 }}>{modeLabels[r.chat_mode] || r.chat_mode}</span>
+                    <span style={{ color: '#94a3b8' }}>{r.requests} requests · {(r.tokens / 1000).toFixed(1)}k tokens</span>
+                  </div>
+                  <div style={{ height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
+                  </div>
+                </div>
+              );
+            })}
+            <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 4 }}>
+              Total: {totalRequests.toLocaleString()} requests · {(totalTokens / 1000).toFixed(1)}k tokens
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 10px' }}>STAFF · KB CONTRIBUTIONS</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {topContributors.map((u) => (
+            <div key={u.email} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0', borderBottom: '1px solid #1e293b' }}>
+              <span>{u.name || u.email} <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>({u.role})</span></span>
+              <span style={{ color: u.kb_count > 0 ? '#10b981' : '#6b7280', fontWeight: 600 }}>{u.kb_count} entries</span>
+            </div>
+          ))}
+          {!topContributors.length && <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No staff yet.</p>}
+        </div>
+      </div>
+
+      <div>
+        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0 0 10px' }}>RECENT LOGINS</p>
+        {recentLogins.length === 0 ? (
+          <p style={{ color: '#6b7280', fontSize: '0.85rem' }}>No login history.</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table" style={{ fontSize: '0.78rem' }}>
+              <thead><tr><th>User</th><th>Role</th><th>When</th><th>IP</th></tr></thead>
+              <tbody>
+                {recentLogins.map((l, i) => (
+                  <tr key={i}>
+                    <td>{l.name || l.email}</td>
+                    <td><span className={`sys-role-badge sys-role-badge--${l.role}`}>{l.role}</span></td>
+                    <td style={{ color: '#9ca3af', whiteSpace: 'nowrap' }}>{fmtRelative(l.created_at)}</td>
+                    <td style={{ color: '#6b7280' }}>{l.ip_address || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Workshop detail panel ─────────────────────────────────────────────────────
 function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
   const [tab, setTab] = useState('config');
@@ -407,7 +507,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
       </p>
 
       <div className="cust-detail-tabs">
-        {[{id:'config',label:'Config'},{id:'ai',label:'AI & Plan'},{id:'staff',label:'Staff'}].map((t) => (
+        {[{id:'config',label:'Config'},{id:'ai',label:'AI & Plan'},{id:'staff',label:'Staff'},{id:'activity',label:'Activity'}].map((t) => (
           <button key={t.id} className={`cust-detail-tab${tab===t.id?' active':''}`} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
       </div>
@@ -468,6 +568,10 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
               {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save AI config'}
             </button>
           </div>
+        )}
+
+        {tab === 'activity' && (
+          <ActivityTab workshopId={workshop.id} token={token} />
         )}
 
         {tab === 'staff' && (
@@ -618,26 +722,50 @@ function WorkshopsPage({ token, onActAs }) {
 
       <div className="admin-split">
         <div className={`admin-split-main${selected ? ' admin-split-main--narrow' : ''}`}>
-          {loading ? <p className="admin-loading">Loading…</p> : (
+          {loading ? <p className="admin-loading">Loading…</p> : (() => {
+            const maxAi = Math.max(...workshops.map((w) => w.ai_requests_30d || 0), 0);
+            const maxKb = Math.max(...workshops.map((w) => w.kb_entries || 0), 0);
+            return (
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
-                  <tr><th>Name</th><th>Plan</th><th>Staff</th><th>Projects</th><th>Customers</th><th>Status</th><th>Created</th><th></th></tr>
+                  <tr><th>Workshop</th><th>Plan</th><th>Staff</th><th>Projects</th><th>AI 30d</th><th>KB</th><th>Last active</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody>
-                  {workshops.map((w) => (
+                  {workshops.map((w) => {
+                    const tags = [];
+                    if (maxAi > 0 && w.ai_requests_30d === maxAi) tags.push({ label: 'Most Active', color: '#3b82f6' });
+                    if (maxKb > 0 && w.kb_entries === maxKb) tags.push({ label: 'Top Contributor', color: '#10b981' });
+                    const lastActivity = w.last_ai_at || w.last_login_at;
+                    const recentMs = lastActivity ? Date.now() - new Date(lastActivity).getTime() : null;
+                    const isLive = recentMs !== null && recentMs < 60 * 60 * 1000;
+                    return (
                     <tr key={w.id} className={`admin-table-row${selected?.id===w.id?' admin-table-row--active':''}`}>
-                      <td style={{ fontWeight: 600 }}>{w.name}</td>
+                      <td>
+                        <div style={{ fontWeight: 600 }}>{w.name}</div>
+                        <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
+                          {isLive && <span style={{ fontSize: '0.65rem', background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>● LIVE</span>}
+                          {tags.map((t) => (
+                            <span key={t.label} style={{ fontSize: '0.65rem', background: t.color, color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>{t.label}</span>
+                          ))}
+                        </div>
+                      </td>
                       <td><span className={`sys-plan-badge sys-plan-badge--${w.plan}`}>{w.plan}</span></td>
                       <td style={{ textAlign: 'center' }}>{w.staff_count || 0}</td>
                       <td style={{ textAlign: 'center' }}>{w.project_count || 0}</td>
-                      <td style={{ textAlign: 'center' }}>{w.customer_count || 0}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span style={{ fontWeight: 600, color: w.ai_requests_30d > 0 ? '#e2e8f0' : '#6b7280' }}>{(w.ai_requests_30d || 0).toLocaleString()}</span>
+                        {w.tokens_30d > 0 && <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>{(w.tokens_30d / 1000).toFixed(0)}k tok</div>}
+                      </td>
+                      <td style={{ textAlign: 'center', color: w.kb_entries > 0 ? '#e2e8f0' : '#6b7280' }}>{w.kb_entries || 0}</td>
+                      <td style={{ fontSize: '0.78rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                        {lastActivity ? fmtRelative(lastActivity) : '—'}
+                      </td>
                       <td>
                         <span style={{ fontSize: '0.75rem', fontWeight: 600, color: w.active ? '#16a34a' : '#dc2626' }}>
                           {w.active ? 'Active' : 'Suspended'}
                         </span>
                       </td>
-                      <td style={{ fontSize: '0.8rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>{fmtDate(w.created_at)}</td>
                       <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
                         <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 12px' }}
                           onClick={() => setSelected(selected?.id===w.id ? null : w)}>
@@ -660,14 +788,16 @@ function WorkshopsPage({ token, onActAs }) {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {!workshops.length && (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No workshops yet.</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No workshops yet.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-          )}
+            );
+          })()}
         </div>
         {selected && (
           <WorkshopDetail

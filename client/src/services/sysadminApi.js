@@ -32,6 +32,7 @@ export const getSysAdmins     = (token) => request('/api/sysadmin/sysadmins', {}
 export const createSysAdmin   = (data, token) => request('/api/sysadmin/sysadmins', { method: 'POST', body: data }, token);
 export const deleteSysAdmin   = (id, token) => request(`/api/sysadmin/sysadmins/${id}`, { method: 'DELETE' }, token);
 
+export const getWorkshopAnalytics = (id, token) => request(`/api/sysadmin/workshops/${id}/analytics`, {}, token);
 export const getWorkshopUsers   = (id, token) => request(`/api/sysadmin/workshops/${id}/users`, {}, token);
 export const createWorkshopUser = (workshopId, data, token) =>
   request(`/api/sysadmin/workshops/${workshopId}/users`, { method: 'POST', body: data }, token);

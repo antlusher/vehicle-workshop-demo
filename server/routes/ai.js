@@ -72,11 +72,11 @@ router.post('/ask', requireAuth, async (req, res) => {
     );
     await query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId]);
     query(
-      `INSERT INTO ai_requests (user_id, workshop_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      `INSERT INTO ai_requests (user_id, workshop_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms, chat_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [req.user.id, req.user.workshopId || null, projectId,
        question.slice(0, 200), answer.slice(0, 200),
-       inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs]
+       inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs, chatMode || 'diagnose']
     ).catch(() => {});
 
     const [{ rows: updatedHistory }, { rows: confirmedFixes }] = await Promise.all([
