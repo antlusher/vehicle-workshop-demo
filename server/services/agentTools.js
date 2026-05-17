@@ -159,6 +159,36 @@ async function getDtcInfo({ code }) {
   }
 }
 
+async function webSearch({ query, max_results = 5 }) {
+  const key = process.env.OLLAMA_API_KEY;
+  if (!key) return { error: 'Web search not configured (OLLAMA_API_KEY missing)' };
+  try {
+    const res = await axios.post('https://ollama.com/api/web_search',
+      { query, max_results: Math.min(max_results, 10) },
+      { headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 15000 }
+    );
+    const results = res.data.results || [];
+    if (!results.length) return { message: 'No results found for that query.' };
+    return { results: results.map((r) => ({ title: r.title, url: r.url, content: r.content })) };
+  } catch (err) {
+    return { error: `Web search failed: ${err.response?.data?.error || err.message}` };
+  }
+}
+
+async function webFetch({ url }) {
+  const key = process.env.OLLAMA_API_KEY;
+  if (!key) return { error: 'Web fetch not configured (OLLAMA_API_KEY missing)' };
+  try {
+    const res = await axios.post('https://ollama.com/api/web_fetch',
+      { url },
+      { headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 20000 }
+    );
+    return { title: res.data.title, content: res.data.content?.slice(0, 4000), url };
+  } catch (err) {
+    return { error: `Web fetch failed: ${err.response?.data?.error || err.message}` };
+  }
+}
+
 const toolDefinitions = [
   {
     name: 'get_vehicle_specs',
@@ -216,6 +246,29 @@ const toolDefinitions = [
       required: ['code'],
     },
   },
+  {
+    name: 'web_search',
+    description: 'Search the internet for up-to-date information. Use this for TSBs, recall notices, torque specs, fault code details, known issues, or anything not found in the knowledge base. Prefer specific queries e.g. "Ford Focus 1.6 TDCi timing belt replacement torque specs" over generic ones.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query' },
+        max_results: { type: 'number', description: 'Number of results to return (default 5, max 10)' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'web_fetch',
+    description: 'Fetch and read the full content of a specific webpage. Use this to read a TSB, recall notice, or technical article found via web_search.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'The full URL to fetch' },
+      },
+      required: ['url'],
+    },
+  },
 ];
 
 const toolHandlers = {
@@ -223,6 +276,8 @@ const toolHandlers = {
   search_knowledge_base: searchKnowledgeBase,
   get_common_fixes: getCommonFixes,
   get_dtc_info: getDtcInfo,
+  web_search: webSearch,
+  web_fetch: webFetch,
 };
 
 module.exports = { toolDefinitions, toolHandlers };

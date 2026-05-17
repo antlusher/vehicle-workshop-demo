@@ -280,7 +280,7 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
   const tools = isWorkshop
     ? workshopToolDefinitions
     : chatMode === 'howto'
-      ? toolDefinitions.filter((t) => ['get_vehicle_specs', 'search_knowledge_base'].includes(t.name))
+      ? toolDefinitions.filter((t) => ['get_vehicle_specs', 'search_knowledge_base', 'web_search', 'web_fetch'].includes(t.name))
       : toolDefinitions;
   const handlers = isWorkshop ? workshopToolHandlers : toolHandlers;
 
