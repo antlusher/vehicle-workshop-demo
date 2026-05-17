@@ -6,7 +6,7 @@ import {
   getBrainEntries, createBrainEntry, updateBrainEntry, deleteBrainEntry,
   getWorkshopAnalytics,
   actAs,
-  getTraces, getTraceStats, evaluateTrace, evaluatePending, getKbQuality,
+  getTraces, getTraceStats, getTrace, evaluateTrace, evaluatePending, getKbQuality,
 } from '../services/sysadminApi';
 
 const PLANS = ['starter', 'professional', 'enterprise'];
@@ -963,6 +963,8 @@ function TracesTab({ token, workshops }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [selectedFull, setSelectedFull] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [evaluatingAll, setEvaluatingAll] = useState(false);
   const [filters, setFilters] = useState({ workshop_id: '', chat_mode: '', verdict: '', limit: 50, offset: 0 });
 
@@ -1033,7 +1035,11 @@ function TracesTab({ token, workshops }) {
               <tbody>
                 {traces.map((t) => (
                   <tr key={t.id} className={`admin-table-row${selected?.id === t.id ? ' admin-table-row--active' : ''}`}
-                    onClick={() => setSelected(selected?.id === t.id ? null : t)} style={{ cursor: 'pointer' }}>
+                    onClick={() => {
+                      if (selected?.id === t.id) { setSelected(null); setSelectedFull(null); return; }
+                      setSelected(t); setSelectedFull(null); setLoadingDetail(true);
+                      getTrace(t.id, token).then(setSelectedFull).finally(() => setLoadingDetail(false));
+                    }} style={{ cursor: 'pointer' }}>
                     <td style={{ whiteSpace: 'nowrap', fontSize: '0.75rem', color: '#9ca3af' }}>{fmtRelative(t.created_at)}</td>
                     <td style={{ fontSize: '0.78rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.workshop_name || <span style={{ color: '#6b7280' }}>—</span>}</td>
                     <td><span className="rag-mode-badge" style={{ background: MODE_COLOR[t.chat_mode] || '#6b7280', fontSize: '0.7rem' }}>{t.chat_mode || '—'}</span></td>
@@ -1077,8 +1083,11 @@ function TracesTab({ token, workshops }) {
 
       {selected && (
         <div className="rag-detail-panel">
-          <button className="detail-close" onClick={() => setSelected(null)}>✕</button>
-          <TraceDetail trace={selected} token={token} onEvaluated={() => load()} />
+          <button className="detail-close" onClick={() => { setSelected(null); setSelectedFull(null); }}>✕</button>
+          {loadingDetail
+            ? <p className="admin-loading">Loading trace…</p>
+            : <TraceDetail trace={selectedFull || selected} token={token} onEvaluated={() => { load(); getTrace(selected.id, token).then(setSelectedFull); }} />
+          }
         </div>
       )}
     </div>
