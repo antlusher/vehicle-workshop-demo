@@ -114,13 +114,17 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
     lines.push(
       'MODE: How To / Procedure',
       'The technician needs step-by-step instructions for a specific repair or replacement task.',
+      '',
+      'CRITICAL: Before writing any steps, you MUST call search_knowledge_base with the procedure name as the symptom field.',
+      'If search_knowledge_base returns documented steps for this procedure, use those steps EXACTLY and verbatim — do NOT substitute your training knowledge. Workshop-specific procedures override your defaults.',
+      'Only fall back to your training knowledge if search_knowledge_base returns no results.',
+      '',
       '- Respond ONLY with a numbered list of steps. No preamble, no intro, no closing remarks.',
       '- Do NOT ask diagnostic questions or suggest further investigation.',
       '- Do NOT include MOT history, advisories, or condition observations.',
       '- Assume the technician has already decided to do this job.',
       '- Include torque values, special tools, and critical warnings inline with the relevant step.',
       '- Keep each step concise — one action per step.',
-      '- Use your tools to look up vehicle-specific specs (torque, fluid capacity, etc.) if needed.',
     );
   } else {
     lines.push(
@@ -212,31 +216,47 @@ function buildMessages(history, question) {
   return messages;
 }
 
-async function fetchEngineDocSummary(engineCode, question = '') {
-  if (!engineCode) return '';
+async function fetchEngineDocSummary(engineCode, question = '', project = null) {
   try {
-    const { rows: eRows } = await query(
-      'SELECT id FROM engines WHERE LOWER(code) = LOWER($1)',
-      [engineCode]
-    );
-    if (!eRows.length) return '';
-    const engineId = eRows[0].id;
+    const { vectorSearch } = require('./embeddingService');
+    let engineId = null;
 
-    // When a question is provided, use semantic search to pick the most relevant docs
+    if (engineCode) {
+      const { rows: eRows } = await query(
+        'SELECT id FROM engines WHERE LOWER(code) = LOWER($1)',
+        [engineCode]
+      );
+      if (eRows.length) engineId = eRows[0].id;
+    }
+
+    // Semantic search — scoped to engine if we have one, otherwise global
     if (question) {
-      const { vectorSearch } = require('./embeddingService');
-      const vecDocs = await vectorSearch(question, { engineId, limit: 3 });
+      const vecDocs = await vectorSearch(question, { engineId, limit: 5 });
       if (vecDocs && vecDocs.length > 0) {
         return vecDocs.map((r) => r.content).join('\n\n---\n\n');
       }
     }
 
-    // Fall back to the top docs for this engine ordered by title
+    // FTS fallback — search by engine_id, OR make/model, OR full-text on the question
+    const make = project?.make || null;
+    const model = project?.model || null;
+    const ftsQuery = question || null;
+
     const { rows: docRows } = await query(
-      `SELECT content FROM knowledge_base
-       WHERE engine_id = $1 AND source = 'tech_doc' AND category = 'procedure'
-       ORDER BY title LIMIT 5`,
-      [engineId]
+      `SELECT title, content FROM knowledge_base
+       WHERE (
+         ($1::uuid IS NOT NULL AND engine_id = $1)
+         OR ($2::text IS NOT NULL AND $3::text IS NOT NULL
+             AND LOWER(make) = LOWER($2) AND LOWER(model) = LOWER($3))
+         OR ($4::text IS NOT NULL AND search_vector @@ plainto_tsquery('english', $4))
+       )
+       ORDER BY
+         CASE WHEN $1::uuid IS NOT NULL AND engine_id = $1 THEN 0 ELSE 1 END,
+         CASE WHEN $4::text IS NOT NULL AND search_vector IS NOT NULL
+              THEN ts_rank(search_vector, plainto_tsquery('english', $4)) ELSE 0 END DESC,
+         updated_at DESC
+       LIMIT 6`,
+      [engineId, make, model, ftsQuery]
     );
     if (!docRows.length) return '';
     return docRows.map((r) => r.content).join('\n\n---\n\n');
@@ -247,7 +267,7 @@ async function fetchEngineDocSummary(engineCode, question = '') {
 
 async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], chatMode = 'diagnose') {
   const techDocSummary = chatMode !== 'workshop'
-    ? await fetchEngineDocSummary(project.engineCode, question)
+    ? await fetchEngineDocSummary(project.engineCode, question, project)
     : '';
   const messages = buildMessages(history, question);
   const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode, techDocSummary);
@@ -256,7 +276,7 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
   const tools = isWorkshop
     ? workshopToolDefinitions
     : chatMode === 'howto'
-      ? toolDefinitions.filter((t) => t.name === 'get_vehicle_specs')
+      ? toolDefinitions.filter((t) => ['get_vehicle_specs', 'search_knowledge_base'].includes(t.name))
       : toolDefinitions;
   const handlers = isWorkshop ? workshopToolHandlers : toolHandlers;
 
