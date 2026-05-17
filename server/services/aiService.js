@@ -129,8 +129,12 @@ function buildSystemPrompt(project, crossWorkshopFixes = [], chatMode = 'diagnos
   } else {
     lines.push(
       'MODE: Diagnose',
-      'Always use your tools to check for confirmed fixes and vehicle specs before answering.',
-      'If a DTC code is mentioned, use the get_dtc_info tool.',
+      'TOOL USE RULES — follow these before every response:',
+      '- ALWAYS call search_knowledge_base first to check for confirmed fixes relevant to the question.',
+      '- For any question about labour time, cost estimates, torque specs, fluid capacities, or known faults: call web_search with a specific query (e.g. "Ford Focus 1.6 TDCi timing chain replacement labour hours") — do NOT answer from training knowledge alone.',
+      '- For recall notices or TSBs: call web_search before answering.',
+      '- If a DTC code is mentioned: call get_dtc_info.',
+      '- Only answer without tools when the question is purely diagnostic reasoning that does not depend on vehicle-specific facts.',
       '',
       'STRICT formatting rules — follow these exactly:',
       '- Do NOT use emojis anywhere in your response.',
