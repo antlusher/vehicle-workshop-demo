@@ -6,6 +6,7 @@ import {
   getBrainEntries, createBrainEntry, updateBrainEntry, deleteBrainEntry,
   getWorkshopAnalytics,
   actAs,
+  getTraces, getTraceStats, evaluateTrace, evaluatePending, getKbQuality,
 } from '../services/sysadminApi';
 
 const PLANS = ['starter', 'professional', 'enterprise'];
@@ -814,16 +815,392 @@ function WorkshopsPage({ token, onActAs }) {
   );
 }
 
+// ── RAG Eval ──────────────────────────────────────────────────────────────────
+const VERDICT_COLOR = { pass: '#16a34a', partial: '#d97706', fail: '#dc2626' };
+const MODE_COLOR = { diagnose: '#3b82f6', howto: '#10b981', workshop: '#f59e0b' };
+
+function ScoreBar({ value, color = '#3b82f6' }) {
+  if (value == null) return <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>—</span>;
+  const pct = Math.round(value * 100);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ width: 60, height: 6, background: '#1e293b', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
+      </div>
+      <span style={{ fontSize: '0.72rem', color: '#94a3b8', minWidth: 28 }}>{pct}%</span>
+    </div>
+  );
+}
+
+function TraceDetail({ trace, token, onEvaluated }) {
+  const [evaluating, setEvaluating] = useState(false);
+  const [err, setErr] = useState('');
+  const vc = trace.vehicle_context || {};
+  const chunks = trace.kb_chunks_retrieved || [];
+  const tools = trace.tool_calls || [];
+
+  const handleEvaluate = async () => {
+    setEvaluating(true); setErr('');
+    try {
+      await evaluateTrace(trace.id, token);
+      onEvaluated();
+    } catch (e) { setErr(e.message); }
+    finally { setEvaluating(false); }
+  };
+
+  return (
+    <div className="rag-detail">
+      <div className="rag-detail-meta">
+        <span className="rag-mode-badge" style={{ background: MODE_COLOR[trace.chat_mode] || '#6b7280' }}>
+          {trace.chat_mode || '—'}
+        </span>
+        {trace.workshop_name && <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{trace.workshop_name}</span>}
+        <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{fmtDate(trace.created_at)}</span>
+        {trace.latency_ms && <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{(trace.latency_ms / 1000).toFixed(1)}s</span>}
+        {trace.tokens_used && <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>{trace.tokens_used.toLocaleString()} tok</span>}
+      </div>
+
+      {(vc.make || vc.model) && (
+        <p className="rag-vehicle">
+          {[vc.year, vc.make, vc.model, vc.engineCode ? `(${vc.engineCode})` : null].filter(Boolean).join(' ')}
+        </p>
+      )}
+
+      <div className="rag-section-label">QUESTION</div>
+      <p className="rag-question-full">{trace.question}</p>
+
+      <div className="rag-section-label">KB CHUNKS RETRIEVED ({chunks.length})</div>
+      {chunks.length === 0
+        ? <p className="rag-empty">None — AI used training knowledge only</p>
+        : chunks.map((c, i) => (
+          <div key={i} className="rag-chunk">
+            <div className="rag-chunk-title">{c.title || 'Untitled'} {c.source && <span className="rag-chunk-source">{c.source}</span>}</div>
+            <p className="rag-chunk-content">{c.content}</p>
+          </div>
+        ))
+      }
+
+      <div className="rag-section-label">TOOL CALLS ({tools.length})</div>
+      {tools.length === 0
+        ? <p className="rag-empty">None</p>
+        : tools.map((t, i) => (
+          <div key={i} className="rag-tool">
+            <div className="rag-tool-name">{t.tool}</div>
+            <div className="rag-tool-io">
+              <div><span className="rag-io-label">IN</span> <code>{JSON.stringify(t.input)}</code></div>
+              <div><span className="rag-io-label">OUT</span> <code>{JSON.stringify(t.output).slice(0, 300)}{JSON.stringify(t.output).length > 300 ? '…' : ''}</code></div>
+            </div>
+          </div>
+        ))
+      }
+
+      <div className="rag-section-label">RESPONSE</div>
+      <pre className="rag-response">{trace.response}</pre>
+
+      <div className="rag-section-label">EVALUATION</div>
+      {trace.verdict ? (
+        <div className="rag-scores">
+          <div className="rag-score-row">
+            <span>Faithfulness</span>
+            <ScoreBar value={trace.faithfulness} color="#3b82f6" />
+          </div>
+          <div className="rag-score-row">
+            <span>Answer relevancy</span>
+            <ScoreBar value={trace.answer_relevancy} color="#10b981" />
+          </div>
+          <div className="rag-score-row">
+            <span>Context precision</span>
+            <ScoreBar value={trace.context_precision} color="#f59e0b" />
+          </div>
+          <div className="rag-score-row">
+            <span>Verdict</span>
+            <span style={{ fontWeight: 700, color: VERDICT_COLOR[trace.verdict] || '#94a3b8' }}>
+              {trace.verdict?.toUpperCase()}
+            </span>
+          </div>
+          {trace.judge_notes && <p className="rag-judge-notes">{trace.judge_notes}</p>}
+          <button className="secondary" style={{ fontSize: '0.75rem', marginTop: 8 }} onClick={handleEvaluate} disabled={evaluating}>
+            {evaluating ? 'Re-evaluating…' : 'Re-evaluate'}
+          </button>
+        </div>
+      ) : (
+        <div>
+          <p className="rag-empty">Not yet evaluated</p>
+          {err && <p style={{ color: '#dc2626', fontSize: '0.8rem' }}>{err}</p>}
+          <button style={{ fontSize: '0.8rem' }} onClick={handleEvaluate} disabled={evaluating}>
+            {evaluating ? 'Evaluating…' : 'Evaluate with AI judge'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RagStatsBar({ stats }) {
+  if (!stats) return null;
+  const { totals, verdicts } = stats;
+  const passCount   = verdicts.find((v) => v.verdict === 'pass')?.count || 0;
+  const partialCount = verdicts.find((v) => v.verdict === 'partial')?.count || 0;
+  const failCount   = verdicts.find((v) => v.verdict === 'fail')?.count || 0;
+
+  return (
+    <div className="rag-stats-bar">
+      <div className="rag-stat"><div className="rag-stat-val">{parseInt(totals.total).toLocaleString()}</div><div className="rag-stat-lbl">Total traces</div></div>
+      <div className="rag-stat"><div className="rag-stat-val">{parseInt(totals.evaluated).toLocaleString()}</div><div className="rag-stat-lbl">Evaluated</div></div>
+      <div className="rag-stat"><div className="rag-stat-val" style={{ color: '#16a34a' }}>{passCount}</div><div className="rag-stat-lbl">Pass</div></div>
+      <div className="rag-stat"><div className="rag-stat-val" style={{ color: '#d97706' }}>{partialCount}</div><div className="rag-stat-lbl">Partial</div></div>
+      <div className="rag-stat"><div className="rag-stat-val" style={{ color: '#dc2626' }}>{failCount}</div><div className="rag-stat-lbl">Fail</div></div>
+      <div className="rag-stat"><div className="rag-stat-val">{totals.avg_faithfulness != null ? Math.round(totals.avg_faithfulness * 100) + '%' : '—'}</div><div className="rag-stat-lbl">Avg faithfulness</div></div>
+      <div className="rag-stat"><div className="rag-stat-val">{totals.avg_relevancy != null ? Math.round(totals.avg_relevancy * 100) + '%' : '—'}</div><div className="rag-stat-lbl">Avg relevancy</div></div>
+      <div className="rag-stat"><div className="rag-stat-val">{totals.avg_precision != null ? Math.round(totals.avg_precision * 100) + '%' : '—'}</div><div className="rag-stat-lbl">Avg ctx precision</div></div>
+    </div>
+  );
+}
+
+function TracesTab({ token, workshops }) {
+  const [traces, setTraces] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [evaluatingAll, setEvaluatingAll] = useState(false);
+  const [filters, setFilters] = useState({ workshop_id: '', chat_mode: '', verdict: '', limit: 50, offset: 0 });
+
+  const load = async (f = filters) => {
+    setLoading(true);
+    try {
+      const params = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== ''));
+      const [data, s] = await Promise.all([getTraces(params, token), getTraceStats(token)]);
+      setTraces(data.traces);
+      setTotal(data.total);
+      setStats(s);
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleEvaluateAll = async () => {
+    setEvaluatingAll(true);
+    try { await evaluatePending(20, token); await load(); }
+    finally { setEvaluatingAll(false); }
+  };
+
+  const f = (key) => (e) => setFilters((s) => ({ ...s, [key]: e.target.value, offset: 0 }));
+
+  return (
+    <div className="rag-layout">
+      <div className={`rag-list${selected ? ' rag-list--narrow' : ''}`}>
+        <RagStatsBar stats={stats} />
+
+        <div className="rag-toolbar">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flex: 1 }}>
+            <select style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: '0.8rem' }}
+              value={filters.chat_mode} onChange={f('chat_mode')}>
+              <option value="">All modes</option>
+              <option value="diagnose">Diagnose</option>
+              <option value="howto">How-to</option>
+              <option value="workshop">Workshop</option>
+            </select>
+            <select style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: '0.8rem' }}
+              value={filters.verdict} onChange={f('verdict')}>
+              <option value="">All verdicts</option>
+              <option value="pass">Pass</option>
+              <option value="partial">Partial</option>
+              <option value="fail">Fail</option>
+            </select>
+            <select style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: '0.8rem' }}
+              value={filters.workshop_id} onChange={f('workshop_id')}>
+              <option value="">All workshops</option>
+              {(workshops || []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+            <button className="secondary" style={{ fontSize: '0.78rem', padding: '5px 12px' }} onClick={() => load()}>Filter</button>
+            <button className="secondary" style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+              onClick={() => { const reset = { workshop_id: '', chat_mode: '', verdict: '', limit: 50, offset: 0 }; setFilters(reset); load(reset); }}>
+              Clear
+            </button>
+          </div>
+          <button style={{ fontSize: '0.78rem', padding: '5px 14px' }} onClick={handleEvaluateAll} disabled={evaluatingAll}>
+            {evaluatingAll ? 'Evaluating…' : 'Evaluate pending (20)'}
+          </button>
+        </div>
+
+        {loading ? <p className="admin-loading">Loading…</p> : (
+          <div className="admin-table-wrap">
+            <table className="admin-table rag-table">
+              <thead>
+                <tr><th>When</th><th>Workshop</th><th>Mode</th><th>Question</th><th>Chunks</th><th>Verdict</th><th>Faithful</th><th>Relevant</th><th>Ctx prec</th></tr>
+              </thead>
+              <tbody>
+                {traces.map((t) => (
+                  <tr key={t.id} className={`admin-table-row${selected?.id === t.id ? ' admin-table-row--active' : ''}`}
+                    onClick={() => setSelected(selected?.id === t.id ? null : t)} style={{ cursor: 'pointer' }}>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: '0.75rem', color: '#9ca3af' }}>{fmtRelative(t.created_at)}</td>
+                    <td style={{ fontSize: '0.78rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.workshop_name || <span style={{ color: '#6b7280' }}>—</span>}</td>
+                    <td><span className="rag-mode-badge" style={{ background: MODE_COLOR[t.chat_mode] || '#6b7280', fontSize: '0.7rem' }}>{t.chat_mode || '—'}</span></td>
+                    <td style={{ fontSize: '0.8rem', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.question}</td>
+                    <td style={{ textAlign: 'center', fontSize: '0.78rem', color: (t.kb_chunks_retrieved?.length || 0) > 0 ? '#e2e8f0' : '#6b7280' }}>
+                      {t.kb_chunks_retrieved?.length || 0}
+                    </td>
+                    <td>
+                      {t.verdict
+                        ? <span style={{ fontWeight: 700, fontSize: '0.72rem', color: VERDICT_COLOR[t.verdict] }}>{t.verdict.toUpperCase()}</span>
+                        : <span style={{ color: '#6b7280', fontSize: '0.72rem' }}>pending</span>}
+                    </td>
+                    <td><ScoreBar value={t.faithfulness} color="#3b82f6" /></td>
+                    <td><ScoreBar value={t.answer_relevancy} color="#10b981" /></td>
+                    <td><ScoreBar value={t.context_precision} color="#f59e0b" /></td>
+                  </tr>
+                ))}
+                {!traces.length && (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No traces yet. Traces are captured automatically for every AI query.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {total > filters.limit && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', fontSize: '0.8rem', color: '#94a3b8' }}>
+            <button className="secondary" style={{ fontSize: '0.75rem' }}
+              disabled={filters.offset === 0}
+              onClick={() => { const f = { ...filters, offset: Math.max(0, filters.offset - filters.limit) }; setFilters(f); load(f); }}>
+              Prev
+            </button>
+            <span>{filters.offset + 1}–{Math.min(filters.offset + filters.limit, total)} of {total}</span>
+            <button className="secondary" style={{ fontSize: '0.75rem' }}
+              disabled={filters.offset + filters.limit >= total}
+              onClick={() => { const f = { ...filters, offset: filters.offset + filters.limit }; setFilters(f); load(f); }}>
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+
+      {selected && (
+        <div className="rag-detail-panel">
+          <button className="detail-close" onClick={() => setSelected(null)}>✕</button>
+          <TraceDetail trace={selected} token={token} onEvaluated={() => load()} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const ISSUE_LABELS = {
+  too_short: 'Too short',
+  too_long: 'Too long',
+  no_fts_index: 'No FTS index',
+  unscoped: 'Unscoped',
+  duplicate_title: 'Duplicate title',
+};
+const ISSUE_COLOR = {
+  too_short: '#d97706', too_long: '#d97706', no_fts_index: '#dc2626',
+  unscoped: '#7c3aed', duplicate_title: '#6b7280',
+};
+
+function KbQualityTab({ token }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [filterIssue, setFilterIssue] = useState('');
+
+  useEffect(() => {
+    getKbQuality(token).then(setData).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="admin-loading">Scanning knowledge base…</p>;
+  if (!data) return null;
+
+  const { summary, flagged, byWorkshop } = data;
+  const shown = filterIssue ? flagged.filter((r) => r.issue === filterIssue) : flagged;
+
+  return (
+    <div>
+      <div className="rag-stats-bar" style={{ marginBottom: 20 }}>
+        <div className="rag-stat"><div className="rag-stat-val">{summary.total.toLocaleString()}</div><div className="rag-stat-lbl">Total entries</div></div>
+        <div className="rag-stat"><div className="rag-stat-val" style={{ color: '#16a34a' }}>{summary.clean.toLocaleString()}</div><div className="rag-stat-lbl">Clean</div></div>
+        <div className="rag-stat"><div className="rag-stat-val" style={{ color: '#dc2626' }}>{summary.issues.toLocaleString()}</div><div className="rag-stat-lbl">Flagged</div></div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 20, marginBottom: 24 }}>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 10 }}>BY WORKSHOP</p>
+          {byWorkshop.map((w) => (
+            <div key={w.workshopId} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #1e293b', fontSize: '0.82rem' }}>
+              <span>{w.workshopName}</span>
+              <span>{w.total} entries · <span style={{ color: w.issues > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>{w.issues} issues</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0 }}>FLAGGED ENTRIES</p>
+        <select style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0', fontSize: '0.78rem' }}
+          value={filterIssue} onChange={(e) => setFilterIssue(e.target.value)}>
+          <option value="">All issues</option>
+          {Object.entries(ISSUE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead><tr><th>Issue</th><th>Workshop</th><th>Title</th><th>Source</th><th>Chars</th><th>Created</th></tr></thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.id}>
+                <td><span style={{ fontWeight: 700, fontSize: '0.72rem', color: ISSUE_COLOR[r.issue] || '#94a3b8' }}>{ISSUE_LABELS[r.issue] || r.issue}</span></td>
+                <td style={{ fontSize: '0.78rem', color: '#9ca3af' }}>{r.workshop_name || 'Global'}</td>
+                <td style={{ fontSize: '0.82rem', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</td>
+                <td style={{ fontSize: '0.75rem', color: '#6b7280' }}>{r.source || '—'}</td>
+                <td style={{ fontSize: '0.75rem', textAlign: 'right', color: (r.content_length < 80 || r.content_length > 6000) ? '#d97706' : '#9ca3af' }}>{r.content_length?.toLocaleString()}</td>
+                <td style={{ fontSize: '0.75rem', color: '#6b7280', whiteSpace: 'nowrap' }}>{fmtDate(r.created_at)}</td>
+              </tr>
+            ))}
+            {!shown.length && <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: 24 }}>No flagged entries.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RagEvalPage({ token, workshops }) {
+  const [tab, setTab] = useState('traces');
+  return (
+    <div>
+      <div className="admin-toolbar">
+        <h2 className="admin-page-title" style={{ margin: 0 }}>RAG Evaluation</h2>
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 16 }}>
+        Every AI query is traced automatically. Use the AI judge to score faithfulness, answer relevancy, and context precision — the same metrics as Ragas.
+      </p>
+      <div className="cust-detail-tabs" style={{ marginBottom: 20 }}>
+        <button className={`cust-detail-tab${tab === 'traces' ? ' active' : ''}`} onClick={() => setTab('traces')}>Traces</button>
+        <button className={`cust-detail-tab${tab === 'kb' ? ' active' : ''}`} onClick={() => setTab('kb')}>KB Data Quality</button>
+      </div>
+      {tab === 'traces' && <TracesTab token={token} workshops={workshops} />}
+      {tab === 'kb' && <KbQualityTab token={token} />}
+    </div>
+  );
+}
+
 // ── Shell ─────────────────────────────────────────────────────────────────────
 const NAV = [
   { id: 'overview',   label: 'Overview' },
   { id: 'workshops',  label: 'Workshops' },
   { id: 'brain',      label: 'Knowledge Brain' },
   { id: 'sysadmins', label: 'Sysadmins' },
+  { id: 'rageval',    label: 'RAG Eval' },
 ];
 
 export default function SysAdminShell({ token, userEmail, onLogout, onActAs }) {
   const [page, setPage] = useState('overview');
+  const [workshops, setWorkshops] = useState([]);
+
+  useEffect(() => {
+    import('../services/sysadminApi').then(({ getWorkshops }) =>
+      getWorkshops(token).then(setWorkshops).catch(() => {})
+    );
+  }, [token]);
 
   return (
     <div className="sys-shell">
@@ -849,6 +1226,7 @@ export default function SysAdminShell({ token, userEmail, onLogout, onActAs }) {
         {page === 'workshops'  && <WorkshopsPage token={token} onActAs={onActAs} />}
         {page === 'brain'      && <BrainPage token={token} />}
         {page === 'sysadmins' && <SysAdminsPage token={token} currentUserEmail={userEmail} />}
+        {page === 'rageval'    && <RagEvalPage token={token} workshops={workshops} />}
       </main>
     </div>
   );

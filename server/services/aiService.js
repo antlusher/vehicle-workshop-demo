@@ -233,7 +233,7 @@ async function fetchEngineDocSummary(engineCode, question = '', project = null) 
     if (question) {
       const vecDocs = await vectorSearch(question, { engineId, limit: 5 });
       if (vecDocs && vecDocs.length > 0) {
-        return vecDocs.map((r) => r.content).join('\n\n---\n\n');
+        return { summary: vecDocs.map((r) => r.content).join('\n\n---\n\n'), chunks: vecDocs };
       }
     }
 
@@ -243,7 +243,7 @@ async function fetchEngineDocSummary(engineCode, question = '', project = null) 
     const ftsQuery = question || null;
 
     const { rows: docRows } = await query(
-      `SELECT title, content FROM knowledge_base
+      `SELECT id, title, content, source FROM knowledge_base
        WHERE (
          ($1::uuid IS NOT NULL AND engine_id = $1)
          OR ($2::text IS NOT NULL AND $3::text IS NOT NULL
@@ -258,19 +258,23 @@ async function fetchEngineDocSummary(engineCode, question = '', project = null) 
        LIMIT 6`,
       [engineId, make, model, ftsQuery]
     );
-    if (!docRows.length) return '';
-    return docRows.map((r) => r.content).join('\n\n---\n\n');
+    if (!docRows.length) return { summary: '', chunks: [] };
+    return { summary: docRows.map((r) => r.content).join('\n\n---\n\n'), chunks: docRows };
   } catch {
-    return '';
+    return { summary: '', chunks: [] };
   }
 }
 
 async function runAgentLoop(client, project, history, question, crossWorkshopFixes = [], chatMode = 'diagnose') {
-  const techDocSummary = chatMode !== 'workshop'
+  const startMs = Date.now();
+  const { saveTrace } = require('./ragasEval');
+
+  const docResult = chatMode !== 'workshop'
     ? await fetchEngineDocSummary(project.engineCode, question, project)
-    : '';
+    : { summary: '', chunks: [] };
+
   const messages = buildMessages(history, question);
-  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode, techDocSummary);
+  const systemPrompt = buildSystemPrompt(project, crossWorkshopFixes, chatMode, docResult.summary);
 
   const isWorkshop = chatMode === 'workshop';
   const tools = isWorkshop
@@ -280,6 +284,10 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
       : toolDefinitions;
   const handlers = isWorkshop ? workshopToolHandlers : toolHandlers;
 
+  const traceToolCalls = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
   let response = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
@@ -287,6 +295,8 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
     tools,
     messages,
   });
+  totalInputTokens += response.usage?.input_tokens || 0;
+  totalOutputTokens += response.usage?.output_tokens || 0;
 
   while (response.stop_reason === 'tool_use') {
     const toolUseBlocks = response.content.filter((b) => b.type === 'tool_use');
@@ -300,6 +310,8 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
       } catch (err) {
         result = { error: err.message };
       }
+
+      traceToolCalls.push({ tool: toolUse.name, input: toolUse.input, output: result });
 
       toolResults.push({
         type: 'tool_result',
@@ -318,13 +330,34 @@ async function runAgentLoop(client, project, history, question, crossWorkshopFix
       tools,
       messages,
     });
+    totalInputTokens += response.usage?.input_tokens || 0;
+    totalOutputTokens += response.usage?.output_tokens || 0;
   }
 
   const textBlock = response.content.find((b) => b.type === 'text');
+  const answerText = textBlock?.text || 'No response generated.';
+
+  // Fire-and-forget trace — never let it delay or break the response
+  saveTrace({
+    workshopId: project.workshopId || null,
+    projectId: project.id || null,
+    chatMode,
+    question,
+    vehicleContext: {
+      make: project.make, model: project.model, year: project.year,
+      engineCode: project.engineCode, fuelType: project.fuelType,
+    },
+    kbChunksRetrieved: docResult.chunks,
+    toolCalls: traceToolCalls,
+    response: answerText,
+    tokensUsed: totalInputTokens + totalOutputTokens,
+    latencyMs: Date.now() - startMs,
+  }).catch((err) => console.error('[trace]', err.message));
+
   return {
-    answer: textBlock?.text || 'No response generated.',
-    inputTokens: response.usage?.input_tokens || 0,
-    outputTokens: response.usage?.output_tokens || 0,
+    answer: answerText,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
   };
 }
 

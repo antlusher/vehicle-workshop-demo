@@ -40,3 +40,11 @@ export const updateWorkshopUser = (workshopId, userId, data, token) =>
   request(`/api/sysadmin/workshops/${workshopId}/users/${userId}`, { method: 'PATCH', body: data }, token);
 export const deleteWorkshopUser = (workshopId, userId, token) =>
   request(`/api/sysadmin/workshops/${workshopId}/users/${userId}`, { method: 'DELETE' }, token);
+
+// RAG Traces
+export const getTraces         = (params, token) => request(`/api/sysadmin/traces?${new URLSearchParams(params)}`, {}, token);
+export const getTraceStats     = (token) => request('/api/sysadmin/traces/stats', {}, token);
+export const getTrace          = (id, token) => request(`/api/sysadmin/traces/${id}`, {}, token);
+export const evaluateTrace     = (id, token) => request(`/api/sysadmin/traces/${id}/evaluate`, { method: 'POST' }, token);
+export const evaluatePending   = (limit, token) => request('/api/sysadmin/traces/evaluate-pending', { method: 'POST', body: { limit } }, token);
+export const getKbQuality      = (token) => request('/api/sysadmin/kb-quality', {}, token);

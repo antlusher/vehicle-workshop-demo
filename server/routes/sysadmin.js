@@ -415,4 +415,172 @@ router.delete('/act-as', async (req, res) => {
   return res.json({ ok: true });
 });
 
+// ── RAG Traces ────────────────────────────────────────────────────────────────
+
+router.get('/traces', requireSysAdmin, async (req, res) => {
+  const { workshop_id, chat_mode, verdict, limit = 50, offset = 0 } = req.query;
+  const conditions = [];
+  const params = [];
+
+  if (workshop_id) { params.push(workshop_id); conditions.push(`t.workshop_id = $${params.length}`); }
+  if (chat_mode)   { params.push(chat_mode);   conditions.push(`t.chat_mode = $${params.length}`); }
+  if (verdict)     { params.push(verdict);      conditions.push(`e.verdict = $${params.length}`); }
+
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+  params.push(parseInt(limit), parseInt(offset));
+
+  const { rows } = await query(
+    `SELECT t.id, t.workshop_id, t.project_id, t.chat_mode, t.question,
+            t.vehicle_context, t.kb_chunks_retrieved, t.tool_calls,
+            t.tokens_used, t.latency_ms, t.created_at,
+            w.name as workshop_name,
+            e.faithfulness, e.answer_relevancy, e.context_precision, e.verdict, e.judge_notes, e.evaluated_at
+     FROM ai_traces t
+     LEFT JOIN workshops w ON w.id = t.workshop_id
+     LEFT JOIN ai_trace_evals e ON e.trace_id = t.id
+     ${where}
+     ORDER BY t.created_at DESC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*) FROM ai_traces t LEFT JOIN ai_trace_evals e ON e.trace_id = t.id ${where}`,
+    params.slice(0, -2)
+  );
+
+  return res.json({ traces: rows, total: parseInt(countRows[0].count) });
+});
+
+router.get('/traces/stats', requireSysAdmin, async (req, res) => {
+  const [totals, verdicts, modes] = await Promise.all([
+    query(`SELECT COUNT(*) as total,
+                  ROUND(AVG(e.faithfulness)::numeric, 3) as avg_faithfulness,
+                  ROUND(AVG(e.answer_relevancy)::numeric, 3) as avg_relevancy,
+                  ROUND(AVG(e.context_precision)::numeric, 3) as avg_precision,
+                  COUNT(e.id) as evaluated
+           FROM ai_traces t LEFT JOIN ai_trace_evals e ON e.trace_id = t.id`),
+    query(`SELECT e.verdict, COUNT(*) as count
+           FROM ai_trace_evals e GROUP BY e.verdict`),
+    query(`SELECT t.chat_mode, COUNT(*) as count,
+                  ROUND(AVG(e.faithfulness)::numeric, 3) as avg_faithfulness
+           FROM ai_traces t LEFT JOIN ai_trace_evals e ON e.trace_id = t.id
+           GROUP BY t.chat_mode ORDER BY count DESC`),
+  ]);
+  return res.json({ totals: totals.rows[0], verdicts: verdicts.rows, modes: modes.rows });
+});
+
+router.get('/traces/:id', requireSysAdmin, async (req, res) => {
+  const { rows } = await query(
+    `SELECT t.*, w.name as workshop_name,
+            e.faithfulness, e.answer_relevancy, e.context_precision, e.verdict, e.judge_notes, e.evaluated_at
+     FROM ai_traces t
+     LEFT JOIN workshops w ON w.id = t.workshop_id
+     LEFT JOIN ai_trace_evals e ON e.trace_id = t.id
+     WHERE t.id = $1`,
+    [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Trace not found' });
+  return res.json(rows[0]);
+});
+
+router.post('/traces/:id/evaluate', requireSysAdmin, async (req, res) => {
+  const { rows } = await query('SELECT * FROM ai_traces WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Trace not found' });
+  const { evaluateTrace, saveEval } = require('../services/ragasEval');
+  try {
+    const scores = await evaluateTrace(rows[0]);
+    await saveEval(rows[0].id, scores);
+    return res.json(scores);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/traces/evaluate-pending', requireSysAdmin, async (req, res) => {
+  const { limit = 20 } = req.body || {};
+  const { rows: pending } = await query(
+    `SELECT t.* FROM ai_traces t
+     LEFT JOIN ai_trace_evals e ON e.trace_id = t.id
+     WHERE e.id IS NULL
+     ORDER BY t.created_at DESC LIMIT $1`,
+    [Math.min(parseInt(limit) || 20, 50)]
+  );
+  if (!pending.length) return res.json({ evaluated: 0 });
+
+  const { evaluateTrace, saveEval } = require('../services/ragasEval');
+  let evaluated = 0;
+  for (const trace of pending) {
+    try {
+      const scores = await evaluateTrace(trace);
+      await saveEval(trace.id, scores);
+      evaluated++;
+    } catch (err) {
+      console.error('[eval-pending]', err.message);
+    }
+  }
+  return res.json({ evaluated, total: pending.length });
+});
+
+// ── KB Data Quality ───────────────────────────────────────────────────────────
+
+router.get('/kb-quality', requireSysAdmin, async (req, res) => {
+  const { rows: flagged } = await query(
+    `SELECT kb.id, kb.title, kb.source, kb.category, kb.workshop_id,
+            w.name as workshop_name,
+            LENGTH(kb.content) as content_length,
+            kb.created_at,
+            kb.search_vector IS NULL as no_embedding,
+            CASE
+              WHEN LENGTH(kb.content) < 80  THEN 'too_short'
+              WHEN LENGTH(kb.content) > 6000 THEN 'too_long'
+              WHEN kb.search_vector IS NULL   THEN 'no_fts_index'
+              WHEN kb.make IS NULL AND kb.model IS NULL AND kb.engine_id IS NULL
+                   AND kb.transmission_id IS NULL AND kb.workshop_id IS NULL THEN 'unscoped'
+              ELSE NULL
+            END as issue
+     FROM knowledge_base kb
+     LEFT JOIN workshops w ON w.id = kb.workshop_id
+     ORDER BY kb.created_at DESC`
+  );
+
+  const issues = flagged.filter((r) => r.issue);
+  const clean  = flagged.filter((r) => !r.issue);
+
+  // Duplicate title detection within same workshop
+  const titleCounts = {};
+  flagged.forEach((r) => {
+    const key = `${r.workshop_id || 'global'}::${(r.title || '').toLowerCase()}`;
+    titleCounts[key] = (titleCounts[key] || 0) + 1;
+  });
+  const duplicates = flagged.filter((r) => {
+    const key = `${r.workshop_id || 'global'}::${(r.title || '').toLowerCase()}`;
+    return titleCounts[key] > 1;
+  }).map((r) => ({ ...r, issue: 'duplicate_title' }));
+
+  const allIssues = [
+    ...issues,
+    ...duplicates.filter((d) => !issues.find((i) => i.id === d.id)),
+  ];
+
+  // Per-workshop summary
+  const byWorkshop = {};
+  flagged.forEach((r) => {
+    const key = r.workshop_id || 'global';
+    if (!byWorkshop[key]) byWorkshop[key] = { workshopId: key, workshopName: r.workshop_name || 'Global Brain', total: 0, issues: 0 };
+    byWorkshop[key].total++;
+    if (allIssues.find((i) => i.id === r.id)) byWorkshop[key].issues++;
+  });
+
+  return res.json({
+    summary: {
+      total: flagged.length,
+      clean: clean.length,
+      issues: allIssues.length,
+    },
+    flagged: allIssues,
+    byWorkshop: Object.values(byWorkshop).sort((a, b) => b.issues - a.issues),
+  });
+});
+
 module.exports = router;

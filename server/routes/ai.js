@@ -50,7 +50,8 @@ router.post('/ask', requireAuth, async (req, res) => {
   const startMs = Date.now();
   try {
     const result = await generateRepairAdvice(
-      { id: project.id, make: project.make, model: project.model, year: project.year,
+      { id: project.id, workshopId: project.workshop_id,
+        make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
         registration: project.registration_snapshot || project.registration,
         vin: project.vin, motTests, motVehicleMeta },
