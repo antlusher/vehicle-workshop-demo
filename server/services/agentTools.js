@@ -1,5 +1,5 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
+const { chromium } = require('playwright');
 const { query } = require('./db');
 const { vectorSearch } = require('./embeddingService');
 
@@ -160,63 +160,84 @@ async function getDtcInfo({ code }) {
   }
 }
 
+// Singleton browser — launched once, reused across all tool calls
+let _browser = null;
+
+async function getBrowser() {
+  if (_browser && _browser.isConnected()) return _browser;
+  _browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  });
+  _browser.on('disconnected', () => { _browser = null; });
+  return _browser;
+}
+
+async function withPage(fn) {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-GB,en;q=0.9' });
+  try {
+    return await fn(page);
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
 async function webSearch({ query, max_results = 5 }) {
   const limit = Math.min(max_results, 10);
+  return withPage(async (page) => {
+    await page.goto(
+      `https://duckduckgo.com/?q=${encodeURIComponent(query)}&kl=wt-wt`,
+      { waitUntil: 'domcontentloaded', timeout: 20000 }
+    );
+    // Wait for results or a CAPTCHA challenge
+    await page.waitForSelector('[data-testid="result"], .result__title, form#challenge-form', { timeout: 10000 })
+      .catch(() => {});
 
-  // Brave Search API if key is configured
-  if (process.env.BRAVE_SEARCH_API_KEY) {
-    try {
-      const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
-        params: { q: query, count: limit, text_decorations: false },
-        headers: { 'Accept': 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY },
-        timeout: 10000,
-      });
-      const hits = res.data.web?.results || [];
-      if (!hits.length) return { message: 'No results found.' };
-      return { results: hits.slice(0, limit).map((r) => ({ title: r.title, url: r.url, content: r.description })) };
-    } catch (err) {
-      // fall through to DuckDuckGo
-    }
-  }
+    const results = await page.evaluate((limit) => {
+      const items = document.querySelectorAll('[data-testid="result"]');
+      const out = [];
+      for (const item of items) {
+        if (out.length >= limit) break;
+        const titleEl = item.querySelector('h2 a, [data-testid="result-title-a"]');
+        const snippetEl = item.querySelector('[data-testid="result-snippet"]');
+        const title = titleEl?.textContent?.trim() || '';
+        const url = titleEl?.href || '';
+        const content = snippetEl?.textContent?.trim() || '';
+        if (title && url) out.push({ title, url, content });
+      }
+      return out;
+    }, limit);
 
-  return {
-    message: 'Web search requires a BRAVE_SEARCH_API_KEY. Get a free key (2000 queries/month) at https://api.search.brave.com — add it to server/.env as BRAVE_SEARCH_API_KEY.',
-  };
+    if (!results.length) return { message: 'No results found for that query.' };
+    return { results };
+  });
 }
 
 async function webFetch({ url }) {
-  try {
-    const res = await axios.get(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorkshopBot/1.0)' },
-      timeout: 15000,
-      maxContentLength: 2 * 1024 * 1024,
+  return withPage(async (page) => {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    const title = await page.title();
+
+    // Strip non-content elements then extract readable text
+    await page.evaluate(() => {
+      const remove = ['script', 'style', 'nav', 'footer', 'header', 'aside', 'iframe', 'noscript'];
+      remove.forEach((tag) => document.querySelectorAll(tag).forEach((el) => el.remove()));
     });
 
-    const contentType = res.headers['content-type'] || '';
-    if (!contentType.includes('html')) {
-      return { url, content: String(res.data).slice(0, 4000) };
-    }
+    const content = await page.evaluate(() => {
+      const main = document.querySelector('article, [role="main"], main, .content, #content')
+        || document.body;
+      return (main.innerText || main.textContent || '')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+        .slice(0, 4000);
+    });
 
-    const $ = cheerio.load(res.data);
-
-    // Remove non-content elements
-    $('script, style, nav, footer, header, aside, iframe, noscript, [role="banner"], [role="navigation"]').remove();
-
-    const title = $('title').first().text().trim();
-
-    // Prefer semantic content containers
-    const container = $('article, [role="main"], main, .content, #content, .post, .article').first();
-    const text = (container.length ? container : $('body'))
-      .text()
-      .replace(/\s{3,}/g, '\n\n')
-      .replace(/\n{4,}/g, '\n\n')
-      .trim()
-      .slice(0, 4000);
-
-    return { title, content: text, url };
-  } catch (err) {
-    return { error: `Web fetch failed: ${err.message}` };
-  }
+    return { title, content, url };
+  });
 }
 
 const toolDefinitions = [
