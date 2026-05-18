@@ -19,6 +19,8 @@
 !/server/**
 !/client
 !/client/**
+!/searxng
+!/searxng/**
 
 # Ignore frontend build output
 /client/dist/

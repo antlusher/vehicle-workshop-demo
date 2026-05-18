@@ -186,33 +186,24 @@ async function withPage(fn) {
 
 async function webSearch({ query, max_results = 5 }) {
   const limit = Math.min(max_results, 10);
-  return withPage(async (page) => {
-    await page.goto(
-      `https://duckduckgo.com/?q=${encodeURIComponent(query)}&kl=wt-wt`,
-      { waitUntil: 'domcontentloaded', timeout: 20000 }
-    );
-    // Wait for results or a CAPTCHA challenge
-    await page.waitForSelector('[data-testid="result"], .result__title, form#challenge-form', { timeout: 10000 })
-      .catch(() => {});
-
-    const results = await page.evaluate((limit) => {
-      const items = document.querySelectorAll('[data-testid="result"]');
-      const out = [];
-      for (const item of items) {
-        if (out.length >= limit) break;
-        const titleEl = item.querySelector('h2 a, [data-testid="result-title-a"]');
-        const snippetEl = item.querySelector('[data-testid="result-snippet"]');
-        const title = titleEl?.textContent?.trim() || '';
-        const url = titleEl?.href || '';
-        const content = snippetEl?.textContent?.trim() || '';
-        if (title && url) out.push({ title, url, content });
-      }
-      return out;
-    }, limit);
-
-    if (!results.length) return { message: 'No results found for that query.' };
-    return { results };
-  });
+  const searxngUrl = process.env.SEARXNG_URL || 'http://searxng:8080';
+  try {
+    const res = await axios.get(`${searxngUrl}/search`, {
+      params: { q: query, format: 'json', language: 'en', categories: 'general' },
+      timeout: 15000,
+    });
+    const hits = res.data.results || [];
+    if (!hits.length) return { message: 'No results found for that query.' };
+    return {
+      results: hits.slice(0, limit).map((r) => ({
+        title: r.title,
+        url: r.url,
+        content: r.content || r.snippet || '',
+      })),
+    };
+  } catch (err) {
+    return { error: `Web search unavailable: ${err.message}` };
+  }
 }
 
 async function webFetch({ url }) {
