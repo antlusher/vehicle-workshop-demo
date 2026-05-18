@@ -1,4 +1,5 @@
 const axios = require('axios');
+const cheerio = require('cheerio');
 const { query } = require('./db');
 const { vectorSearch } = require('./embeddingService');
 
@@ -160,32 +161,79 @@ async function getDtcInfo({ code }) {
 }
 
 async function webSearch({ query, max_results = 5 }) {
-  const key = process.env.OLLAMA_API_KEY;
-  if (!key) return { error: 'Web search not configured (OLLAMA_API_KEY missing)' };
+  const limit = Math.min(max_results, 10);
+
+  // Brave Search API if key is configured
+  if (process.env.BRAVE_SEARCH_API_KEY) {
+    try {
+      const res = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+        params: { q: query, count: limit, text_decorations: false },
+        headers: { 'Accept': 'application/json', 'X-Subscription-Token': process.env.BRAVE_SEARCH_API_KEY },
+        timeout: 10000,
+      });
+      const hits = res.data.web?.results || [];
+      if (!hits.length) return { message: 'No results found.' };
+      return { results: hits.slice(0, limit).map((r) => ({ title: r.title, url: r.url, content: r.description })) };
+    } catch (err) {
+      // fall through to DuckDuckGo
+    }
+  }
+
+  // DuckDuckGo HTML fallback — no API key needed
   try {
-    const res = await axios.post('https://ollama.com/api/web_search',
-      { query, max_results: Math.min(max_results, 10) },
-      { headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 15000 }
-    );
-    const results = res.data.results || [];
+    const res = await axios.get('https://html.duckduckgo.com/html/', {
+      params: { q: query },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorkshopBot/1.0)' },
+      timeout: 10000,
+    });
+    const $ = cheerio.load(res.data);
+    const results = [];
+    $('.result').each((_, el) => {
+      if (results.length >= limit) return false;
+      const title = $(el).find('.result__title').text().trim();
+      const url = $(el).find('.result__url').text().trim();
+      const snippet = $(el).find('.result__snippet').text().trim();
+      if (title && url) results.push({ title, url: url.startsWith('http') ? url : `https://${url}`, content: snippet });
+    });
     if (!results.length) return { message: 'No results found for that query.' };
-    return { results: results.map((r) => ({ title: r.title, url: r.url, content: r.content })) };
+    return { results };
   } catch (err) {
-    return { error: `Web search failed: ${err.response?.data?.error || err.message}` };
+    return { error: `Web search failed: ${err.message}` };
   }
 }
 
 async function webFetch({ url }) {
-  const key = process.env.OLLAMA_API_KEY;
-  if (!key) return { error: 'Web fetch not configured (OLLAMA_API_KEY missing)' };
   try {
-    const res = await axios.post('https://ollama.com/api/web_fetch',
-      { url },
-      { headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, timeout: 20000 }
-    );
-    return { title: res.data.title, content: res.data.content?.slice(0, 4000), url };
+    const res = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorkshopBot/1.0)' },
+      timeout: 15000,
+      maxContentLength: 2 * 1024 * 1024,
+    });
+
+    const contentType = res.headers['content-type'] || '';
+    if (!contentType.includes('html')) {
+      return { url, content: String(res.data).slice(0, 4000) };
+    }
+
+    const $ = cheerio.load(res.data);
+
+    // Remove non-content elements
+    $('script, style, nav, footer, header, aside, iframe, noscript, [role="banner"], [role="navigation"]').remove();
+
+    const title = $('title').first().text().trim();
+
+    // Prefer semantic content containers
+    const container = $('article, [role="main"], main, .content, #content, .post, .article').first();
+    const text = (container.length ? container : $('body'))
+      .text()
+      .replace(/\s{3,}/g, '\n\n')
+      .replace(/\n{4,}/g, '\n\n')
+      .trim()
+      .slice(0, 4000);
+
+    return { title, content: text, url };
   } catch (err) {
-    return { error: `Web fetch failed: ${err.response?.data?.error || err.message}` };
+    return { error: `Web fetch failed: ${err.message}` };
   }
 }
 
@@ -248,7 +296,7 @@ const toolDefinitions = [
   },
   {
     name: 'web_search',
-    description: 'Search the internet for up-to-date information. Use this for TSBs, recall notices, torque specs, fault code details, known issues, or anything not found in the knowledge base. Prefer specific queries e.g. "Ford Focus 1.6 TDCi timing belt replacement torque specs" over generic ones.',
+    description: 'Search the internet for up-to-date information. Use this for TSBs, recall notices, labour times, torque specs, fault code details, and known issues. Prefer specific queries e.g. "Ford Focus 1.6 TDCi timing belt replacement torque specs" over generic ones.',
     input_schema: {
       type: 'object',
       properties: {
