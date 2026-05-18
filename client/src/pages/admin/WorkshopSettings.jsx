@@ -393,7 +393,7 @@ function PermissionsTab({ token }) {
   const [saving, setSaving] = useState({});
 
   useEffect(() => {
-    apiFetch('/api/admin/role-permissions', {}, token)
+    apiFetch('/admin/role-permissions', {}, token)
       .then(setPerms)
       .finally(() => setLoading(false));
   }, []);
@@ -407,7 +407,7 @@ function PermissionsTab({ token }) {
     const key = `${role}:${feature}`;
     setSaving((s) => ({ ...s, [key]: true }));
     try {
-      const updated = await apiFetch('/api/admin/role-permissions', {
+      const updated = await apiFetch('/admin/role-permissions', {
         method: 'PATCH',
         body: JSON.stringify({ role, feature, allowed }),
       }, token);
@@ -463,6 +463,53 @@ function PermissionsTab({ token }) {
   );
 }
 
+// ── AI Features Tab ──────────────────────────────────────────────────────────
+
+function AiFeaturesTab({ token }) {
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch('/quotes/settings', {}, token)
+      .then((s) => setAiEnabled(s.aiEnabled !== false))
+      .catch(() => {});
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await apiFetch('/quotes/settings', { method: 'PATCH', body: { aiEnabled } }, token);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <>
+      <Section title="AI assistant">
+        <Field label="Enable AI features" hint="controls whether the AI diagnostic chat and workshop assistant are available">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+            <input
+              type="checkbox"
+              checked={aiEnabled}
+              onChange={(e) => setAiEnabled(e.target.checked)}
+              style={{ width: 18, height: 18, cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '0.9rem' }}>{aiEnabled ? 'AI is enabled' : 'AI is disabled'}</span>
+          </label>
+          <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '8px 0 0' }}>
+            When disabled, the diagnostic chat and assistant are hidden. All other workshop features (projects, quotes, customers) remain fully usable.
+          </p>
+        </Field>
+      </Section>
+      <SaveBar saving={saving} saved={saved} error={error} onSave={handleSave} />
+    </>
+  );
+}
+
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -471,6 +518,7 @@ const TABS = [
   { id: 'technicians', label: 'Technicians' },
   { id: 'parts',       label: 'Parts Catalogue' },
   { id: 'permissions', label: 'Role Permissions' },
+  { id: 'ai',          label: 'AI Features' },
 ];
 
 export default function WorkshopSettings({ token, userRole }) {
@@ -491,6 +539,7 @@ export default function WorkshopSettings({ token, userRole }) {
         {tab === 'technicians' && <TechniciansTab token={token} />}
         {tab === 'parts'       && <PartsCatalogueTab token={token} />}
         {tab === 'permissions' && <PermissionsTab token={token} />}
+        {tab === 'ai'          && <AiFeaturesTab token={token} />}
       </div>
     </div>
   );

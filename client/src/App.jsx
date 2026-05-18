@@ -83,6 +83,10 @@ function App() {
         setArchivedProjects(savedArchived);
         setStatus('ready');
 
+        api.getWorkshopSettings(token)
+          .then((s) => setAiEnabled(s.aiEnabled !== false))
+          .catch(() => {});
+
         // Pre-generate specs in the background for any active project that's missing them
         savedProjects
           .filter((p) => !p.specs && p.make && p.model)
@@ -272,6 +276,7 @@ function App() {
 
   const [showAssistant, setShowAssistant] = useState(false);
   const [actorState, setActorState] = useState(null);
+  const [aiEnabled, setAiEnabled] = useState(true);
 
   const handleExitActor = async () => {
     if (actorState?.token) {
@@ -393,9 +398,11 @@ function App() {
           <p>{user?.email}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
-            Assistant
-          </button>
+          {aiEnabled && (
+            <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
+              Assistant
+            </button>
+          )}
           {canEnterAdmin && (
             <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
               Admin
@@ -435,6 +442,7 @@ function App() {
             onUpdateVehicle={handleUpdateVehicle}
             onRefreshProject={handleSelectProject}
             token={token}
+            aiEnabled={aiEnabled}
           />
         </div>
       </main>

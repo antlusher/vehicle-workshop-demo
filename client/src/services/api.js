@@ -129,3 +129,7 @@ export async function askAI(projectId, question, token, chatMode) {
 export async function confirmSuggestion(projectId, historyId, text, token) {
   return request('/api/ai/confirm-suggestion', { method: 'POST', body: { projectId, historyId, text } }, token);
 }
+
+export async function getWorkshopSettings(token) {
+  return request('/api/quotes/settings', {}, token);
+}

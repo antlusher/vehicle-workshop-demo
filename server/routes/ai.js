@@ -3,6 +3,7 @@ const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { generateRepairAdvice, generateTrainingChat, extractKnowledgeFromText, generateAdminChat } = require('../services/aiService');
 const { getVehicleHistory } = require('../services/vehicleService');
+const { getWorkshopSettings } = require('../services/partsService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -14,7 +15,19 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-router.post('/ask', requireAuth, async (req, res) => {
+async function requireAiEnabled(req, res, next) {
+  try {
+    const settings = await getWorkshopSettings();
+    if (settings.aiEnabled === false) {
+      return res.status(503).json({ error: 'AI features are currently disabled for this workshop. Enable them in Workshop Settings.' });
+    }
+    next();
+  } catch {
+    next();
+  }
+}
+
+router.post('/ask', requireAuth, requireAiEnabled, async (req, res) => {
   const { projectId, question, chatMode } = req.body;
   if (!projectId || !question) {
     return res.status(400).json({ error: 'Project ID and question are required' });
@@ -114,7 +127,7 @@ router.post('/ask', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/training', requireAuth, async (req, res) => {
+router.post('/training', requireAuth, requireAiEnabled, async (req, res) => {
   const { question, history = [] } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
   try {
@@ -125,7 +138,7 @@ router.post('/training', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/extract-knowledge', requireAuth, async (req, res) => {
+router.post('/extract-knowledge', requireAuth, requireAiEnabled, async (req, res) => {
   const { text } = req.body;
   if (!text) return res.status(400).json({ error: 'text required' });
   try {
@@ -162,7 +175,7 @@ router.post('/confirm-suggestion', requireAuth, async (req, res) => {
   return res.json({ confirmed: true, id: rows[0].id });
 });
 
-router.post('/admin-agent', requireAuth, async (req, res) => {
+router.post('/admin-agent', requireAuth, requireAiEnabled, async (req, res) => {
   const { question, history = [] } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
   try {

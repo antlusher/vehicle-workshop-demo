@@ -144,7 +144,7 @@ router.patch('/settings', requireAuth, async (req, res) => {
     const {
       defaultMarkupPct, labourRatePerHour, vatRate,
       workshopName, addressLine1, addressLine2, city, postcode,
-      phone, email, paymentNotes,
+      phone, email, paymentNotes, aiEnabled,
     } = req.body;
     const existing = await query('SELECT id FROM workshop_settings LIMIT 1');
     if (existing.rows.length) {
@@ -161,23 +161,26 @@ router.patch('/settings', requireAuth, async (req, res) => {
            phone=COALESCE($9,phone),
            email=COALESCE($10,email),
            payment_notes=COALESCE($11,payment_notes),
+           ai_enabled=COALESCE($12,ai_enabled),
            updated_at=now()`,
         [
           defaultMarkupPct ?? null, labourRatePerHour ?? null, vatRate ?? null,
           workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
           city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
+          aiEnabled ?? null,
         ]
       );
     } else {
       await query(
         `INSERT INTO workshop_settings
            (default_markup_pct, labour_rate_per_hour, vat_rate,
-            workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+            workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes, ai_enabled)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
         [
           defaultMarkupPct ?? 30, labourRatePerHour ?? 75, vatRate ?? 20,
           workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
           city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
+          aiEnabled ?? true,
         ]
       );
     }

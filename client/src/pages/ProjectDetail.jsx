@@ -1111,7 +1111,7 @@ function ProjectCustomerBar({ project, token, onUpdated }) {
   );
 }
 
-function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject, token }) {
+function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject, token, aiEnabled = true }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
@@ -1370,7 +1370,13 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
         </div>
       )}
 
-      {tab === 'diagnosis' && (
+      {tab === 'diagnosis' && !aiEnabled && (
+        <div className="chat-input-bar" style={{ padding: '14px 16px', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+          AI assistant is currently disabled. Enable it in Admin &rarr; Workshop &rarr; AI Features.
+        </div>
+      )}
+
+      {tab === 'diagnosis' && aiEnabled && (
         <div className="chat-input-bar">
           <div className="chat-verbosity-bar">
             <span className="chat-verbosity-label">Mode:</span>

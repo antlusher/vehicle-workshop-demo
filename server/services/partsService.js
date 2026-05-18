@@ -91,6 +91,7 @@ async function getWorkshopSettings() {
     phone: r.phone || null,
     email: r.email || null,
     paymentNotes: r.payment_notes || null,
+    aiEnabled: r.ai_enabled !== false,
   };
 }
 
