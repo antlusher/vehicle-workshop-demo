@@ -179,27 +179,9 @@ async function webSearch({ query, max_results = 5 }) {
     }
   }
 
-  // DuckDuckGo HTML fallback — no API key needed
-  try {
-    const res = await axios.get('https://html.duckduckgo.com/html/', {
-      params: { q: query },
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; WorkshopBot/1.0)' },
-      timeout: 10000,
-    });
-    const $ = cheerio.load(res.data);
-    const results = [];
-    $('.result').each((_, el) => {
-      if (results.length >= limit) return false;
-      const title = $(el).find('.result__title').text().trim();
-      const url = $(el).find('.result__url').text().trim();
-      const snippet = $(el).find('.result__snippet').text().trim();
-      if (title && url) results.push({ title, url: url.startsWith('http') ? url : `https://${url}`, content: snippet });
-    });
-    if (!results.length) return { message: 'No results found for that query.' };
-    return { results };
-  } catch (err) {
-    return { error: `Web search failed: ${err.message}` };
-  }
+  return {
+    message: 'Web search requires a BRAVE_SEARCH_API_KEY. Get a free key (2000 queries/month) at https://api.search.brave.com — add it to server/.env as BRAVE_SEARCH_API_KEY.',
+  };
 }
 
 async function webFetch({ url }) {
