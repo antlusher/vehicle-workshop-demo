@@ -40,3 +40,6 @@ npm-debug.log*
 server/data/scraped-*.json
 server/data/wiki/
 server/data/pdfs/
+
+# Git worktrees — checked-out sibling directories
+/worktrees/
