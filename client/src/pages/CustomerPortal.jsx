@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
-         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail } from '../services/customerApi';
+         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
+         getWorkshopInfo } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -65,6 +66,7 @@ function InvoiceView({ invoiceId, token, onBack, workshopName }) {
       <div className="cp-invoice-paper" ref={printRef}>
         <div className="cp-inv-header">
           <div>
+            {workshopName && <p className="cp-inv-workshop">{workshopName}</p>}
             <h1 className="cp-inv-title">{status === 'approved' ? 'Invoice' : 'Estimate'}</h1>
             <p className="cp-inv-ref">{reference}{title ? ` — ${title}` : ''}</p>
           </div>
@@ -454,7 +456,7 @@ const TABS = [
   { id: 'invoices', label: 'Invoices' },
 ];
 
-function VehicleDetail({ vehicle, token, onBack }) {
+function VehicleDetail({ vehicle, token, onBack, workshopName }) {
   const [tab, setTab] = useState('jobs');
   const [selectedJobId, setSelectedJobId] = useState(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
@@ -466,7 +468,7 @@ function VehicleDetail({ vehicle, token, onBack }) {
   }, []);
 
   if (selectedInvoiceId) {
-    return <InvoiceView invoiceId={selectedInvoiceId} token={token} onBack={() => setSelectedInvoiceId(null)} />;
+    return <InvoiceView invoiceId={selectedInvoiceId} token={token} workshopName={workshopName} onBack={() => setSelectedInvoiceId(null)} />;
   }
   if (selectedJobId) {
     return <JobDetail projectId={selectedJobId} token={token} onBack={() => setSelectedJobId(null)} />;
@@ -503,8 +505,10 @@ export default function CustomerPortal({ user, token, onLogout }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [workshop, setWorkshop] = useState(null);
 
   useEffect(() => {
+    getWorkshopInfo(token).then(setWorkshop).catch(() => {});
     getMyVehicles(token).then((v) => {
       setVehicles(v);
       if (v.length === 1) setSelectedVehicle(v[0]);
@@ -515,7 +519,7 @@ export default function CustomerPortal({ user, token, onLogout }) {
     <div className="cp-shell">
       <header className="cp-header">
         <div className="cp-brand">
-          <span className="cp-brand-name">Your Gofer</span>
+          <span className="cp-brand-name">{workshop?.name || 'Customer Portal'}</span>
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
@@ -526,7 +530,7 @@ export default function CustomerPortal({ user, token, onLogout }) {
 
       <main className="cp-main">
         {selectedVehicle ? (
-          <VehicleDetail vehicle={selectedVehicle} token={token} onBack={() => setSelectedVehicle(null)} />
+          <VehicleDetail vehicle={selectedVehicle} token={token} workshopName={workshop?.name} onBack={() => setSelectedVehicle(null)} />
         ) : (
           <div>
             <h2 className="cp-page-title">Your vehicles</h2>
