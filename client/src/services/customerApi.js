@@ -11,6 +11,9 @@ async function request(path, options = {}, token) {
   return data;
 }
 
+export const getProfile = (token) => request('/api/customer/profile', {}, token);
+export const updateProfile = (data, token) => request('/api/customer/profile', { method: 'PATCH', body: data }, token);
+export const changePassword = (data, token) => request('/api/customer/change-password', { method: 'POST', body: data }, token);
 export const getMyVehicles = (token) => request('/api/customer/vehicles', {}, token);
 export const getVehicleJobs = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/jobs`, {}, token);
 export const getJobReport = (projectId, token) => request(`/api/customer/jobs/${projectId}`, {}, token);

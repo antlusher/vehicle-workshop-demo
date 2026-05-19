@@ -2722,6 +2722,24 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .cp-brand-sub { font-size: 0.75rem; color: #94a3b8; }
 .cp-header-right { display: flex; align-items: center; gap: 12px; }
 .cp-user-email { font-size: 0.8rem; color: #94a3b8; }
+.cp-profile-btn { background: none; border: none; cursor: pointer; font-size: 0.8rem; color: #94a3b8; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
+.cp-profile-btn:hover { color: #e2e8f0; }
+.cp-profile-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; justify-content: flex-end; }
+.cp-profile-panel { background: #fff; width: 100%; max-width: 420px; height: 100%; overflow-y: auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 0; }
+.cp-profile-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.cp-profile-header h2 { font-size: 1.15rem; font-weight: 700; color: #1e293b; margin: 0; }
+.cp-profile-close { background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #94a3b8; padding: 4px; }
+.cp-profile-email { font-size: 0.82rem; color: #64748b; margin: 0 0 24px; }
+.cp-profile-form { display: flex; flex-direction: column; gap: 8px; padding-top: 20px; border-top: 1px solid #e5e7eb; margin-top: 4px; }
+.cp-profile-form h3 { font-size: 0.9rem; font-weight: 600; color: #374151; margin: 0 0 4px; }
+.cp-profile-form label { font-size: 0.8rem; font-weight: 500; color: #374151; margin-bottom: -4px; }
+.cp-profile-form input { padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.88rem; }
+.cp-profile-form--pw { margin-top: 8px; }
+.cp-profile-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.cp-profile-actions button { padding: 8px 18px; background: #1e40af; color: #fff; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.cp-profile-actions button:disabled { opacity: 0.6; }
+.cp-profile-msg { font-size: 0.8rem; color: #16a34a; }
+.cp-profile-error { font-size: 0.8rem; color: #dc2626; margin: 0; }
 .cp-main { max-width: 900px; margin: 0 auto; padding: 28px 16px; }
 .cp-page-title { font-size: 1.35rem; font-weight: 700; color: #1e293b; margin: 0 0 20px; }
 .cp-loading { color: #64748b; padding: 24px 0; }
