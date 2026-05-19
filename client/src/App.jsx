@@ -285,7 +285,9 @@ function App() {
     setActorState(null);
   };
 
-  const isCustomerSubdomain = window.location.hostname.startsWith('customer.');
+  const isCustomerSubdomain =
+    window.location.hostname.startsWith('customer.') ||
+    (import.meta.env.DEV && new URLSearchParams(window.location.search).has('cp'));
   const urlParams = new URLSearchParams(window.location.search);
   const activateToken = urlParams.get('activate');
   const quoteToken = urlParams.get('quote');
