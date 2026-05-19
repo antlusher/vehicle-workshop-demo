@@ -35,3 +35,8 @@
 .vscode/
 .DS_Store
 npm-debug.log*
+
+# Large scraped/generated data — too big for git
+server/data/scraped-*.json
+server/data/wiki/
+server/data/pdfs/
