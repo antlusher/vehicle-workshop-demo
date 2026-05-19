@@ -125,6 +125,50 @@ function requireCustomer(req, res, next) {
   }).catch(() => res.status(403).json({ error: 'Customer access required' }));
 }
 
+// GET /api/customer/notifications — recent reports + quotes (last 60 days)
+router.get('/notifications', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    `SELECT
+       'report' AS type,
+       p.id AS project_id,
+       COALESCE(p.registration_snapshot, p.registration) AS registration,
+       COALESCE(p.make, v.make) AS make,
+       COALESCE(p.model, v.model) AS model,
+       jr.published_at AS event_at
+     FROM job_reports jr
+     JOIN projects p ON p.id = jr.project_id
+     LEFT JOIN vehicles v ON v.id = p.vehicle_id
+     JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+     WHERE jr.status = 'published'
+       AND jr.published_at > now() - interval '60 days'
+     UNION ALL
+     SELECT
+       'quote' AS type,
+       p.id AS project_id,
+       COALESCE(p.registration_snapshot, p.registration) AS registration,
+       COALESCE(p.make, v.make) AS make,
+       COALESCE(p.model, v.model) AS model,
+       q.sent_at AS event_at
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     LEFT JOIN vehicles v ON v.id = p.vehicle_id
+     JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+     WHERE q.status IN ('sent','approved')
+       AND q.sent_at IS NOT NULL
+       AND q.sent_at > now() - interval '60 days'
+     ORDER BY event_at DESC
+     LIMIT 20`,
+    [req.user.id]
+  );
+  return res.json(rows.map((r) => ({
+    type: r.type,
+    projectId: r.project_id,
+    registration: r.registration,
+    vehicle: [r.make, r.model].filter(Boolean).join(' '),
+    eventAt: r.event_at,
+  })));
+});
+
 // GET /api/customer/vehicles — list all vehicles linked to this customer
 router.get('/vehicles', requireCustomer, async (req, res) => {
   const { rows } = await query(

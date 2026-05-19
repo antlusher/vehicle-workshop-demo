@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
-         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail } from '../services/customerApi';
+         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
+         getNotifications } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -498,11 +499,72 @@ function VehicleDetail({ vehicle, token, onBack }) {
   );
 }
 
+// ── Notification bell ────────────────────────────────────────────────────────
+const NOTIF_KEY = 'cp_notif_seen_at';
+
+function NotificationBell({ token, onNavigate }) {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [seenAt, setSeenAt] = useState(() => localStorage.getItem(NOTIF_KEY) || null);
+
+  useEffect(() => {
+    getNotifications(token).then(setItems).catch(() => {});
+  }, [token]);
+
+  const unread = items.filter((n) => !seenAt || new Date(n.eventAt) > new Date(seenAt)).length;
+
+  const handleOpen = () => {
+    setOpen((v) => !v);
+    if (!open) {
+      const now = new Date().toISOString();
+      localStorage.setItem(NOTIF_KEY, now);
+      setSeenAt(now);
+    }
+  };
+
+  const handleClick = (projectId) => {
+    setOpen(false);
+    onNavigate(projectId);
+  };
+
+  return (
+    <div className="cp-bell-wrap">
+      <button className="cp-bell-btn" onClick={handleOpen} aria-label="Notifications">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        {unread > 0 && <span className="cp-bell-badge">{unread}</span>}
+      </button>
+
+      {open && (
+        <div className="cp-bell-dropdown">
+          <div className="cp-bell-header">Recent activity</div>
+          {items.length === 0 ? (
+            <p className="cp-bell-empty">No recent activity.</p>
+          ) : (
+            items.map((n, i) => (
+              <button key={i} className="cp-bell-item" onClick={() => handleClick(n.projectId)}>
+                <span className={`cp-bell-type cp-bell-type--${n.type}`}>
+                  {n.type === 'report' ? 'Report ready' : 'Estimate sent'}
+                </span>
+                <span className="cp-bell-vehicle">{n.registration}{n.vehicle ? ` · ${n.vehicle}` : ''}</span>
+                <span className="cp-bell-date">{fmtDate(n.eventAt)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Root portal ──────────────────────────────────────────────────────────────
 export default function CustomerPortal({ user, token, onLogout }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [selectedJobId, setSelectedJobId] = useState(null);
 
   useEffect(() => {
     getMyVehicles(token).then((v) => {
@@ -510,6 +572,10 @@ export default function CustomerPortal({ user, token, onLogout }) {
       if (v.length === 1) setSelectedVehicle(v[0]);
     }).finally(() => setLoading(false));
   }, [token]);
+
+  const handleNotifNavigate = (projectId) => {
+    setSelectedJobId(projectId);
+  };
 
   return (
     <div className="cp-shell">
@@ -519,10 +585,19 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
+          <NotificationBell token={token} onNavigate={handleNotifNavigate} />
           <span className="cp-user-email">{user.email}</span>
           <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
         </div>
       </header>
+
+      {selectedJobId && (
+        <div style={{ position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 50, overflowY: 'auto', padding: '28px 16px' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <JobDetail projectId={selectedJobId} token={token} onBack={() => setSelectedJobId(null)} />
+          </div>
+        </div>
+      )}
 
       <main className="cp-main">
         {selectedVehicle ? (
