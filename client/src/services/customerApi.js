@@ -19,6 +19,7 @@ export const getVehicleMot = (vehicleId, token) => request(`/api/customer/vehicl
 export const getVehicleGallery = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/gallery`, {}, token);
 export const getVehicleInvoices = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/invoices`, {}, token);
 export const getInvoiceDetail = (quoteId, token) => request(`/api/customer/invoices/${quoteId}`, {}, token);
+export const acceptQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote/accept`, { method: 'POST' }, token);
 
 // Admin customer management
 export const getCustomers = (token) => request('/api/admin/customers', {}, token);
