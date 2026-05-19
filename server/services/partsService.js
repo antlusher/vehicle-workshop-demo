@@ -5,10 +5,38 @@ async function searchProvider(q, filters) {
   return searchSeeded(q, filters);
 }
 
+async function resolveEngineFamily(engineCode) {
+  // Given an individual 4-letter code (e.g. CRKB), find its engine family names/codenames.
+  // Needed because parts_catalogue stores family names (EA288) not individual codes.
+  const { rows } = await query(
+    `SELECT ef.family_name, ef.codename, ef.also_known_as
+     FROM engine_codes ec
+     JOIN engine_families ef ON ef.id = ec.family_id
+     WHERE UPPER(ec.code) = UPPER($1)
+     LIMIT 1`,
+    [engineCode]
+  );
+  if (!rows.length) return [];
+  const r = rows[0];
+  const names = new Set();
+  if (r.family_name) names.add(r.family_name);
+  if (r.codename && r.codename !== r.family_name) names.add(r.codename);
+  (r.also_known_as || []).forEach(n => names.add(n));
+  return [...names];
+}
+
 async function searchSeeded(q, { make, model, engineCode } = {}) {
   const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const hasText = terms.length > 0;
   if (!hasText && !make && !engineCode) return [];
+
+  // Resolve individual engine code → family names for catalogue matching
+  let engineCodesToMatch = engineCode ? [engineCode.toUpperCase()] : [];
+  if (engineCode) {
+    const familyNames = await resolveEngineFamily(engineCode);
+    engineCodesToMatch.push(...familyNames.map(n => n.toUpperCase()));
+    engineCodesToMatch = [...new Set(engineCodesToMatch)];
+  }
 
   const params = [];
   const textConditions = [];
@@ -21,9 +49,12 @@ async function searchSeeded(q, { make, model, engineCode } = {}) {
     });
   }
 
-  if (engineCode) {
-    params.push(engineCode.toUpperCase());
-    compatConditions.push(`$${params.length} = ANY(compatible_engine_codes)`);
+  if (engineCodesToMatch.length) {
+    // Match any of the individual code OR its family names
+    engineCodesToMatch.forEach(code => {
+      params.push(code);
+      compatConditions.push(`$${params.length} = ANY(compatible_engine_codes)`);
+    });
   }
   if (make) {
     params.push(make);
@@ -34,7 +65,9 @@ async function searchSeeded(q, { make, model, engineCode } = {}) {
   // When no text: compat required (browsing compatible parts)
   const where = hasText
     ? `WHERE ${textConditions.join(' AND ')}`
-    : `WHERE (${compatConditions.join(' OR ')})`;
+    : compatConditions.length ? `WHERE (${compatConditions.join(' OR ')})` : '';
+
+  if (!where) return [];
 
   // Boost compatible parts to the top when searching by text
   const compatBoost = compatConditions.length
@@ -95,4 +128,59 @@ async function getWorkshopSettings() {
   };
 }
 
-module.exports = { searchProvider, applyMarkup, getWorkshopSettings, formatPart };
+// ── Gates fitment lookup ──────────────────────────────────────────────────────
+// Returns Gates parts for a given engine code, optionally filtered by year.
+// Groups results by part_type so the AI gets a clean summary.
+async function lookupGatesFitment(engineCode, vehicleYear) {
+  if (!engineCode) return [];
+
+  // Resolve individual code → family names (same as searchSeeded does)
+  let codesToMatch = [engineCode.toUpperCase()];
+  const familyNames = await resolveEngineFamily(engineCode);
+  codesToMatch.push(...familyNames.map(n => n.toUpperCase()));
+  codesToMatch = [...new Set(codesToMatch)];
+
+  // Build year filter: include rows where the year falls within the range,
+  // or where no range is specified.
+  const yearFilter = vehicleYear
+    ? `AND (gf.year_from_year IS NULL OR gf.year_from_year <= $2)
+       AND (gf.year_to_year   IS NULL OR gf.year_to_year   >= $2)`
+    : '';
+
+  const params = [codesToMatch];
+  if (vehicleYear) params.push(vehicleYear);
+
+  const { rows } = await query(
+    `SELECT gf.article_no, gf.part_type, gf.article_group, gf.brand,
+            gf.model, gf.engine_codes, gf.powered_units, gf.comments,
+            gf.year_from_year, gf.year_from_month, gf.year_to_year, gf.year_to_month
+     FROM gates_fitment gf
+     WHERE gf.engine_codes && $1::text[]
+     ${yearFilter}
+     ORDER BY gf.part_type, gf.article_no`,
+    params
+  );
+
+  // Group by part_type, deduplicate article_no within each group
+  const grouped = {};
+  for (const row of rows) {
+    if (!grouped[row.part_type]) grouped[row.part_type] = [];
+    const existing = grouped[row.part_type].find(p => p.articleNo === row.article_no);
+    if (!existing) {
+      grouped[row.part_type].push({
+        articleNo:    row.article_no,
+        brand:        row.brand,
+        partType:     row.part_type,
+        articleGroup: row.article_group,
+        poweredUnits: row.powered_units || null,
+        comments:     row.comments || null,
+        yearFrom:     row.year_from_year ? `${String(row.year_from_month).padStart(2,'0')}/${row.year_from_year}` : null,
+        yearTo:       row.year_to_year   ? `${String(row.year_to_month).padStart(2,'0')}/${row.year_to_year}`   : 'present',
+      });
+    }
+  }
+
+  return grouped;
+}
+
+module.exports = { searchProvider, applyMarkup, getWorkshopSettings, formatPart, lookupGatesFitment };
