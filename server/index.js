@@ -20,9 +20,11 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',').map((o) => o.trim());
+const isDev = process.env.NODE_ENV !== 'production';
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true); // non-browser / server-to-server
+    if (isDev && /^https?:\/\/localhost(:\d+)?$/.test(origin)) return cb(null, true);
     if (allowedOrigins.some((o) => origin === o || origin.endsWith('.' + o.replace(/^https?:\/\//, '')))) {
       return cb(null, true);
     }

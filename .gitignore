@@ -31,7 +31,10 @@
 /server/node_modules/
 
 # Ignore environment files and IDE artifacts
+/.env
 /server/.env
+!/.env.example
+!/server/.env.example
 .vscode/
 .DS_Store
 npm-debug.log*
