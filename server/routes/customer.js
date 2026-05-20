@@ -972,7 +972,7 @@ router.get('/vehicles/:vehicleId/stats', requireCustomer, async (req, res) => {
        JOIN projects p ON p.id = q.project_id
        JOIN quote_lines ql ON ql.quote_id = q.id
        WHERE p.vehicle_id = $1 AND q.status IN ('approved','invoiced') AND q.customer_id = $2
-       GROUP BY year ORDER BY year`,
+       GROUP BY EXTRACT(year FROM p.created_at)::int ORDER BY 1`,
       [req.params.vehicleId, req.user.id]
     ),
   ]);
