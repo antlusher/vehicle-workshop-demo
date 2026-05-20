@@ -35,6 +35,9 @@ export const getQuotes = (projectId, token) =>
 export const getQuoteDetail = (id, token) =>
   request(`${BASE}/${id}`, {}, token);
 
+export const createInvoice = (data, token) =>
+  request(`${BASE}/invoices/create`, { method: 'POST', body: data }, token);
+
 export const getInvoices = (filters = {}, token) => {
   const params = new URLSearchParams();
   if (filters.status) params.set('status', filters.status);
@@ -79,6 +82,15 @@ export const deleteItem = (quoteId, itemId, token) =>
 
 export const quickSend = (quoteId, data, token) =>
   request(`${BASE}/${quoteId}/quick-send`, { method: 'POST', body: data }, token);
+
+export const sendInvoiceEmail = (id, token) =>
+  request(`${BASE}/${id}/invoice-send`, { method: 'POST' }, token);
+
+export const markInvoiceSent = (id, token) =>
+  request(`${BASE}/${id}/mark-invoice-sent`, { method: 'POST' }, token);
+
+export const duplicateQuote = (id, token) =>
+  request(`${BASE}/${id}/duplicate`, { method: 'POST' }, token);
 
 export const downloadInvoicePdf = async (id, token, filename = 'invoice.pdf') => {
   const res = await fetch(`${BASE}/${id}/pdf`, {

@@ -11,16 +11,44 @@ import Invoices from './Invoices';
 
 // owner: all nav | admin: no Staff/Workshop | tech: not in AdminShell
 const ALL_NAV = [
-  { id: 'dashboard',  label: 'Dashboard',        roles: ['owner', 'admin'] },
-  { id: 'projects',   label: 'Projects',          roles: ['owner', 'admin'] },
-  { id: 'invoices',   label: 'Invoices',          roles: ['owner', 'admin'] },
-  { id: 'customers',  label: 'Customers',         roles: ['owner', 'admin'] },
-  { id: 'ai',         label: 'AI & Knowledge',    roles: ['owner', 'admin'] },
-  { id: 'registry',   label: 'Vehicle Registry',  roles: ['owner', 'admin'] },
-  { id: 'inventory',  label: 'Inventory',         roles: ['owner', 'admin'] },
-  { id: 'staff',      label: 'Staff',             roles: ['owner'] },
-  { id: 'workshop',   label: 'Workshop',          roles: ['owner'] },
+  { id: 'dashboard', label: 'Dashboard', roles: ['owner', 'admin'] },
+  { id: 'work',      label: 'Work',      roles: ['owner', 'admin'] },
+  { id: 'ai',        label: 'AI & Knowledge', roles: ['owner', 'admin'] },
+  { id: 'registry',  label: 'Vehicle Registry', roles: ['owner', 'admin'] },
+  { id: 'inventory', label: 'Inventory', roles: ['owner', 'admin'] },
+  { id: 'staff',     label: 'Staff',     roles: ['owner'] },
+  { id: 'workshop',  label: 'Workshop',  roles: ['owner'] },
 ];
+
+const WORK_TABS = [
+  { id: 'projects',   label: 'Projects' },
+  { id: 'invoices',   label: 'Invoices' },
+  { id: 'customers',  label: 'Customers' },
+];
+
+function WorkSection({ token }) {
+  const [tab, setTab] = useState('projects');
+  return (
+    <div className="work-section">
+      <div className="work-tabs">
+        {WORK_TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`work-tab-btn${tab === t.id ? ' active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="work-tab-content">
+        {tab === 'projects'  && <Projects  token={token} />}
+        {tab === 'invoices'  && <Invoices  token={token} />}
+        {tab === 'customers' && <Customers token={token} />}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminShell({ token, userEmail, userRole = 'admin', onExit }) {
   const role = userRole;
@@ -56,14 +84,13 @@ export default function AdminShell({ token, userEmail, userRole = 'admin', onExi
       </header>
 
       <main className="admin-content">
-        {activePage === 'dashboard' && <Dashboard token={token} />}
-        {activePage === 'staff' && <Users token={token} currentUserEmail={userEmail} />}
-        {activePage === 'projects' && <Projects token={token} />}
-        {activePage === 'ai' && <AiKnowledge token={token} />}
-        {activePage === 'registry' && <VehicleRegistry token={token} />}
+        {activePage === 'dashboard' && <Dashboard  token={token} />}
+        {activePage === 'work'      && <WorkSection token={token} />}
+        {activePage === 'ai'        && <AiKnowledge token={token} />}
+        {activePage === 'registry'  && <VehicleRegistry token={token} />}
+        {activePage === 'staff'     && <Users token={token} currentUserEmail={userEmail} />}
         {activePage === 'customers' && <Customers token={token} />}
-        {activePage === 'workshop' && <WorkshopSettings token={token} userRole={role} />}
-        {activePage === 'invoices' && <Invoices token={token} />}
+        {activePage === 'workshop'  && <WorkshopSettings token={token} userRole={role} />}
         {activePage === 'inventory' && <Inventory token={token} />}
       </main>
     </div>

@@ -204,10 +204,49 @@ async function sendCustomerActivation({ to, customerName, workshopName, activati
   });
 }
 
+async function sendInvoiceToCustomer({ to, customerName, workshopName, vehicleDesc, quoteRef, quoteTitle, total, portalUrl }) {
+  const displayName = customerName || to;
+  const displayWorkshop = workshopName || 'Your Workshop';
+  const titleLine = quoteTitle ? ` — ${quoteTitle}` : '';
+
+  await sendEmail({
+    to,
+    subject: `Invoice from ${displayWorkshop} (${quoteRef})`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#111;">
+        <h2 style="color:#1e40af;">${displayWorkshop}</h2>
+        <p>Hi ${displayName},</p>
+        <p>Please find your invoice${vehicleDesc ? ` for your ${vehicleDesc}` : ''} below.</p>
+        <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+          <tr style="background:#f1f5f9;">
+            <td style="padding:10px 14px;font-weight:600;">Invoice reference</td>
+            <td style="padding:10px 14px;">${quoteRef}${titleLine}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 14px;font-weight:600;">Total (inc. VAT)</td>
+            <td style="padding:10px 14px;font-size:1.1em;font-weight:700;">£${total}</td>
+          </tr>
+        </table>
+        <p>
+          <a href="${portalUrl}" style="display:inline-block;background:#1e40af;color:white;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:600;">
+            View invoice
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:0.85em;">
+          If the button doesn't work, copy this link into your browser:<br>
+          <a href="${portalUrl}">${portalUrl}</a>
+        </p>
+      </div>
+    `,
+    text: `Hi ${displayName},\n\nPlease find your invoice${vehicleDesc ? ` for your ${vehicleDesc}` : ''} below.\n\nInvoice reference: ${quoteRef}${titleLine}\nTotal (inc. VAT): £${total}\n\nView your invoice: ${portalUrl}\n\n${displayWorkshop}`,
+  });
+}
+
 module.exports = {
   sendSubscriptionConfirmation,
   sendPasswordReset,
   sendQuoteToCustomer,
+  sendInvoiceToCustomer,
   sendReportPublished,
   sendCustomerActivation,
   sendQuickQuote,

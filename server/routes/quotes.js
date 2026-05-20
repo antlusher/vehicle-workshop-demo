@@ -6,7 +6,7 @@ const multer = require('multer');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { applyMarkup, getWorkshopSettings } = require('../services/partsService');
-const { sendQuoteToCustomer, sendQuickQuote } = require('../services/emailService');
+const { sendQuoteToCustomer, sendQuickQuote, sendInvoiceToCustomer } = require('../services/emailService');
 const { sendSMS } = require('../services/smsService');
 const { s3Available, uploadToS3, deleteFromS3 } = require('../services/mediaService');
 const { generateInvoicePdf } = require('../services/pdfService');
@@ -147,7 +147,7 @@ router.get('/invoices', requireAuth, async (req, res) => {
     }
 
     const { rows } = await query(
-      `SELECT q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate,
+      `SELECT q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate, q.invoice_sent_at,
               p.registration_snapshot, p.registration, p.make, p.model, p.year,
               u.id AS customer_id, u.name AS customer_name, u.email AS customer_email,
               COALESCE(SUM(ql.unit_cost * (1 + ql.markup_pct/100) * ql.qty), 0) AS subtotal_raw
@@ -156,7 +156,7 @@ router.get('/invoices', requireAuth, async (req, res) => {
        LEFT JOIN users u ON u.id = q.customer_id
        LEFT JOIN quote_lines ql ON ql.quote_id = q.id
        WHERE ${conditions.join(' AND ')}
-       GROUP BY q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate,
+       GROUP BY q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate, q.invoice_sent_at,
                 p.registration_snapshot, p.registration, p.make, p.model, p.year,
                 u.id, u.name, u.email
        ORDER BY q.updated_at DESC`,
@@ -173,6 +173,7 @@ router.get('/invoices', requireAuth, async (req, res) => {
         title: r.title || null,
         status: r.status,
         updatedAt: r.updated_at,
+        invoiceSentAt: r.invoice_sent_at || null,
         registration: r.registration_snapshot || r.registration || null,
         vehicle: [r.make, r.model, r.year].filter(Boolean).join(' ') || null,
         customer: r.customer_id ? { id: r.customer_id, name: r.customer_name || null, email: r.customer_email } : null,
@@ -672,6 +673,160 @@ router.post('/:id/quick-send', requireAuth, async (req, res) => {
     return res.json({ quoteUrl, token });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /invoices/create — create a standalone invoice (project + quote in one step)
+router.post('/invoices/create', requireAuth, async (req, res) => {
+  try {
+    const { customer_id, registration, make, model, year, title, notes, lines = [] } = req.body;
+
+    // Find or create a project for this vehicle/customer
+    let projectId;
+    if (registration) {
+      const { rows: existing } = await query(
+        `SELECT id FROM projects WHERE workshop_id=$1 AND (registration_snapshot ILIKE $2 OR registration ILIKE $2) AND archived_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+        [req.user.workshopId, registration.toUpperCase()]
+      );
+      if (existing.length) {
+        projectId = existing[0].id;
+      }
+    }
+
+    if (!projectId) {
+      const { rows: projRows } = await query(
+        `INSERT INTO projects (user_id, workshop_id, registration_snapshot, registration, make, model, year, customer_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [req.user.id, req.user.workshopId, registration?.toUpperCase() || null, registration?.toUpperCase() || null,
+         make || null, model || null, year || null, customer_id || null]
+      );
+      projectId = projRows[0].id;
+
+      if (customer_id && registration) {
+        const { rows: vRows } = await query('SELECT vehicle_id FROM projects WHERE id=$1', [projectId]);
+        if (vRows[0]?.vehicle_id) {
+          await query('INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [customer_id, vRows[0].vehicle_id]);
+        }
+      }
+    } else if (customer_id) {
+      await query('UPDATE projects SET customer_id=COALESCE(customer_id,$1) WHERE id=$2', [customer_id, projectId]);
+    }
+
+    const [settings, ref] = await Promise.all([getWorkshopSettings(), nextReference()]);
+    const { rows: qRows } = await query(
+      `INSERT INTO quotes (project_id, reference, title, notes, vat_rate, customer_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'approved') RETURNING id`,
+      [projectId, ref, title || null, notes || null, settings.vatRate, customer_id || null]
+    );
+    const quoteId = qRows[0].id;
+
+    for (const [i, line] of lines.entries()) {
+      const markupPct = parseFloat(line.markupPct ?? 0);
+      const unitCost = parseFloat(line.unitPrice ?? 0) / (1 + markupPct / 100);
+      await query(
+        `INSERT INTO quote_lines (quote_id, type, description, qty, unit_cost, markup_pct, sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [quoteId, line.type || 'other', line.description, parseFloat(line.qty) || 1, unitCost, markupPct, i]
+      );
+    }
+
+    const quote = await getQuoteWithLines(quoteId);
+    res.json(quote);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /:id/invoice-send — email invoice to customer and mark invoice_sent_at
+router.post('/:id/invoice-send', requireAuth, async (req, res) => {
+  try {
+    const quote = await getQuoteWithLines(req.params.id);
+    if (!quote) return res.status(404).json({ error: 'Quote not found' });
+    if (!['approved', 'invoiced'].includes(quote.status)) return res.status(400).json({ error: 'Not an invoice' });
+    if (!quote.customer?.email) return res.status(400).json({ error: 'No customer email on this invoice' });
+
+    const { rows: projRows } = await query(
+      `SELECT p.make, p.model, p.year, p.registration_snapshot, p.registration, w.name AS workshop_name
+       FROM projects p JOIN workshops w ON w.id = p.workshop_id WHERE p.id = $1`,
+      [quote.projectId]
+    );
+    const proj = projRows[0] || {};
+    const vehicleDesc = [proj.year, proj.make, proj.model].filter(Boolean).join(' ') || proj.registration_snapshot || proj.registration || '';
+    const workshopName = proj.workshop_name || '';
+    const portalOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+
+    await sendInvoiceToCustomer({
+      to: quote.customer.email,
+      customerName: quote.customer.name || null,
+      workshopName,
+      vehicleDesc,
+      quoteRef: quote.reference,
+      quoteTitle: quote.title || null,
+      total: quote.totals.total.toFixed(2),
+      portalUrl: `${portalOrigin}/`,
+    });
+
+    await query('UPDATE quotes SET invoice_sent_at = now() WHERE id = $1', [quote.id]);
+    res.json({ ok: true, sentTo: quote.customer.email });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /:id/mark-invoice-sent — record invoice was sent without emailing
+router.post('/:id/mark-invoice-sent', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await query(
+      `UPDATE quotes SET invoice_sent_at = COALESCE(invoice_sent_at, now()) WHERE id = $1 RETURNING invoice_sent_at`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Quote not found' });
+    res.json({ ok: true, invoiceSentAt: rows[0].invoice_sent_at });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /:id/duplicate — copy quote (items + lines) as a new draft
+router.post('/:id/duplicate', requireAuth, async (req, res) => {
+  try {
+    const orig = await getQuoteWithLines(req.params.id);
+    if (!orig) return res.status(404).json({ error: 'Quote not found' });
+
+    const ref = await nextReference();
+    const { rows: newRows } = await query(
+      `INSERT INTO quotes (project_id, reference, title, notes, diagnostic_summary, vat_rate, customer_id, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'draft') RETURNING id`,
+      [orig.projectId, ref, orig.title ? `Copy of ${orig.title}` : null, orig.notes || null, orig.diagnosticSummary || null, orig.totals.vatRate, orig.customer?.id || null]
+    );
+    const newId = newRows[0].id;
+
+    // Copy items and their lines
+    for (const item of orig.items) {
+      const { rows: itemRows } = await query(
+        `INSERT INTO quote_items (quote_id, title, description, notes, sort_order) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [newId, item.title, item.description || null, item.notes || null, item.sortOrder]
+      );
+      const newItemId = itemRows[0].id;
+      for (const line of item.lines) {
+        await query(
+          `INSERT INTO quote_lines (quote_id, quote_item_id, type, description, qty, unit_cost, markup_pct, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [newId, newItemId, line.type, line.description, line.qty, line.unitCost, line.markupPct, line.sortOrder]
+        );
+      }
+    }
+    // Copy ungrouped lines
+    for (const line of orig.ungroupedLines) {
+      await query(
+        `INSERT INTO quote_lines (quote_id, type, description, qty, unit_cost, markup_pct, sort_order) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [newId, line.type, line.description, line.qty, line.unitCost, line.markupPct, line.sortOrder]
+      );
+    }
+
+    const newQuote = await getQuoteWithLines(newId);
+    res.json(newQuote);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
