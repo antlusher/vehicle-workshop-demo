@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
-         getWorkshopInfo, acceptQuote } from '../services/customerApi';
+         getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -530,12 +530,108 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
   );
 }
 
+// ── Profile panel ────────────────────────────────────────────────────────────
+function ProfilePanel({ token, onClose }) {
+  const [profile, setProfile] = useState(null);
+  const [form, setForm] = useState({ name: '', phone: '' });
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+  const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwMsg, setPwMsg] = useState('');
+  const [pwError, setPwError] = useState('');
+
+  useEffect(() => {
+    getProfile(token).then((p) => { setProfile(p); setForm({ name: p.name, phone: p.phone }); });
+  }, [token]);
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setSaving(true); setSaveMsg('');
+    try {
+      const updated = await updateProfile(form, token);
+      setProfile(updated);
+      setSaveMsg('Saved.');
+      setTimeout(() => setSaveMsg(''), 2500);
+    } catch (err) {
+      setSaveMsg(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPwError(''); setPwMsg('');
+    if (pw.next !== pw.confirm) { setPwError('Passwords do not match'); return; }
+    setPwSaving(true);
+    try {
+      await changePassword({ currentPassword: pw.current, newPassword: pw.next }, token);
+      setPwMsg('Password updated.');
+      setPw({ current: '', next: '', confirm: '' });
+      setTimeout(() => setPwMsg(''), 3000);
+    } catch (err) {
+      setPwError(err.message);
+    } finally {
+      setPwSaving(false);
+    }
+  };
+
+  return (
+    <div className="cp-profile-overlay" onClick={onClose}>
+      <div className="cp-profile-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="cp-profile-header">
+          <h2>My account</h2>
+          <button className="cp-profile-close" onClick={onClose}>✕</button>
+        </div>
+
+        {!profile ? <div className="cp-loading">Loading…</div> : (
+          <>
+            <p className="cp-profile-email">{profile.email}</p>
+
+            <form onSubmit={handleSaveProfile} className="cp-profile-form">
+              <h3>Contact details</h3>
+              <label>Name</label>
+              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" />
+              <label>Phone</label>
+              <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="e.g. 07700 900000" />
+              <div className="cp-profile-actions">
+                <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+                {saveMsg && <span className="cp-profile-msg">{saveMsg}</span>}
+              </div>
+            </form>
+
+            <form onSubmit={handleChangePassword} className="cp-profile-form cp-profile-form--pw">
+              <h3>Change password</h3>
+              <label>Current password</label>
+              <input type="password" value={pw.current} onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))} required />
+              <label>New password</label>
+              <input type="password" value={pw.next} onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))} minLength={8} required />
+              <label>Confirm new password</label>
+              <input type="password" value={pw.confirm} onChange={(e) => setPw((p) => ({ ...p, confirm: e.target.value }))} required />
+              {pwError && <p className="cp-profile-error">{pwError}</p>}
+              <div className="cp-profile-actions">
+                <button type="submit" disabled={pwSaving}>{pwSaving ? 'Updating…' : 'Update password'}</button>
+                {pwMsg && <span className="cp-profile-msg">{pwMsg}</span>}
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Root portal ──────────────────────────────────────────────────────────────
 export default function CustomerPortal({ user, token, onLogout }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+<<<<<<< HEAD
   const [workshop, setWorkshop] = useState(null);
+=======
+  const [showProfile, setShowProfile] = useState(false);
+>>>>>>> feature/cp-profile
 
   useEffect(() => {
     getWorkshopInfo(token).then(setWorkshop).catch(() => {});
@@ -553,10 +649,14 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
-          <span className="cp-user-email">{user.email}</span>
+          <button className="cp-user-email cp-profile-btn" onClick={() => setShowProfile(true)}>
+            {user.name || user.email}
+          </button>
           <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
         </div>
       </header>
+
+      {showProfile && <ProfilePanel token={token} onClose={() => setShowProfile(false)} />}
 
       <main className="cp-main">
         {selectedVehicle ? (

@@ -145,6 +145,47 @@ router.get('/workshop', requireCustomer, async (req, res) => {
   });
 });
 
+// GET /api/customer/profile
+router.get('/profile', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    'SELECT email, name, phone FROM users WHERE id=$1',
+    [req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  return res.json({ email: rows[0].email, name: rows[0].name || '', phone: rows[0].phone || '' });
+});
+
+// PATCH /api/customer/profile — update name and phone
+router.patch('/profile', requireCustomer, async (req, res) => {
+  const { name, phone } = req.body;
+  await query(
+    'UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone) WHERE id=$3',
+    [name ?? null, phone ?? null, req.user.id]
+  );
+  const { rows } = await query(
+    'SELECT email, name, phone FROM users WHERE id=$1',
+    [req.user.id]
+  );
+  return res.json({ email: rows[0].email, name: rows[0].name || '', phone: rows[0].phone || '' });
+});
+
+// POST /api/customer/change-password
+router.post('/change-password', requireCustomer, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords are required' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+  const { rows } = await query('SELECT password FROM users WHERE id=$1', [req.user.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+
+  const match = await bcrypt.compare(currentPassword, rows[0].password);
+  if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password=$1 WHERE id=$2', [hashed, req.user.id]);
+  return res.json({ ok: true });
+});
+
 // GET /api/customer/vehicles — list all vehicles linked to this customer
 router.get('/vehicles', requireCustomer, async (req, res) => {
   const { rows } = await query(
