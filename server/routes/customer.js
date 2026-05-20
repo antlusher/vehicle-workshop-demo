@@ -125,6 +125,26 @@ function requireCustomer(req, res, next) {
   }).catch(() => res.status(403).json({ error: 'Customer access required' }));
 }
 
+// GET /api/customer/workshop — workshop branding for the portal header
+router.get('/workshop', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    `SELECT w.name, ws.phone, ws.email, ws.address_line1, ws.city
+     FROM workshops w
+     LEFT JOIN workshop_settings ws ON true
+     WHERE w.id = $1
+     LIMIT 1`,
+    [req.user.workshop_id]
+  );
+  if (!rows.length) return res.json({ name: 'Your Workshop' });
+  const r = rows[0];
+  return res.json({
+    name: r.name || 'Your Workshop',
+    phone: r.phone || null,
+    email: r.email || null,
+    address: [r.address_line1, r.city].filter(Boolean).join(', ') || null,
+  });
+});
+
 // GET /api/customer/vehicles — list all vehicles linked to this customer
 router.get('/vehicles', requireCustomer, async (req, res) => {
   const { rows } = await query(
