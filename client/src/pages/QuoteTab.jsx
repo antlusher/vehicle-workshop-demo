@@ -798,7 +798,7 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
   const [showPreview, setShowPreview]       = useState(false);
   const [showQuickSend, setShowQuickSend]   = useState(false);
 
-  const isReadOnly = quote.status === 'invoiced';
+  const isReadOnly = false;
 
   // Customer can live on the quote itself OR inherited from the project
   const effectiveCustomer = quote.customer || project.customer;
@@ -927,8 +927,11 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
         {quote.status === 'approved' && (
           <>
             <button type="button" className="secondary" onClick={() => handleStatusChange('invoiced')}>Mark invoiced</button>
-            <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Unaccept</button>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Revert to quote</button>
           </>
+        )}
+        {quote.status === 'invoiced' && (
+          <button type="button" className="secondary" onClick={() => handleStatusChange('approved')}>Revert to invoice</button>
         )}
         <button type="button" className="secondary" onClick={() => setShowPreview(true)}>Preview</button>
       </div>
