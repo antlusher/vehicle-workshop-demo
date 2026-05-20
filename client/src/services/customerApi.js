@@ -27,6 +27,23 @@ export const getVehicleMot = (vehicleId, token) => request(`/api/customer/vehicl
 export const getVehicleGallery = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/gallery`, {}, token);
 export const getVehicleInvoices = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/invoices`, {}, token);
 export const getInvoiceDetail = (quoteId, token) => request(`/api/customer/invoices/${quoteId}`, {}, token);
+
+export async function downloadInvoicePdf(quoteId, token, filename) {
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const res = await fetch(`${BASE_URL}/api/customer/invoices/${quoteId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to generate PDF');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'invoice.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 export const acceptQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote/accept`, { method: 'POST' }, token);
 
 // Admin customer management

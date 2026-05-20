@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, addVehicle, getVehicleStats, getVehicleJobs, getJobReport, getJobQuote,
-         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
+         getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail, downloadInvoicePdf,
          getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword,
          getNotifications, submitEnquiry } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
@@ -13,6 +13,7 @@ function fmtDate(d) { return d ? new Date(d).toLocaleDateString('en-GB', { day: 
 function InvoiceView({ invoiceId, token, onBack, workshopName }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const printRef = useRef();
 
   useEffect(() => {
@@ -24,28 +25,15 @@ function InvoiceView({ invoiceId, token, onBack, workshopName }) {
 
   const { id, reference, title, status, vehicle, registration, date, subtotal, vat, total, vatRate, items, ungroupedLines } = data;
 
-  const handlePrint = () => {
-    const content = printRef.current.innerHTML;
-    const w = window.open('', '_blank');
-    w.document.write(`<!DOCTYPE html><html><head><title>Invoice ${reference}</title>
-      <style>
-        body { font-family: Arial, sans-serif; color: #111; margin: 40px; }
-        h1 { font-size: 1.6rem; margin: 0 0 4px; }
-        .meta { color: #6b7280; font-size: 0.85rem; margin-bottom: 24px; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-        th { background: #f3f4f6; text-align: left; padding: 8px 12px; font-size: 0.82rem; }
-        td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; font-size: 0.88rem; }
-        .right { text-align: right; }
-        .totals td { border: none; font-size: 0.9rem; }
-        .total-row td { font-weight: 700; font-size: 1rem; border-top: 2px solid #111; }
-        .section-title { font-weight: 600; margin: 20px 0 4px; font-size: 0.9rem; color: #374151; }
-        .badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.76rem; font-weight:600;
-                 background:${status==='approved'?'#dcfce7':'#fef9c3'}; color:${status==='approved'?'#15803d':'#a16207'}; }
-      </style></head><body>${content}</body></html>`);
-    w.document.close();
-    w.focus();
-    w.print();
-    w.close();
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await downloadInvoicePdf(invoiceId, token, `invoice-${reference}.pdf`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const renderLines = (lines) => lines.map((l) => (
@@ -61,7 +49,9 @@ function InvoiceView({ invoiceId, token, onBack, workshopName }) {
     <div className="cp-invoice-shell">
       <div className="cp-invoice-toolbar">
         <button className="cp-back" onClick={onBack}>← Back to invoices</button>
-        <button onClick={handlePrint} style={{ marginLeft: 'auto' }}>Print / Save PDF</button>
+        <button className="cp-download-btn" onClick={handleDownload} disabled={downloading} style={{ marginLeft: 'auto' }}>
+          {downloading ? 'Generating…' : '↓ Download PDF'}
+        </button>
       </div>
 
       <div className="cp-invoice-paper" ref={printRef}>

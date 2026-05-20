@@ -5,6 +5,7 @@ const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { sendCustomerActivation } = require('../services/emailService');
 const { fetchMotHistory } = require('../services/motService');
+const { generateInvoicePdf } = require('../services/pdfService');
 
 const router = express.Router();
 
@@ -605,6 +606,77 @@ router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
     lines: allLines,
     totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
   });
+});
+
+// GET /api/customer/invoices/:quoteId/pdf — download invoice as PDF
+router.get('/invoices/:quoteId/pdf', requireCustomer, async (req, res) => {
+  const { rows: quoteRows } = await query(
+    `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+    [req.params.quoteId, req.user.id]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
+  const quote = quoteRows[0];
+
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: wsRows } = await query('SELECT name FROM workshops WHERE id=$1', [req.user.workshopId]);
+
+  const formatLine = (row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+  const items = itemRows.map((item) => ({
+    id: item.id,
+    title: item.title,
+    lines: allLines.filter((l) => l.quoteItemId === item.id),
+  }));
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  try {
+    const pdf = await generateInvoicePdf({
+      workshopName: wsRows[0]?.name || '',
+      reference: quote.reference,
+      title: quote.title || null,
+      status: quote.status,
+      registration: quote.registration_snapshot || quote.registration,
+      vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+      date: quote.updated_at,
+      items,
+      ungroupedLines,
+      subtotal,
+      vat,
+      total: Math.round((subtotal + vat) * 100) / 100,
+      vatRate,
+      notes: quote.notes || null,
+    });
+
+    const filename = `invoice-${quote.reference.replace(/[^a-zA-Z0-9-]/g, '-')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdf.length);
+    return res.send(pdf);
+  } catch (err) {
+    console.error('[pdf] generation failed:', err.message);
+    return res.status(500).json({ error: 'Failed to generate PDF' });
+  }
 });
 
 // POST /api/customer/jobs/:projectId/quote/accept — customer approves a sent quote
