@@ -628,7 +628,11 @@ router.get('/invoices/:quoteId/pdf', requireCustomer, async (req, res) => {
     'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
     [quote.id]
   );
-  const { rows: wsRows } = await query('SELECT name FROM workshops WHERE id=$1', [req.user.workshopId]);
+  const [{ rows: wsRows }, tmpl] = await Promise.all([
+    query('SELECT name, address_line1, address_line2, city, postcode, phone, email FROM workshops w JOIN workshop_settings ws ON true WHERE w.id=$1 LIMIT 1', [req.user.workshopId]).catch(() => query('SELECT name FROM workshops WHERE id=$1', [req.user.workshopId])),
+    require('../services/partsService').getWorkshopSettings(),
+  ]);
+  const ws = wsRows[0] || {};
 
   const formatLine = (row) => {
     const unitCost = parseFloat(row.unit_cost);
@@ -652,7 +656,19 @@ router.get('/invoices/:quoteId/pdf', requireCustomer, async (req, res) => {
 
   try {
     const pdf = await generateInvoicePdf({
-      workshopName: wsRows[0]?.name || '',
+      workshopName: tmpl.workshopName || ws.name || '',
+      address: [tmpl.addressLine1, tmpl.addressLine2, tmpl.city, tmpl.postcode].filter(Boolean),
+      phone: tmpl.phone || null,
+      email: tmpl.email || null,
+      logoUrl: tmpl.invoiceLogoUrl || null,
+      accentColor: tmpl.invoiceAccentColor || '#1e40af',
+      vatNumber: tmpl.invoiceVatNumber || null,
+      footerText: tmpl.invoiceFooterText || null,
+      showBankDetails: tmpl.invoiceShowBankDetails || false,
+      bankName: tmpl.invoiceBankName || null,
+      accountName: tmpl.invoiceAccountName || null,
+      accountNumber: tmpl.invoiceAccountNumber || null,
+      sortCode: tmpl.invoiceSortCode || null,
       reference: quote.reference,
       title: quote.title || null,
       status: quote.status,

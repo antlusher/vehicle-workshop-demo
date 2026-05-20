@@ -125,6 +125,16 @@ async function getWorkshopSettings() {
     email: r.email || null,
     paymentNotes: r.payment_notes || null,
     aiEnabled: r.ai_enabled !== false,
+    // Invoice template
+    invoiceLogoUrl: r.invoice_logo_url || null,
+    invoiceAccentColor: r.invoice_accent_color || '#1e40af',
+    invoiceVatNumber: r.invoice_vat_number || null,
+    invoiceFooterText: r.invoice_footer_text || null,
+    invoiceShowBankDetails: r.invoice_show_bank_details || false,
+    invoiceBankName: r.invoice_bank_name || null,
+    invoiceAccountName: r.invoice_account_name || null,
+    invoiceAccountNumber: r.invoice_account_number || null,
+    invoiceSortCode: r.invoice_sort_code || null,
   };
 }
 

@@ -1,10 +1,18 @@
 const express = require('express');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { applyMarkup, getWorkshopSettings } = require('../services/partsService');
 const { sendQuoteToCustomer, sendQuickQuote } = require('../services/emailService');
 const { sendSMS } = require('../services/smsService');
+const { s3Available, uploadToS3, deleteFromS3 } = require('../services/mediaService');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const router = express.Router();
 
@@ -145,6 +153,8 @@ router.patch('/settings', requireAuth, async (req, res) => {
       defaultMarkupPct, labourRatePerHour, vatRate,
       workshopName, addressLine1, addressLine2, city, postcode,
       phone, email, paymentNotes, aiEnabled,
+      invoiceAccentColor, invoiceVatNumber, invoiceFooterText,
+      invoiceShowBankDetails, invoiceBankName, invoiceAccountName, invoiceAccountNumber, invoiceSortCode,
     } = req.body;
     const existing = await query('SELECT id FROM workshop_settings LIMIT 1');
     if (existing.rows.length) {
@@ -162,29 +172,99 @@ router.patch('/settings', requireAuth, async (req, res) => {
            email=COALESCE($10,email),
            payment_notes=COALESCE($11,payment_notes),
            ai_enabled=COALESCE($12,ai_enabled),
+           invoice_accent_color=COALESCE($13,invoice_accent_color),
+           invoice_vat_number=$14,
+           invoice_footer_text=$15,
+           invoice_show_bank_details=COALESCE($16,invoice_show_bank_details),
+           invoice_bank_name=$17,
+           invoice_account_name=$18,
+           invoice_account_number=$19,
+           invoice_sort_code=$20,
            updated_at=now()`,
         [
           defaultMarkupPct ?? null, labourRatePerHour ?? null, vatRate ?? null,
           workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
           city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
           aiEnabled ?? null,
+          invoiceAccentColor || null, invoiceVatNumber || null, invoiceFooterText || null,
+          invoiceShowBankDetails ?? null,
+          invoiceBankName || null, invoiceAccountName || null, invoiceAccountNumber || null, invoiceSortCode || null,
         ]
       );
     } else {
       await query(
         `INSERT INTO workshop_settings
            (default_markup_pct, labour_rate_per_hour, vat_rate,
-            workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes, ai_enabled)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes, ai_enabled,
+            invoice_accent_color, invoice_vat_number, invoice_footer_text,
+            invoice_show_bank_details, invoice_bank_name, invoice_account_name, invoice_account_number, invoice_sort_code)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
         [
           defaultMarkupPct ?? 30, labourRatePerHour ?? 75, vatRate ?? 20,
           workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
-          city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null,
-          aiEnabled ?? true,
+          city ?? null, postcode ?? null, phone ?? null, email ?? null, paymentNotes ?? null, true,
+          invoiceAccentColor || '#1e40af', invoiceVatNumber || null, invoiceFooterText || null,
+          invoiceShowBankDetails ?? false,
+          invoiceBankName || null, invoiceAccountName || null, invoiceAccountNumber || null, invoiceSortCode || null,
         ]
       );
     }
     res.json(await getWorkshopSettings());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/quotes/settings/logo — upload workshop logo
+router.post('/settings/logo', requireAuth, upload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    if (!allowed.includes(req.file.mimetype)) return res.status(400).json({ error: 'Only image files are accepted' });
+
+    // Delete old logo if present
+    const { rows: existing } = await query('SELECT invoice_logo_url FROM workshop_settings LIMIT 1');
+    const oldLogo = existing[0]?.invoice_logo_url;
+    if (oldLogo) {
+      if (s3Available()) {
+        deleteFromS3(oldLogo).catch(() => {});
+      } else {
+        const oldPath = path.join(uploadsDir, oldLogo);
+        if (fs.existsSync(oldPath)) fs.unlink(oldPath, () => {});
+      }
+    }
+
+    let filename;
+    if (s3Available()) {
+      filename = await uploadToS3(req.file.buffer, `logos/${Date.now()}-${req.file.originalname}`, req.file.mimetype);
+    } else {
+      filename = `logo-${Date.now()}${path.extname(req.file.originalname)}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
+    }
+
+    if (existing.length) {
+      await query('UPDATE workshop_settings SET invoice_logo_url=$1, updated_at=now()', [filename]);
+    } else {
+      await query('INSERT INTO workshop_settings (invoice_logo_url) VALUES ($1)', [filename]);
+    }
+
+    res.json({ logoUrl: filename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/quotes/settings/logo — remove workshop logo
+router.delete('/settings/logo', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await query('SELECT invoice_logo_url FROM workshop_settings LIMIT 1');
+    const logo = rows[0]?.invoice_logo_url;
+    if (logo) {
+      if (s3Available()) deleteFromS3(logo).catch(() => {});
+      else { const p = path.join(uploadsDir, logo); if (fs.existsSync(p)) fs.unlink(p, () => {}); }
+      await query('UPDATE workshop_settings SET invoice_logo_url=NULL, updated_at=now()');
+    }
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

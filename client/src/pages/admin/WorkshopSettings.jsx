@@ -510,6 +510,196 @@ function AiFeaturesTab({ token }) {
   );
 }
 
+// ── Invoice Template ───────────────────────────────────────────────────────────
+
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+function InvoiceTemplateTab({ token }) {
+  const [form, setForm] = useState({
+    invoiceAccentColor: '#1e40af', invoiceVatNumber: '', invoiceFooterText: '',
+    invoiceShowBankDetails: false,
+    invoiceBankName: '', invoiceAccountName: '', invoiceAccountNumber: '', invoiceSortCode: '',
+  });
+  const [workshopName, setWorkshopName] = useState('');
+  const [logoUrl, setLogoUrl] = useState(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    apiFetch('/quotes/settings', {}, token).then((s) => {
+      setWorkshopName(s.workshopName || '');
+      setLogoUrl(s.invoiceLogoUrl || null);
+      setForm({
+        invoiceAccentColor: s.invoiceAccentColor || '#1e40af',
+        invoiceVatNumber: s.invoiceVatNumber || '',
+        invoiceFooterText: s.invoiceFooterText || '',
+        invoiceShowBankDetails: s.invoiceShowBankDetails || false,
+        invoiceBankName: s.invoiceBankName || '',
+        invoiceAccountName: s.invoiceAccountName || '',
+        invoiceAccountNumber: s.invoiceAccountNumber || '',
+        invoiceSortCode: s.invoiceSortCode || '',
+      });
+    }).catch(() => {});
+  }, []);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoUploading(true); setError('');
+    try {
+      const fd = new FormData();
+      fd.append('logo', file);
+      const res = await fetch(`${BASE_URL}/api/quotes/settings/logo`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setLogoUrl(data.logoUrl);
+    } catch (err) { setError(err.message); }
+    finally { setLogoUploading(false); e.target.value = ''; }
+  };
+
+  const handleRemoveLogo = async () => {
+    setError('');
+    try {
+      await apiFetch('/quotes/settings/logo', { method: 'DELETE' }, token);
+      setLogoUrl(null);
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await apiFetch('/quotes/settings', { method: 'PATCH', body: form }, token);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (err) { setError(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const accent = form.invoiceAccentColor || '#1e40af';
+  const logoSrc = logoUrl
+    ? (logoUrl.startsWith('logos/') ? `${BASE_URL}/api/media/${logoUrl}` : `${BASE_URL}/uploads/${logoUrl}`)
+    : null;
+
+  return (
+    <>
+      <div className="ws-template-layout">
+        {/* Left: form */}
+        <div className="ws-template-form">
+          <Section title="Logo">
+            <Field label="Workshop logo" hint="shown at the top of every invoice and estimate (PNG, JPG or SVG, max 2 MB)">
+              {logoSrc && (
+                <div className="ws-logo-preview">
+                  <img src={logoSrc} alt="Logo preview" />
+                  <button className="ws-logo-remove" onClick={handleRemoveLogo}>Remove</button>
+                </div>
+              )}
+              <label className="ws-logo-upload-btn">
+                {logoUploading ? 'Uploading…' : logoSrc ? 'Replace logo' : 'Upload logo'}
+                <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={logoUploading} style={{ display: 'none' }} />
+              </label>
+            </Field>
+          </Section>
+
+          <Section title="Branding">
+            <Field label="Accent colour" hint="used for headings, borders and table headers">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input type="color" value={accent} onChange={(e) => set('invoiceAccentColor', e.target.value)}
+                  style={{ width: 44, height: 36, padding: 2, border: '1px solid #d1d5db', borderRadius: 6, cursor: 'pointer' }} />
+                <input value={accent} onChange={(e) => set('invoiceAccentColor', e.target.value)}
+                  placeholder="#1e40af" style={{ width: 110, fontFamily: 'monospace' }} />
+              </div>
+            </Field>
+            <Field label="VAT registration number" hint="displayed on all invoices">
+              <input value={form.invoiceVatNumber} onChange={(e) => set('invoiceVatNumber', e.target.value)} placeholder="GB 123 4567 89" />
+            </Field>
+          </Section>
+
+          <Section title="Footer">
+            <Field label="Footer text" hint="replaces the default footer on every PDF — leave blank for default">
+              <textarea rows={2} value={form.invoiceFooterText} onChange={(e) => set('invoiceFooterText', e.target.value)}
+                placeholder="Thank you for your business. Payment due within 30 days." />
+            </Field>
+          </Section>
+
+          <Section title="Bank details">
+            <Field label="Show bank details on invoices">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={form.invoiceShowBankDetails}
+                  onChange={(e) => set('invoiceShowBankDetails', e.target.checked)}
+                  style={{ width: 18, height: 18 }} />
+                <span style={{ fontSize: '0.9rem' }}>{form.invoiceShowBankDetails ? 'Shown on invoices' : 'Hidden'}</span>
+              </label>
+            </Field>
+            {form.invoiceShowBankDetails && (
+              <>
+                <Field label="Bank name">
+                  <input value={form.invoiceBankName} onChange={(e) => set('invoiceBankName', e.target.value)} placeholder="e.g. Barclays" />
+                </Field>
+                <Field label="Account name">
+                  <input value={form.invoiceAccountName} onChange={(e) => set('invoiceAccountName', e.target.value)} placeholder="Your Business Ltd" />
+                </Field>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <Field label="Sort code">
+                    <input value={form.invoiceSortCode} onChange={(e) => set('invoiceSortCode', e.target.value)} placeholder="12-34-56" />
+                  </Field>
+                  <Field label="Account number">
+                    <input value={form.invoiceAccountNumber} onChange={(e) => set('invoiceAccountNumber', e.target.value)} placeholder="12345678" />
+                  </Field>
+                </div>
+              </>
+            )}
+          </Section>
+        </div>
+
+        {/* Right: live preview */}
+        <div className="ws-template-preview">
+          <p className="ws-preview-label">Preview</p>
+          <div className="ws-preview-card" style={{ '--accent': accent }}>
+            <div className="ws-prev-top" style={{ borderBottomColor: accent }}>
+              <div>
+                {logoSrc && <img src={logoSrc} className="ws-prev-logo" alt="" />}
+                <div className="ws-prev-name">{workshopName || 'Your Workshop'}</div>
+                {form.invoiceVatNumber && <div className="ws-prev-vat">VAT Reg: {form.invoiceVatNumber}</div>}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div className="ws-prev-doctype" style={{ color: accent }}>Invoice</div>
+                <div className="ws-prev-ref">INV-001</div>
+                <span className="ws-prev-badge" style={{ background: '#dcfce7', color: '#15803d' }}>approved</span>
+              </div>
+            </div>
+            <div className="ws-prev-table-header" style={{ background: accent + '18', borderBottomColor: accent + '40' }}>
+              <span style={{ color: accent }}>Description</span>
+              <span style={{ color: accent }}>Total</span>
+            </div>
+            <div className="ws-prev-row"><span>Oil change service</span><span>£45.00</span></div>
+            <div className="ws-prev-row"><span>Brake pads (front)</span><span>£120.00</span></div>
+            <div className="ws-prev-total"><span>Total</span><span>£198.00</span></div>
+            {form.invoiceShowBankDetails && (form.invoiceBankName || form.invoiceAccountNumber) && (
+              <div className="ws-prev-bank">
+                <div className="ws-prev-bank-title">Bank details</div>
+                {form.invoiceBankName && <div>{form.invoiceBankName}</div>}
+                {form.invoiceSortCode && <div>Sort: {form.invoiceSortCode}</div>}
+                {form.invoiceAccountNumber && <div>Acc: {form.invoiceAccountNumber}</div>}
+              </div>
+            )}
+            <div className="ws-prev-footer">{form.invoiceFooterText || 'Generated by Your Gofer Workshop Management'}</div>
+          </div>
+        </div>
+      </div>
+
+      <SaveBar saving={saving} saved={saved} error={error} onSave={handleSave} />
+    </>
+  );
+}
+
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -519,6 +709,7 @@ const TABS = [
   { id: 'parts',       label: 'Parts Catalogue' },
   { id: 'permissions', label: 'Role Permissions' },
   { id: 'ai',          label: 'AI Features' },
+  { id: 'template',    label: 'Invoice Template' },
 ];
 
 export default function WorkshopSettings({ token, userRole }) {
@@ -540,6 +731,7 @@ export default function WorkshopSettings({ token, userRole }) {
         {tab === 'parts'       && <PartsCatalogueTab token={token} />}
         {tab === 'permissions' && <PermissionsTab token={token} />}
         {tab === 'ai'          && <AiFeaturesTab token={token} />}
+        {tab === 'template'    && <InvoiceTemplateTab token={token} />}
       </div>
     </div>
   );

@@ -2134,6 +2134,37 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .ws-save-bar { display: flex; align-items: center; gap: 12px; justify-content: flex-end; padding-top: 4px; }
 .ws-add-form { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-top: 12px; }
 
+/* ── Invoice Template tab ────────────────────────────────────────────────────── */
+.ws-template-layout { display: grid; grid-template-columns: 1fr 320px; gap: 28px; align-items: flex-start; }
+@media (max-width: 900px) { .ws-template-layout { grid-template-columns: 1fr; } }
+.ws-template-form { min-width: 0; }
+
+/* Logo upload */
+.ws-logo-preview { display: flex; align-items: center; gap: 14px; margin-bottom: 10px; padding: 10px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }
+.ws-logo-preview img { max-height: 48px; max-width: 160px; object-fit: contain; }
+.ws-logo-remove { background: none; border: 1px solid #fca5a5; color: #dc2626; border-radius: 5px; padding: 4px 10px; font-size: 0.78rem; cursor: pointer; }
+.ws-logo-remove:hover { background: #fef2f2; }
+.ws-logo-upload-btn { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1; color: #374151; border-radius: 6px; padding: 7px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.ws-logo-upload-btn:hover { background: #e2e8f0; }
+
+/* Live preview card */
+.ws-template-preview { position: sticky; top: 20px; }
+.ws-preview-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 8px; }
+.ws-preview-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px 16px; font-family: Arial, sans-serif; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.ws-prev-top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 14px; border-bottom: 2px solid; margin-bottom: 14px; }
+.ws-prev-logo { max-height: 36px; max-width: 100px; object-fit: contain; display: block; margin-bottom: 4px; }
+.ws-prev-name { font-size: 13px; font-weight: 800; color: #1e293b; }
+.ws-prev-vat { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+.ws-prev-doctype { font-size: 18px; font-weight: 800; line-height: 1; }
+.ws-prev-ref { font-size: 10px; color: #64748b; margin-top: 3px; }
+.ws-prev-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; margin-top: 5px; }
+.ws-prev-table-header { display: flex; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.ws-prev-row { display: flex; justify-content: space-between; padding: 5px 8px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+.ws-prev-total { display: flex; justify-content: space-between; padding: 7px 8px; font-weight: 700; border-top: 2px solid #1e293b; margin-top: 4px; }
+.ws-prev-bank { margin-top: 10px; padding: 8px; background: #f8fafc; border-radius: 5px; font-size: 10px; color: #374151; display: flex; flex-direction: column; gap: 2px; }
+.ws-prev-bank-title { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; }
+.ws-prev-footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af; text-align: center; }
+
 /* ── Training Chat ──────────────────────────────────────────────────────────── */
 .training-layout { display: flex; gap: 24px; align-items: flex-start; min-height: 0; }
 .training-chat-panel { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
