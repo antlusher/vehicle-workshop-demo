@@ -135,6 +135,8 @@ async function getWorkshopSettings() {
     invoiceAccountName: r.invoice_account_name || null,
     invoiceAccountNumber: r.invoice_account_number || null,
     invoiceSortCode: r.invoice_sort_code || null,
+    invoiceCompanyReg: r.invoice_company_reg || null,
+    invoicePaymentTerms: r.invoice_payment_terms || 'Due on receipt',
   };
 }
 

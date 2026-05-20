@@ -222,6 +222,7 @@ router.patch('/settings', requireAuth, async (req, res) => {
       phone, email, paymentNotes, aiEnabled,
       invoiceAccentColor, invoiceVatNumber, invoiceFooterText,
       invoiceShowBankDetails, invoiceBankName, invoiceAccountName, invoiceAccountNumber, invoiceSortCode,
+      invoiceCompanyReg, invoicePaymentTerms,
     } = req.body;
     const existing = await query('SELECT id FROM workshop_settings LIMIT 1');
     if (existing.rows.length) {
@@ -247,6 +248,8 @@ router.patch('/settings', requireAuth, async (req, res) => {
            invoice_account_name=$18,
            invoice_account_number=$19,
            invoice_sort_code=$20,
+           invoice_company_reg=$21,
+           invoice_payment_terms=$22,
            updated_at=now()`,
         [
           defaultMarkupPct ?? null, labourRatePerHour ?? null, vatRate ?? null,
@@ -256,6 +259,7 @@ router.patch('/settings', requireAuth, async (req, res) => {
           invoiceAccentColor || null, invoiceVatNumber || null, invoiceFooterText || null,
           invoiceShowBankDetails ?? null,
           invoiceBankName || null, invoiceAccountName || null, invoiceAccountNumber || null, invoiceSortCode || null,
+          invoiceCompanyReg || null, invoicePaymentTerms || null,
         ]
       );
     } else {
@@ -264,8 +268,9 @@ router.patch('/settings', requireAuth, async (req, res) => {
            (default_markup_pct, labour_rate_per_hour, vat_rate,
             workshop_name, address_line1, address_line2, city, postcode, phone, email, payment_notes, ai_enabled,
             invoice_accent_color, invoice_vat_number, invoice_footer_text,
-            invoice_show_bank_details, invoice_bank_name, invoice_account_name, invoice_account_number, invoice_sort_code)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            invoice_show_bank_details, invoice_bank_name, invoice_account_name, invoice_account_number, invoice_sort_code,
+            invoice_company_reg, invoice_payment_terms)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           defaultMarkupPct ?? 30, labourRatePerHour ?? 75, vatRate ?? 20,
           workshopName ?? null, addressLine1 ?? null, addressLine2 ?? null,
@@ -273,6 +278,7 @@ router.patch('/settings', requireAuth, async (req, res) => {
           invoiceAccentColor || '#1e40af', invoiceVatNumber || null, invoiceFooterText || null,
           invoiceShowBankDetails ?? false,
           invoiceBankName || null, invoiceAccountName || null, invoiceAccountNumber || null, invoiceSortCode || null,
+          invoiceCompanyReg || null, invoicePaymentTerms || null,
         ]
       );
     }
@@ -834,9 +840,11 @@ router.post('/:id/duplicate', requireAuth, async (req, res) => {
 router.get('/:id/pdf', requireAuth, async (req, res) => {
   try {
     const { rows: quoteRows } = await query(
-      `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year
+      `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year, p.vin, p.mileage,
+              c.name AS customer_name, c.address_line1, c.address_line2, c.city, c.postcode
        FROM quotes q
        JOIN projects p ON p.id = q.project_id
+       LEFT JOIN customers c ON c.id = q.customer_id
        WHERE q.id = $1`,
       [req.params.id]
     );
@@ -882,8 +890,14 @@ router.get('/:id/pdf', requireAuth, async (req, res) => {
       title: quote.title || null,
       status: quote.status,
       registration: quote.registration_snapshot || quote.registration,
+      vin: quote.vin || null,
+      mileage: quote.mileage || null,
       vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+      customerName: quote.customer_name || null,
+      customerAddress: [quote.address_line1, quote.address_line2, quote.city, quote.postcode].filter(Boolean),
       date: quote.updated_at,
+      companyReg: tmpl.invoiceCompanyReg || null,
+      paymentTerms: tmpl.invoicePaymentTerms || 'Due on receipt',
       items,
       ungroupedLines,
       subtotal,

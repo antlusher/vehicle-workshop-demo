@@ -22,26 +22,37 @@ async function getLogoDataUri(logoUrl) {
 
 function buildInvoiceHtml({
   workshopName, address, phone, email,
-  logoUri, accentColor,
+  logoUri,
   vatNumber, reference, title, status,
-  registration, vehicle, date,
+  registration, vin, mileage, vehicle,
+  customerName, customerAddress,
+  date, paymentTerms, companyReg,
   items, ungroupedLines,
   subtotal, vat, total, vatRate,
   notes, footerText,
   showBankDetails, bankName, accountName, accountNumber, sortCode,
 }) {
-  const accent = accentColor || '#1e40af';
   const fmt = (v) => v == null ? '—' : `£${parseFloat(v).toFixed(2)}`;
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
-  const docType = status === 'approved' ? 'Invoice' : 'Estimate';
+  const docType = (status === 'approved' || status === 'invoiced') ? 'INVOICE' : 'ESTIMATE';
+  const invoiceNum = reference || '';
 
-  const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
+  const fmtQty = (l) => {
+    const q = parseFloat(l.qty);
+    if (l.type === 'labour') {
+      const hrs = Math.floor(q);
+      const mins = Math.round((q - hrs) * 60);
+      return `${hrs}:${mins.toString().padStart(2, '0')} Hours`;
+    }
+    return String(q % 1 === 0 ? q : q.toFixed(2));
+  };
+
   const renderLine = (l) => `
     <tr>
-      <td>${TYPE_LABELS[l.type] || l.type || ''}</td>
-      <td>${l.description || ''}</td>
-      <td class="right">×${parseFloat(l.qty)}</td>
-      <td class="right">${fmt(l.lineTotal)}</td>
+      <td class="qty">${fmtQty(l)}</td>
+      <td class="desc">${l.description || ''}</td>
+      <td class="right">${fmt(l.lineTotal / (parseFloat(l.qty) || 1))}</td>
+      <td class="right bold">${fmt(l.lineTotal)}</td>
     </tr>`;
 
   const renderItems = () => {
@@ -54,123 +65,163 @@ function buildInvoiceHtml({
     return rows;
   };
 
-  const addressLines = (address || []).filter(Boolean);
+  const wsAddressLines = (address || []).filter(Boolean);
+  const custAddressLines = (customerAddress || []).filter(Boolean);
+  const terms = paymentTerms || 'Due on receipt';
 
-  const bankSection = showBankDetails && (bankName || accountNumber) ? `
-    <div class="bank-section">
-      <div class="bank-title">Bank details</div>
-      ${bankName ? `<div class="bank-row"><span>Bank</span><strong>${bankName}</strong></div>` : ''}
-      ${accountName ? `<div class="bank-row"><span>Account name</span><strong>${accountName}</strong></div>` : ''}
-      ${sortCode ? `<div class="bank-row"><span>Sort code</span><strong>${sortCode}</strong></div>` : ''}
-      ${accountNumber ? `<div class="bank-row"><span>Account number</span><strong>${accountNumber}</strong></div>` : ''}
-    </div>` : '';
+  const vehicleMeta = [
+    registration ? `REG: ${registration}` : null,
+    vin ? `VIN: ${vin}` : null,
+    vehicle ? `M/M: ${vehicle.replace(' ', '/')}` : null,
+    mileage ? `Mileage: ${parseInt(mileage).toLocaleString()}` : null,
+  ].filter(Boolean).join('&nbsp;&nbsp;&nbsp;');
+
+  const hasOtherInfo = companyReg || vatNumber;
+  const hasPaymentDetails = showBankDetails && (bankName || accountNumber);
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>${docType} ${reference}</title>
+<title>${docType} ${invoiceNum}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 13px; }
-  .page { max-width: 740px; margin: 0 auto; padding: 44px 40px; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12.5px; line-height: 1.45; }
+  .page { max-width: 740px; margin: 0 auto; padding: 36px 44px 40px; }
 
-  /* Header */
-  .top { display: flex; justify-content: space-between; align-items: flex-start;
-         margin-bottom: 28px; padding-bottom: 20px; border-bottom: 3px solid ${accent}; }
-  .ws-logo { max-height: 60px; max-width: 180px; object-fit: contain; display: block; margin-bottom: 6px; }
-  .ws-name { font-size: 18px; font-weight: 800; color: #1e293b; }
-  .ws-address { font-size: 11px; color: #64748b; line-height: 1.6; margin-top: 3px; }
-  .ws-contact { font-size: 11px; color: #64748b; line-height: 1.6; }
-  .doc-block { text-align: right; }
-  .doc-type { font-size: 28px; font-weight: 800; color: ${accent}; line-height: 1; }
-  .doc-ref { font-size: 12px; color: #64748b; margin-top: 5px; }
-  .doc-vat { font-size: 11px; color: #94a3b8; margin-top: 3px; }
-  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; margin-top: 8px; }
-  .badge--approved { background: #dcfce7; color: #15803d; }
-  .badge--sent { background: #fef9c3; color: #a16207; }
-  .badge--draft { background: #f1f5f9; color: #64748b; }
+  hr { border: none; border-top: 1.5px solid #111; margin: 18px 0; }
+  hr.light { border-top-color: #ccc; }
 
-  /* Meta row */
-  .meta-row { display: flex; gap: 48px; margin-bottom: 24px; }
-  .meta-block label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 3px; }
-  .meta-block strong { font-size: 13px; color: #1e293b; }
+  /* ── Top: logo left, workshop address right ── */
+  .top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+  .ws-logo { max-height: 70px; max-width: 200px; object-fit: contain; display: block; }
+  .ws-name { font-size: 15px; font-weight: 700; }
+  .ws-details { text-align: right; font-size: 11.5px; color: #333; line-height: 1.6; }
 
-  /* Table */
-  table { width: 100%; border-collapse: collapse; margin: 4px 0 20px; }
-  thead tr { background: ${accent}15; }
-  th { text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 700;
-       text-transform: uppercase; letter-spacing: 0.04em; color: ${accent}; border-bottom: 2px solid ${accent}30; }
-  th.right { text-align: right; }
-  td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; font-size: 12.5px; color: #1e293b; }
-  td.right { text-align: right; }
-  .section-label { font-weight: 700; font-size: 12px; color: #374151; background: #f8fafc; padding: 7px 12px; }
+  /* ── Customer + Invoice details ── */
+  .billing { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 0 10px; }
+  .cust-name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+  .cust-addr { font-size: 12px; color: #333; line-height: 1.6; }
+  .inv-meta { text-align: right; }
+  .inv-number { font-size: 20px; font-weight: 700; }
+  .inv-date { font-size: 13px; font-weight: 600; margin-top: 4px; }
+  .inv-terms { font-size: 12px; color: #666; margin-top: 3px; }
 
-  /* Totals */
-  .totals-wrap { display: flex; justify-content: flex-end; margin-top: 4px; }
-  .totals-table { width: 280px; }
-  .totals-table td { border: none; padding: 5px 12px; font-size: 13px; }
-  .totals-table .total-row td { border-top: 2px solid #1e293b; font-weight: 700; font-size: 15px; padding-top: 10px; }
+  /* ── Line items table ── */
+  table.lines { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  table.lines th { font-size: 10px; font-weight: 600; text-transform: uppercase;
+                   letter-spacing: 0.06em; color: #444; padding: 7px 8px;
+                   border-top: 1.5px solid #111; border-bottom: 1.5px solid #111; }
+  table.lines th.right { text-align: right; }
+  table.lines td { padding: 9px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; color: #111; font-size: 12.5px; }
+  table.lines td.qty { white-space: nowrap; width: 90px; }
+  table.lines td.desc { }
+  table.lines td.right { text-align: right; white-space: nowrap; }
+  table.lines td.bold { font-weight: 700; }
+  table.lines .section-label { font-weight: 700; font-size: 12px; background: #f5f5f5; padding: 6px 8px; color: #222; }
+  table.lines tr:last-child td { border-bottom: 1.5px solid #111; }
 
-  /* Notes & bank */
-  .notes { margin-top: 20px; padding: 12px 14px; background: #f8fafc; border-left: 3px solid ${accent};
-           border-radius: 0 6px 6px 0; font-size: 12px; color: #374151; line-height: 1.6; }
-  .notes-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 5px; }
-  .bank-section { margin-top: 16px; padding: 12px 14px; background: #f8fafc; border-radius: 6px; }
-  .bank-title { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
-  .bank-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px solid #e5e7eb; }
-  .bank-row:last-child { border: none; }
-  .bank-row span { color: #64748b; }
-  .bank-row strong { color: #1e293b; }
+  /* ── Total ── */
+  .total-line { display: flex; justify-content: flex-end; align-items: baseline;
+                gap: 24px; padding: 12px 8px 0; }
+  .total-label { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; }
+  .total-amount { font-size: 20px; font-weight: 700; }
 
-  /* Footer */
-  .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #e5e7eb;
-            font-size: 11px; color: #9ca3af; text-align: center; }
+  /* ── Notes ── */
+  .notes-block { margin-top: 16px; font-size: 12px; color: #444; line-height: 1.6; }
+
+  /* ── Footer two-col ── */
+  .footer-cols { display: flex; justify-content: space-between; gap: 32px; margin-top: 24px; padding-top: 16px; border-top: 1.5px solid #111; }
+  .footer-col { flex: 1; }
+  .footer-col-title { font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+  .footer-col p { font-size: 12px; line-height: 1.7; color: #222; }
+  .footer-col strong { font-weight: 700; }
+
+  /* ── Vehicle meta ── */
+  .vehicle-meta { margin-top: 18px; font-size: 10.5px; color: #666; font-weight: 600; letter-spacing: 0.02em; }
+
+  /* ── Page footer ── */
+  .page-footer { margin-top: 28px; padding-top: 10px; border-top: 1px solid #ddd;
+                 font-size: 10px; color: #aaa; text-align: center; }
 </style>
 </head>
 <body>
 <div class="page">
+
+  <!-- Logo + workshop address -->
   <div class="top">
     <div>
-      ${logoUri ? `<img src="${logoUri}" class="ws-logo" alt="logo" />` : ''}
-      ${workshopName ? `<div class="ws-name">${workshopName}</div>` : ''}
-      ${addressLines.length ? `<div class="ws-address">${addressLines.join('<br>')}</div>` : ''}
-      ${(phone || email) ? `<div class="ws-contact">${[phone, email].filter(Boolean).join(' · ')}</div>` : ''}
+      ${logoUri ? `<img src="${logoUri}" class="ws-logo" alt="logo" />` : (workshopName ? `<div class="ws-name">${workshopName}</div>` : '')}
     </div>
-    <div class="doc-block">
-      <div class="doc-type">${docType}</div>
-      <div class="doc-ref">${reference}${title ? ` — ${title}` : ''}</div>
-      ${vatNumber ? `<div class="doc-vat">VAT Reg: ${vatNumber}</div>` : ''}
-      <span class="badge badge--${status}">${status}</span>
+    <div class="ws-details">
+      ${logoUri && workshopName ? `<div style="font-weight:700;font-size:13px;margin-bottom:2px;">${workshopName}</div>` : ''}
+      ${wsAddressLines.join('<br>')}
+      ${email ? `<br>${email}` : ''}
+      ${phone ? `<br>${phone}` : ''}
     </div>
   </div>
 
-  <div class="meta-row">
-    <div class="meta-block"><label>Date</label><strong>${fmtDate(date)}</strong></div>
-    <div class="meta-block"><label>Vehicle</label><strong>${registration || '—'}${vehicle ? ` · ${vehicle}` : ''}</strong></div>
+  <hr>
+
+  <!-- Customer + Invoice ref -->
+  <div class="billing">
+    <div>
+      ${customerName ? `<div class="cust-name">${customerName}</div>` : ''}
+      ${custAddressLines.length ? `<div class="cust-addr">${custAddressLines.join('<br>')}</div>` : ''}
+    </div>
+    <div class="inv-meta">
+      <div class="inv-number">${docType} ${invoiceNum}</div>
+      <div class="inv-date">${fmtDate(date)}</div>
+      <div class="inv-terms">Payment Terms: ${terms}</div>
+    </div>
   </div>
 
-  <table>
+  <hr>
+
+  <!-- Line items -->
+  <table class="lines">
     <thead>
-      <tr><th>Type</th><th>Description</th><th class="right">Qty</th><th class="right">Total</th></tr>
+      <tr>
+        <th>Quantity</th>
+        <th>Details</th>
+        <th class="right">Unit Price (£)</th>
+        <th class="right">Subtotal (£)</th>
+      </tr>
     </thead>
     <tbody>${renderItems()}</tbody>
   </table>
 
-  <div class="totals-wrap">
-    <table class="totals-table">
-      <tbody>
-        <tr><td>Subtotal</td><td class="right">${fmt(subtotal)}</td></tr>
-        <tr><td>VAT (${vatRate}%)</td><td class="right">${fmt(vat)}</td></tr>
-        <tr class="total-row"><td>Total</td><td class="right">${fmt(total)}</td></tr>
-      </tbody>
-    </table>
+  <!-- Total -->
+  <div class="total-line">
+    <div class="total-label">GBP TOTAL</div>
+    <div class="total-amount">${fmt(total)}</div>
   </div>
 
-  ${notes ? `<div class="notes"><div class="notes-label">Notes</div>${notes}</div>` : ''}
-  ${bankSection}
+  ${notes ? `<div class="notes-block">${notes}</div>` : ''}
 
-  <div class="footer">${footerText || 'Generated by Your Gofer Workshop Management'}</div>
+  <!-- Footer: payment details + other info -->
+  ${(hasPaymentDetails || hasOtherInfo) ? `
+  <div class="footer-cols">
+    ${hasPaymentDetails ? `
+    <div class="footer-col">
+      <div class="footer-col-title">Payment Details</div>
+      ${accountName ? `<p><strong>${accountName}</strong></p>` : (bankName ? `<p><strong>${bankName}</strong></p>` : '')}
+      ${bankName && accountName ? `<p><strong>Bank/Sort Code:</strong> ${sortCode || '—'}</p>` : (sortCode ? `<p><strong>Bank/Sort Code:</strong> ${sortCode}</p>` : '')}
+      ${accountNumber ? `<p><strong>Account Number:</strong> ${accountNumber}</p>` : ''}
+      ${reference ? `<p><strong>Payment Reference:</strong> ${invoiceNum}</p>` : ''}
+    </div>` : '<div class="footer-col"></div>'}
+    ${hasOtherInfo ? `
+    <div class="footer-col" style="text-align:right;">
+      <div class="footer-col-title">Other Information</div>
+      ${companyReg ? `<p><strong>Company Registration Number:</strong> ${companyReg}</p>` : ''}
+      ${vatNumber ? `<p><strong>VAT Registration:</strong> ${vatNumber}</p>` : ''}
+    </div>` : ''}
+  </div>` : ''}
+
+  ${vehicleMeta ? `<div class="vehicle-meta">${vehicleMeta}</div>` : ''}
+
+  ${footerText ? `<div class="page-footer">${footerText}</div>` : ''}
+
 </div>
 </body>
 </html>`;

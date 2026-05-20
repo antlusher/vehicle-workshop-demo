@@ -526,6 +526,7 @@ function InvoiceTemplateTab({ token }) {
     invoiceAccentColor: '#1e40af', invoiceVatNumber: '', invoiceFooterText: '',
     invoiceShowBankDetails: false,
     invoiceBankName: '', invoiceAccountName: '', invoiceAccountNumber: '', invoiceSortCode: '',
+    invoiceCompanyReg: '', invoicePaymentTerms: 'Due on receipt',
   });
   const [workshopName, setWorkshopName] = useState('');
   const [logoUrl, setLogoUrl] = useState(null);
@@ -547,6 +548,8 @@ function InvoiceTemplateTab({ token }) {
         invoiceAccountName: s.invoiceAccountName || '',
         invoiceAccountNumber: s.invoiceAccountNumber || '',
         invoiceSortCode: s.invoiceSortCode || '',
+        invoiceCompanyReg: s.invoiceCompanyReg || '',
+        invoicePaymentTerms: s.invoicePaymentTerms || 'Due on receipt',
       });
     }).catch(() => {});
   }, []);
@@ -626,6 +629,12 @@ function InvoiceTemplateTab({ token }) {
             </Field>
             <Field label="VAT registration number" hint="displayed on all invoices">
               <input value={form.invoiceVatNumber} onChange={(e) => set('invoiceVatNumber', e.target.value)} placeholder="GB 123 4567 89" />
+            </Field>
+            <Field label="Company registration number" hint="shown in 'Other Information' on invoices">
+              <input value={form.invoiceCompanyReg} onChange={(e) => set('invoiceCompanyReg', e.target.value)} placeholder="e.g. 14563790" />
+            </Field>
+            <Field label="Payment terms" hint="shown on every invoice">
+              <input value={form.invoicePaymentTerms} onChange={(e) => set('invoicePaymentTerms', e.target.value)} placeholder="Due on receipt" />
             </Field>
           </Section>
 
