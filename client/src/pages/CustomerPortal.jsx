@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
-         getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword } from '../services/customerApi';
+         getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword,
+         getNotifications } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -530,6 +531,7 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
   );
 }
 
+<<<<<<< HEAD
 // ── Profile panel ────────────────────────────────────────────────────────────
 function ProfilePanel({ token, onClose }) {
   const [profile, setProfile] = useState(null);
@@ -618,6 +620,64 @@ function ProfilePanel({ token, onClose }) {
           </>
         )}
       </div>
+=======
+// ── Notification bell ────────────────────────────────────────────────────────
+const NOTIF_KEY = 'cp_notif_seen_at';
+
+function NotificationBell({ token, onNavigate }) {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [seenAt, setSeenAt] = useState(() => localStorage.getItem(NOTIF_KEY) || null);
+
+  useEffect(() => {
+    getNotifications(token).then(setItems).catch(() => {});
+  }, [token]);
+
+  const unread = items.filter((n) => !seenAt || new Date(n.eventAt) > new Date(seenAt)).length;
+
+  const handleOpen = () => {
+    setOpen((v) => !v);
+    if (!open) {
+      const now = new Date().toISOString();
+      localStorage.setItem(NOTIF_KEY, now);
+      setSeenAt(now);
+    }
+  };
+
+  const handleClick = (projectId) => {
+    setOpen(false);
+    onNavigate(projectId);
+  };
+
+  return (
+    <div className="cp-bell-wrap">
+      <button className="cp-bell-btn" onClick={handleOpen} aria-label="Notifications">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+        {unread > 0 && <span className="cp-bell-badge">{unread}</span>}
+      </button>
+
+      {open && (
+        <div className="cp-bell-dropdown">
+          <div className="cp-bell-header">Recent activity</div>
+          {items.length === 0 ? (
+            <p className="cp-bell-empty">No recent activity.</p>
+          ) : (
+            items.map((n, i) => (
+              <button key={i} className="cp-bell-item" onClick={() => handleClick(n.projectId)}>
+                <span className={`cp-bell-type cp-bell-type--${n.type}`}>
+                  {n.type === 'report' ? 'Report ready' : 'Estimate sent'}
+                </span>
+                <span className="cp-bell-vehicle">{n.registration}{n.vehicle ? ` · ${n.vehicle}` : ''}</span>
+                <span className="cp-bell-date">{fmtDate(n.eventAt)}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+>>>>>>> feature/cp-notifications
     </div>
   );
 }
@@ -628,10 +688,14 @@ export default function CustomerPortal({ user, token, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
 <<<<<<< HEAD
+<<<<<<< HEAD
   const [workshop, setWorkshop] = useState(null);
 =======
   const [showProfile, setShowProfile] = useState(false);
 >>>>>>> feature/cp-profile
+=======
+  const [selectedJobId, setSelectedJobId] = useState(null);
+>>>>>>> feature/cp-notifications
 
   useEffect(() => {
     getWorkshopInfo(token).then(setWorkshop).catch(() => {});
@@ -641,6 +705,10 @@ export default function CustomerPortal({ user, token, onLogout }) {
     }).finally(() => setLoading(false));
   }, [token]);
 
+  const handleNotifNavigate = (projectId) => {
+    setSelectedJobId(projectId);
+  };
+
   return (
     <div className="cp-shell">
       <header className="cp-header">
@@ -649,14 +717,29 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
+<<<<<<< HEAD
           <button className="cp-user-email cp-profile-btn" onClick={() => setShowProfile(true)}>
             {user.name || user.email}
           </button>
+=======
+          <NotificationBell token={token} onNavigate={handleNotifNavigate} />
+          <span className="cp-user-email">{user.email}</span>
+>>>>>>> feature/cp-notifications
           <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
         </div>
       </header>
 
+<<<<<<< HEAD
       {showProfile && <ProfilePanel token={token} onClose={() => setShowProfile(false)} />}
+=======
+      {selectedJobId && (
+        <div style={{ position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 50, overflowY: 'auto', padding: '28px 16px' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto' }}>
+            <JobDetail projectId={selectedJobId} token={token} onBack={() => setSelectedJobId(null)} />
+          </div>
+        </div>
+      )}
+>>>>>>> feature/cp-notifications
 
       <main className="cp-main">
         {selectedVehicle ? (
