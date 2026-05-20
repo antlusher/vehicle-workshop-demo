@@ -784,4 +784,27 @@ router.post('/quick-quote/:token/accept', async (req, res) => {
   }
 });
 
+// POST /api/customer/enquiry — submit a message to the workshop
+router.post('/enquiry', requireCustomer, async (req, res) => {
+  const { message, vehicleId } = req.body;
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+  // If vehicleId provided, verify this customer owns it
+  if (vehicleId) {
+    const owns = await query(
+      'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+      [req.customer.id, vehicleId]
+    );
+    if (!owns.rows.length) return res.status(403).json({ error: 'Vehicle not linked to your account' });
+  }
+
+  const result = await query(
+    `INSERT INTO enquiries (customer_id, workshop_id, vehicle_id, message)
+     VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+    [req.customer.id, req.customer.workshopId, vehicleId || null, message.trim()]
+  );
+
+  return res.status(201).json({ id: result.rows[0].id, createdAt: result.rows[0].created_at });
+});
+
 module.exports = router;

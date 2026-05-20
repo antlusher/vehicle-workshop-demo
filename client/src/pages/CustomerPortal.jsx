@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
          getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword,
-         getNotifications } from '../services/customerApi';
+         getNotifications, submitEnquiry } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -531,7 +531,6 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
   );
 }
 
-<<<<<<< HEAD
 // ── Profile panel ────────────────────────────────────────────────────────────
 function ProfilePanel({ token, onClose }) {
   const [profile, setProfile] = useState(null);
@@ -620,7 +619,10 @@ function ProfilePanel({ token, onClose }) {
           </>
         )}
       </div>
-=======
+    </div>
+  );
+}
+
 // ── Notification bell ────────────────────────────────────────────────────────
 const NOTIF_KEY = 'cp_notif_seen_at';
 
@@ -677,7 +679,81 @@ function NotificationBell({ token, onNavigate }) {
           )}
         </div>
       )}
->>>>>>> feature/cp-notifications
+    </div>
+  );
+}
+
+// ── Enquiry modal ─────────────────────────────────────────────────────────────
+function EnquiryModal({ token, vehicles, onClose }) {
+  const [vehicleId, setVehicleId] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setSending(true);
+    setError('');
+    try {
+      await submitEnquiry({ message, vehicleId: vehicleId || undefined }, token);
+      setDone(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="cp-enquiry-overlay" onClick={onClose}>
+      <div className="cp-enquiry-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cp-enquiry-header">
+          <h2>Send an enquiry</h2>
+          <button className="cp-enquiry-close" onClick={onClose}>✕</button>
+        </div>
+        {done ? (
+          <div className="cp-enquiry-done">
+            <p>Your message has been sent. We'll be in touch soon.</p>
+            <button className="cp-enquiry-submit" onClick={onClose}>Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="cp-enquiry-form">
+            {vehicles.length > 0 && (
+              <label className="cp-enquiry-label">
+                Vehicle (optional)
+                <select className="cp-enquiry-select" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                  <option value="">— General enquiry —</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.registration} — {[v.make, v.model].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="cp-enquiry-label">
+              Message
+              <textarea
+                className="cp-enquiry-textarea"
+                rows={5}
+                placeholder="How can we help?"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                required
+              />
+            </label>
+            {error && <p className="cp-enquiry-error">{error}</p>}
+            <div className="cp-enquiry-actions">
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" className="cp-enquiry-submit" disabled={sending || !message.trim()}>
+                {sending ? 'Sending…' : 'Send enquiry'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
@@ -687,15 +763,10 @@ export default function CustomerPortal({ user, token, onLogout }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
-<<<<<<< HEAD
-<<<<<<< HEAD
   const [workshop, setWorkshop] = useState(null);
-=======
   const [showProfile, setShowProfile] = useState(false);
->>>>>>> feature/cp-profile
-=======
+  const [showEnquiry, setShowEnquiry] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
->>>>>>> feature/cp-notifications
 
   useEffect(() => {
     getWorkshopInfo(token).then(setWorkshop).catch(() => {});
@@ -717,21 +788,17 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
-<<<<<<< HEAD
+          <button className="cp-enquiry-btn" onClick={() => setShowEnquiry(true)}>Enquiry</button>
+          <NotificationBell token={token} onNavigate={handleNotifNavigate} />
           <button className="cp-user-email cp-profile-btn" onClick={() => setShowProfile(true)}>
             {user.name || user.email}
           </button>
-=======
-          <NotificationBell token={token} onNavigate={handleNotifNavigate} />
-          <span className="cp-user-email">{user.email}</span>
->>>>>>> feature/cp-notifications
           <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
         </div>
       </header>
 
-<<<<<<< HEAD
       {showProfile && <ProfilePanel token={token} onClose={() => setShowProfile(false)} />}
-=======
+      {showEnquiry && <EnquiryModal token={token} vehicles={vehicles} onClose={() => setShowEnquiry(false)} />}
       {selectedJobId && (
         <div style={{ position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 50, overflowY: 'auto', padding: '28px 16px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -739,7 +806,6 @@ export default function CustomerPortal({ user, token, onLogout }) {
           </div>
         </div>
       )}
->>>>>>> feature/cp-notifications
 
       <main className="cp-main">
         {selectedVehicle ? (
