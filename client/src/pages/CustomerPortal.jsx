@@ -550,12 +550,7 @@ function VehicleJobs({ vehicle, token, onBack, onSelectJob }) {
   }, [vehicle.id]);
 
   return (
-    <div>
-      <button className="cp-back" onClick={onBack}>← My vehicles</button>
-      <div className="cp-vehicle-header">
-        <h2 className="cp-vehicle-title">{vehicle.registration}</h2>
-        <p className="cp-vehicle-meta">{[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ')}</p>
-      </div>
+    <div className="cp-tab-content">
       {loading ? <div className="cp-loading">Loading…</div> : jobs.length === 0 ? (
         <p className="cp-empty">No jobs found for this vehicle.</p>
       ) : (
