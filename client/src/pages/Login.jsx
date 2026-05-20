@@ -48,29 +48,30 @@ function Login({ onLogin, error }) {
   };
 
   return (
-    <div className="login-page">
-      <div className="card" style={{ maxWidth: 420, margin: '0 auto' }}>
+    <div className="login-shell">
+      <div className="login-card">
         {workshop ? (
           <>
             <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: 2 }}>Ask Bob</p>
-            <h1 style={{ marginTop: 0 }}>{workshop.name}</h1>
+            <h1 className="login-title" style={{ marginTop: 0 }}>{workshop.name}</h1>
           </>
         ) : (
-          <h1>Ask Bob</h1>
+          <h1 className="login-title">Ask Bob</h1>
         )}
-        <h2 style={{ fontWeight: 400, fontSize: '1rem', marginTop: 0, marginBottom: 20, color: '#4b5563' }}>
+        <p style={{ fontWeight: 400, fontSize: '1rem', marginTop: 0, marginBottom: 20, color: '#4b5563' }}>
           {mode === 'login' && 'Sign in'}
           {mode === 'register' && 'Create account'}
           {mode === 'forgot' && 'Reset password'}
-        </h2>
-        <form onSubmit={handleSubmit}>
+        </p>
+        <form onSubmit={handleSubmit} className="login-form">
           <input
             id="email"
             name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email"
+            placeholder="Email address"
+            className="login-input"
             required
           />
           {mode !== 'forgot' && (
@@ -81,17 +82,18 @@ function Login({ onLogin, error }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
+              className="login-input"
               required
             />
           )}
-          <button type="submit">
+          <button type="submit" className="login-btn">
             {mode === 'login' && 'Sign in'}
             {mode === 'register' && 'Create account'}
             {mode === 'forgot' && 'Send reset link'}
           </button>
-          {successMessage && <p style={{ color: '#16a34a', marginTop: 8 }}>{successMessage}</p>}
-          {formError && <p className="error">{formError}</p>}
-          {error && <p className="error">{error}</p>}
+          {successMessage && <p style={{ color: '#16a34a', marginTop: 8, textAlign: 'center' }}>{successMessage}</p>}
+          {formError && <p className="error" style={{ textAlign: 'center' }}>{formError}</p>}
+          {error && <p className="error" style={{ textAlign: 'center' }}>{error}</p>}
         </form>
       </div>
     </div>
