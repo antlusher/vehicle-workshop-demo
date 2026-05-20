@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
 const { sendCustomerActivation } = require('../services/emailService');
+const { fetchMotHistory } = require('../services/motService');
 
 const router = express.Router();
 
@@ -154,25 +155,35 @@ router.get('/workshop', requireCustomer, async (req, res) => {
 // GET /api/customer/profile
 router.get('/profile', requireCustomer, async (req, res) => {
   const { rows } = await query(
-    'SELECT email, name, phone FROM users WHERE id=$1',
+    'SELECT email, name, phone, address_line1, address_line2, city, postcode FROM users WHERE id=$1',
     [req.user.id]
   );
   if (!rows.length) return res.status(404).json({ error: 'Not found' });
-  return res.json({ email: rows[0].email, name: rows[0].name || '', phone: rows[0].phone || '' });
+  const r = rows[0];
+  return res.json({
+    email: r.email, name: r.name || '', phone: r.phone || '',
+    addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
+    city: r.city || '', postcode: r.postcode || '',
+  });
 });
 
-// PATCH /api/customer/profile — update name and phone
+// PATCH /api/customer/profile — update name, phone, address
 router.patch('/profile', requireCustomer, async (req, res) => {
-  const { name, phone } = req.body;
+  const { name, phone, addressLine1, addressLine2, city, postcode } = req.body;
   await query(
-    'UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone) WHERE id=$3',
-    [name ?? null, phone ?? null, req.user.id]
+    `UPDATE users SET name=$1, phone=$2, address_line1=$3, address_line2=$4, city=$5, postcode=$6 WHERE id=$7`,
+    [name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, req.user.id]
   );
   const { rows } = await query(
-    'SELECT email, name, phone FROM users WHERE id=$1',
+    'SELECT email, name, phone, address_line1, address_line2, city, postcode FROM users WHERE id=$1',
     [req.user.id]
   );
-  return res.json({ email: rows[0].email, name: rows[0].name || '', phone: rows[0].phone || '' });
+  const r = rows[0];
+  return res.json({
+    email: r.email, name: r.name || '', phone: r.phone || '',
+    addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
+    city: r.city || '', postcode: r.postcode || '',
+  });
 });
 
 // POST /api/customer/change-password
@@ -788,6 +799,118 @@ router.post('/quick-quote/:token/accept', async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+});
+
+// POST /api/customer/vehicles — customer self-registers a vehicle
+router.post('/vehicles', requireCustomer, async (req, res) => {
+  const reg = (req.body.registration || '').toUpperCase().replace(/\s/g, '');
+  if (!reg) return res.status(400).json({ error: 'Registration is required' });
+
+  let { rows } = await query(
+    'SELECT id, registration, make, model, year, fuel_type FROM vehicles WHERE registration=$1',
+    [reg]
+  );
+  let vehicle = rows[0] || null;
+
+  if (!vehicle) {
+    let motData = null;
+    try { motData = await fetchMotHistory(reg); } catch (_) {}
+
+    if (motData) {
+      const { vehicleMeta, tests } = motData;
+      const year = vehicleMeta.firstUsedDate
+        ? new Date(vehicleMeta.firstUsedDate).getFullYear().toString()
+        : null;
+      const { rows: created } = await query(
+        `INSERT INTO vehicles (registration, make, model, year, fuel_type, mot_tests, mot_vehicle_meta, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'dvsa') RETURNING *`,
+        [reg, vehicleMeta.make || null, vehicleMeta.model || null, year,
+         vehicleMeta.fuelType || null, JSON.stringify(tests), JSON.stringify(vehicleMeta)]
+      );
+      vehicle = created[0];
+    } else {
+      const { rows: created } = await query(
+        `INSERT INTO vehicles (registration, source) VALUES ($1,'customer') RETURNING *`,
+        [reg]
+      );
+      vehicle = created[0];
+    }
+  }
+
+  const { rows: existing } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, vehicle.id]
+  );
+  if (existing.length) return res.status(409).json({ error: 'Vehicle already linked to your account' });
+
+  await query('INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2)', [req.user.id, vehicle.id]);
+
+  return res.status(201).json({
+    id: vehicle.id,
+    registration: vehicle.registration,
+    make: vehicle.make || null,
+    model: vehicle.model || null,
+    year: vehicle.year || null,
+    fuelType: vehicle.fuel_type || null,
+    linkedAt: new Date(),
+    publishedJobCount: 0,
+    lastJobAt: null,
+  });
+});
+
+// GET /api/customer/vehicles/:vehicleId/stats — service history + spend data
+router.get('/vehicles/:vehicleId/stats', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const [{ rows: reportRows }, { rows: byYearRows }] = await Promise.all([
+    query(
+      `SELECT p.id, p.created_at AS job_date, jr.published_at,
+              jr.diagnosis, jr.work_carried_out,
+              jr.cost_parts, jr.cost_labour, jr.cost_total
+       FROM projects p
+       JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
+       WHERE p.vehicle_id = $1
+       ORDER BY p.created_at DESC`,
+      [req.params.vehicleId]
+    ),
+    query(
+      `SELECT EXTRACT(year FROM p.created_at)::int AS year,
+              SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct/100)))::numeric AS total
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN quote_lines ql ON ql.quote_id = q.id
+       WHERE p.vehicle_id = $1 AND q.status = 'approved' AND q.customer_id = $2
+       GROUP BY year ORDER BY year`,
+      [req.params.vehicleId, req.user.id]
+    ),
+  ]);
+
+  const totalParts = reportRows.reduce((s, r) => s + (parseFloat(r.cost_parts) || 0), 0);
+  const totalLabour = reportRows.reduce((s, r) => s + (parseFloat(r.cost_labour) || 0), 0);
+  const totalSpend = reportRows.reduce((s, r) => s + (parseFloat(r.cost_total) || 0), 0);
+
+  return res.json({
+    jobCount: reportRows.length,
+    totalParts: Math.round(totalParts * 100) / 100,
+    totalLabour: Math.round(totalLabour * 100) / 100,
+    totalSpend: Math.round(totalSpend * 100) / 100,
+    lastServiceAt: reportRows[0]?.job_date || null,
+    jobs: reportRows.map((r) => ({
+      id: r.id,
+      date: r.job_date,
+      publishedAt: r.published_at,
+      diagnosis: r.diagnosis ? r.diagnosis.slice(0, 200) : null,
+      workCarriedOut: r.work_carried_out ? r.work_carried_out.slice(0, 200) : null,
+      costParts: r.cost_parts ? parseFloat(r.cost_parts) : null,
+      costLabour: r.cost_labour ? parseFloat(r.cost_labour) : null,
+      costTotal: r.cost_total ? parseFloat(r.cost_total) : null,
+    })),
+    spendByYear: byYearRows.map((r) => ({ year: r.year, total: Math.round(parseFloat(r.total) * 100) / 100 })),
+  });
 });
 
 // POST /api/customer/enquiry — submit a message to the workshop

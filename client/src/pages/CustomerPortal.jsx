@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
+import { getMyVehicles, addVehicle, getVehicleStats, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
          getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword,
          getNotifications, submitEnquiry } from '../services/customerApi';
@@ -142,36 +142,144 @@ function MileageChart({ tests }) {
   );
 }
 
+function SpendByYearChart({ data }) {
+  if (!data?.length) return null;
+  const W = 520, H = 140, pad = 40;
+  const vals = data.map((d) => d.total);
+  const maxV = Math.max(...vals, 1);
+  const barW = Math.min(40, (W - pad * 2) / data.length - 8);
+
+  return (
+    <div className="cp-chart-wrap">
+      <p className="cp-chart-label">Workshop spend by year</p>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: W }}>
+        {data.map((d, i) => {
+          const x = pad + (i / (data.length - 1 || 1)) * (W - pad * 2) - barW / 2;
+          const barH = ((d.total / maxV) * (H - pad * 2));
+          const y = H - pad - barH;
+          return (
+            <g key={i}>
+              <rect x={x} y={y} width={barW} height={barH} fill="#2563eb" rx="3" />
+              <text x={x + barW / 2} y={H - 6} textAnchor="middle" fontSize="10" fill="#6b7280">{d.year}</text>
+              <text x={x + barW / 2} y={y - 4} textAnchor="middle" fontSize="9" fill="#374151">£{d.total.toLocaleString()}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function CostBreakdownBar({ parts, labour }) {
+  const total = (parts || 0) + (labour || 0);
+  if (!total) return null;
+  const partsPct = Math.round((parts / total) * 100);
+  const labourPct = 100 - partsPct;
+  return (
+    <div className="cp-breakdown-wrap">
+      <p className="cp-chart-label">Cost breakdown</p>
+      <div className="cp-breakdown-bar">
+        {parts > 0 && <div style={{ width: `${partsPct}%`, background: '#2563eb' }} title={`Parts £${parts.toFixed(2)}`} />}
+        {labour > 0 && <div style={{ width: `${labourPct}%`, background: '#7c3aed' }} title={`Labour £${labour.toFixed(2)}`} />}
+      </div>
+      <div className="cp-breakdown-legend">
+        <span><span className="cp-legend-dot" style={{ background: '#2563eb' }} />Parts £{(parts || 0).toFixed(2)}</span>
+        <span><span className="cp-legend-dot" style={{ background: '#7c3aed' }} />Labour £{(labour || 0).toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
 function VehicleHistoryTab({ vehicleId, token }) {
-  const [data, setData] = useState(null);
+  const [motData, setMotData] = useState(null);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getVehicleMot(vehicleId, token).then(setData).finally(() => setLoading(false));
+    Promise.all([
+      getVehicleMot(vehicleId, token).catch(() => null),
+      getVehicleStats(vehicleId, token).catch(() => null),
+    ]).then(([mot, s]) => {
+      setMotData(mot);
+      setStats(s);
+    }).finally(() => setLoading(false));
   }, [vehicleId]);
 
   if (loading) return <div className="cp-loading">Loading vehicle data…</div>;
-  if (!data) return <div className="cp-error">No vehicle data available.</div>;
 
-  const { motTests, motMeta } = data;
-  const sorted = [...(motTests || [])].sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
+  const motMeta = motData?.motMeta || {};
+  const motTests = motData?.motTests || [];
+  const sorted = [...motTests].sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
 
   return (
     <div className="cp-tab-content">
-      <div className="cp-vehicle-spec-grid">
-        {motMeta.make && <div className="cp-spec"><span>Make</span><strong>{motMeta.make}</strong></div>}
-        {motMeta.model && <div className="cp-spec"><span>Model</span><strong>{motMeta.model}</strong></div>}
-        {(motMeta.firstUsedDate || motMeta.manufactureDate) && (
-          <div className="cp-spec"><span>First used</span><strong>{fmtDate(motMeta.firstUsedDate || motMeta.manufactureDate)}</strong></div>
-        )}
-        {motMeta.fuelType && <div className="cp-spec"><span>Fuel</span><strong>{motMeta.fuelType}</strong></div>}
-        {motMeta.engineSize && <div className="cp-spec"><span>Engine</span><strong>{motMeta.engineSize}cc</strong></div>}
-        {motMeta.primaryColour && <div className="cp-spec"><span>Colour</span><strong>{motMeta.primaryColour}</strong></div>}
-      </div>
 
+      {/* Vehicle spec */}
+      {(motMeta.make || motMeta.model || motMeta.fuelType || motMeta.engineSize) && (
+        <div className="cp-vehicle-spec-grid">
+          {motMeta.make && <div className="cp-spec"><span>Make</span><strong>{motMeta.make}</strong></div>}
+          {motMeta.model && <div className="cp-spec"><span>Model</span><strong>{motMeta.model}</strong></div>}
+          {(motMeta.firstUsedDate || motMeta.manufactureDate) && (
+            <div className="cp-spec"><span>First used</span><strong>{fmtDate(motMeta.firstUsedDate || motMeta.manufactureDate)}</strong></div>
+          )}
+          {motMeta.fuelType && <div className="cp-spec"><span>Fuel</span><strong>{motMeta.fuelType}</strong></div>}
+          {motMeta.engineSize && <div className="cp-spec"><span>Engine</span><strong>{motMeta.engineSize}cc</strong></div>}
+          {motMeta.primaryColour && <div className="cp-spec"><span>Colour</span><strong>{motMeta.primaryColour}</strong></div>}
+        </div>
+      )}
+
+      {/* Workshop stats summary */}
+      {stats && stats.jobCount > 0 && (
+        <>
+          <div className="cp-stats-grid">
+            <div className="cp-stat-card">
+              <span className="cp-stat-value">{stats.jobCount}</span>
+              <span className="cp-stat-label">Workshop visits</span>
+            </div>
+            <div className="cp-stat-card">
+              <span className="cp-stat-value">£{stats.totalSpend.toFixed(2)}</span>
+              <span className="cp-stat-label">Total spend</span>
+            </div>
+            <div className="cp-stat-card">
+              <span className="cp-stat-value">{stats.lastServiceAt ? fmtDate(stats.lastServiceAt) : '—'}</span>
+              <span className="cp-stat-label">Last service</span>
+            </div>
+          </div>
+
+          {stats.spendByYear?.length > 1 && <SpendByYearChart data={stats.spendByYear} />}
+          {(stats.totalParts > 0 || stats.totalLabour > 0) && (
+            <CostBreakdownBar parts={stats.totalParts} labour={stats.totalLabour} />
+          )}
+        </>
+      )}
+
+      {/* Mileage chart */}
       <MileageChart tests={motTests} />
 
-      <h3 className="cp-section-title" style={{ marginTop: 24 }}>MOT history</h3>
+      {/* Service history from workshop */}
+      {stats?.jobs?.length > 0 && (
+        <>
+          <h3 className="cp-section-title" style={{ marginTop: 28 }}>Service history</h3>
+          <div className="cp-service-timeline">
+            {stats.jobs.map((job, i) => (
+              <div key={job.id || i} className="cp-service-event">
+                <div className="cp-service-dot" />
+                <div className="cp-service-body">
+                  <span className="cp-service-date">{fmtDate(job.date)}</span>
+                  {job.diagnosis && <p className="cp-service-text">{job.diagnosis}{job.diagnosis.length >= 200 ? '…' : ''}</p>}
+                  {job.workCarriedOut && <p className="cp-service-text cp-service-work">{job.workCarriedOut}{job.workCarriedOut.length >= 200 ? '…' : ''}</p>}
+                  {job.costTotal != null && (
+                    <span className="cp-service-cost">{fmt(job.costTotal)}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* MOT history */}
+      <h3 className="cp-section-title" style={{ marginTop: 28 }}>MOT history</h3>
       {sorted.length === 0 ? (
         <p className="cp-empty">No MOT history available.</p>
       ) : (
@@ -534,7 +642,7 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
 // ── Profile panel ────────────────────────────────────────────────────────────
 function ProfilePanel({ token, onClose }) {
   const [profile, setProfile] = useState(null);
-  const [form, setForm] = useState({ name: '', phone: '' });
+  const [form, setForm] = useState({ name: '', phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '' });
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [pw, setPw] = useState({ current: '', next: '', confirm: '' });
@@ -543,7 +651,10 @@ function ProfilePanel({ token, onClose }) {
   const [pwError, setPwError] = useState('');
 
   useEffect(() => {
-    getProfile(token).then((p) => { setProfile(p); setForm({ name: p.name, phone: p.phone }); });
+    getProfile(token).then((p) => {
+      setProfile(p);
+      setForm({ name: p.name, phone: p.phone, addressLine1: p.addressLine1, addressLine2: p.addressLine2, city: p.city, postcode: p.postcode });
+    });
   }, [token]);
 
   const handleSaveProfile = async (e) => {
@@ -578,6 +689,8 @@ function ProfilePanel({ token, onClose }) {
     }
   };
 
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
   return (
     <div className="cp-profile-overlay" onClick={onClose}>
       <div className="cp-profile-panel" onClick={(e) => e.stopPropagation()}>
@@ -588,14 +701,29 @@ function ProfilePanel({ token, onClose }) {
 
         {!profile ? <div className="cp-loading">Loading…</div> : (
           <>
-            <p className="cp-profile-email">{profile.email}</p>
-
-            <form onSubmit={handleSaveProfile} className="cp-profile-form">
-              <h3>Contact details</h3>
-              <label>Name</label>
-              <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" />
+            <form onSubmit={handleSaveProfile} className="cp-profile-form" style={{ borderTop: 'none', paddingTop: 0, marginTop: 0 }}>
+              <h3>Personal details</h3>
+              <label>Email address</label>
+              <input value={profile.email} disabled className="cp-profile-input--readonly" />
+              <label>Full name</label>
+              <input value={form.name} onChange={set('name')} placeholder="Your name" />
               <label>Phone</label>
-              <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} placeholder="e.g. 07700 900000" />
+              <input value={form.phone} onChange={set('phone')} placeholder="e.g. 07700 900000" />
+              <h3 style={{ marginTop: 12 }}>Address</h3>
+              <label>Address line 1</label>
+              <input value={form.addressLine1} onChange={set('addressLine1')} placeholder="Street address" />
+              <label>Address line 2</label>
+              <input value={form.addressLine2} onChange={set('addressLine2')} placeholder="Apartment, unit, etc. (optional)" />
+              <div className="cp-profile-row">
+                <div>
+                  <label>Town / City</label>
+                  <input value={form.city} onChange={set('city')} placeholder="City" />
+                </div>
+                <div>
+                  <label>Postcode</label>
+                  <input value={form.postcode} onChange={set('postcode')} placeholder="e.g. SW1A 1AA" style={{ textTransform: 'uppercase' }} />
+                </div>
+              </div>
               <div className="cp-profile-actions">
                 <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
                 {saveMsg && <span className="cp-profile-msg">{saveMsg}</span>}
@@ -683,6 +811,61 @@ function NotificationBell({ token, onNavigate }) {
   );
 }
 
+// ── Add vehicle modal ────────────────────────────────────────────────────────
+function AddVehicleModal({ token, onClose, onAdded }) {
+  const [reg, setReg] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    try {
+      const vehicle = await addVehicle({ registration: reg.trim() }, token);
+      onAdded(vehicle);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="cp-enquiry-overlay" onClick={onClose}>
+      <div className="cp-addvehicle-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cp-enquiry-header">
+          <h2>Add a vehicle</h2>
+          <button className="cp-enquiry-close" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit} className="cp-enquiry-form">
+          <label className="cp-enquiry-label">
+            Registration number
+            <input
+              className="cp-addvehicle-reg"
+              value={reg}
+              onChange={(e) => setReg(e.target.value.toUpperCase())}
+              placeholder="e.g. AB12 CDE"
+              required
+              autoFocus
+            />
+          </label>
+          <p className="cp-addvehicle-hint">
+            We'll look up your vehicle details from the DVSA database automatically.
+          </p>
+          {error && <p className="cp-enquiry-error">{error}</p>}
+          <div className="cp-enquiry-actions">
+            <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="cp-enquiry-submit" disabled={loading || !reg.trim()}>
+              {loading ? 'Looking up…' : 'Add vehicle'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Enquiry modal ─────────────────────────────────────────────────────────────
 function EnquiryModal({ token, vehicles, onClose }) {
   const [vehicleId, setVehicleId] = useState('');
@@ -766,6 +949,7 @@ export default function CustomerPortal({ user, token, onLogout }) {
   const [workshop, setWorkshop] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showEnquiry, setShowEnquiry] = useState(false);
+  const [showAddVehicle, setShowAddVehicle] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState(null);
 
   useEffect(() => {
@@ -799,6 +983,13 @@ export default function CustomerPortal({ user, token, onLogout }) {
 
       {showProfile && <ProfilePanel token={token} onClose={() => setShowProfile(false)} />}
       {showEnquiry && <EnquiryModal token={token} vehicles={vehicles} onClose={() => setShowEnquiry(false)} />}
+      {showAddVehicle && (
+        <AddVehicleModal
+          token={token}
+          onClose={() => setShowAddVehicle(false)}
+          onAdded={(v) => setVehicles((prev) => [...prev, v])}
+        />
+      )}
       {selectedJobId && (
         <div style={{ position: 'fixed', inset: 0, background: '#f8fafc', zIndex: 50, overflowY: 'auto', padding: '28px 16px' }}>
           <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -812,9 +1003,15 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <VehicleDetail vehicle={selectedVehicle} token={token} workshopName={workshop?.name} onBack={() => setSelectedVehicle(null)} />
         ) : (
           <div>
-            <h2 className="cp-page-title">Your vehicles</h2>
+            <div className="cp-vehicles-header">
+              <h2 className="cp-page-title">Your vehicles</h2>
+              <button className="cp-add-vehicle-btn" onClick={() => setShowAddVehicle(true)}>+ Add a vehicle</button>
+            </div>
             {loading ? <div className="cp-loading">Loading…</div> : vehicles.length === 0 ? (
-              <p className="cp-empty">No vehicles linked to your account yet. Please contact the workshop.</p>
+              <div className="cp-empty-vehicles">
+                <p className="cp-empty">No vehicles linked to your account yet.</p>
+                <button className="cp-add-vehicle-cta" onClick={() => setShowAddVehicle(true)}>Add your first vehicle</button>
+              </div>
             ) : (
               <div className="cp-vehicle-grid">
                 {vehicles.map((v) => (

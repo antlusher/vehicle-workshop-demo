@@ -2774,6 +2774,52 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .cp-enquiry-error { font-size: 0.8rem; color: #dc2626; margin: 0; }
 .cp-enquiry-done { display: flex; flex-direction: column; gap: 16px; }
 .cp-enquiry-done p { color: #374151; font-size: 0.95rem; }
+
+/* Add vehicle modal */
+.cp-addvehicle-modal { background: #fff; border-radius: 12px; width: 100%; max-width: 380px; padding: 28px 24px; display: flex; flex-direction: column; gap: 16px; }
+.cp-addvehicle-reg { padding: 10px 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-align: center; width: 100%; }
+.cp-addvehicle-reg:focus { border-color: #2563eb; outline: none; }
+.cp-addvehicle-hint { font-size: 0.8rem; color: #94a3b8; margin: -6px 0 0; }
+
+/* Vehicles header with add button */
+.cp-vehicles-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.cp-vehicles-header .cp-page-title { margin: 0; }
+.cp-add-vehicle-btn { background: #f1f5f9; color: #1e293b; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.cp-add-vehicle-btn:hover { background: #e2e8f0; }
+.cp-empty-vehicles { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.cp-add-vehicle-cta { background: #1e40af; color: #fff; border: none; border-radius: 6px; padding: 10px 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.cp-add-vehicle-cta:hover { background: #1d3ea8; }
+
+/* Profile panel enhancements */
+.cp-profile-input--readonly { background: #f9fafb; color: #6b7280; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; cursor: default; }
+.cp-profile-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cp-profile-row label { font-size: 0.8rem; font-weight: 500; color: #374151; display: block; margin-bottom: 4px; }
+
+/* Stats summary grid */
+.cp-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+.cp-stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 12px; display: flex; flex-direction: column; gap: 4px; }
+.cp-stat-value { font-size: 1.15rem; font-weight: 700; color: #1e293b; }
+.cp-stat-label { font-size: 0.75rem; color: #64748b; font-weight: 500; }
+
+/* Spend breakdown bar */
+.cp-breakdown-wrap { margin: 16px 0; }
+.cp-breakdown-bar { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #f1f5f9; }
+.cp-breakdown-bar div { transition: width 0.3s; }
+.cp-breakdown-legend { display: flex; gap: 20px; margin-top: 8px; font-size: 0.8rem; color: #374151; }
+.cp-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+
+/* Service history timeline */
+.cp-service-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 8px; }
+.cp-service-event { display: flex; gap: 14px; padding-bottom: 20px; position: relative; }
+.cp-service-event::before { content: ''; position: absolute; left: 7px; top: 18px; bottom: 0; width: 2px; background: #e2e8f0; }
+.cp-service-event:last-child::before { display: none; }
+.cp-service-dot { width: 16px; height: 16px; border-radius: 50%; background: #2563eb; border: 2px solid #fff; box-shadow: 0 0 0 2px #bfdbfe; flex-shrink: 0; margin-top: 2px; }
+.cp-service-body { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; }
+.cp-service-date { font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+.cp-service-text { font-size: 0.87rem; color: #374151; margin: 0; }
+.cp-service-work { color: #1e40af; }
+.cp-service-cost { font-size: 0.82rem; font-weight: 600; color: #15803d; align-self: flex-start; background: #dcfce7; padding: 2px 8px; border-radius: 20px; margin-top: 4px; }
+
 .cp-main { max-width: 900px; margin: 0 auto; padding: 28px 16px; }
 .cp-page-title { font-size: 1.35rem; font-weight: 700; color: #1e293b; margin: 0 0 20px; }
 .cp-loading { color: #64748b; padding: 24px 0; }

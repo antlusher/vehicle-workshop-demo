@@ -18,6 +18,8 @@ export const updateProfile = (data, token) => request('/api/customer/profile', {
 export const changePassword = (data, token) => request('/api/customer/change-password', { method: 'POST', body: data }, token);
 export const getNotifications = (token) => request('/api/customer/notifications', {}, token);
 export const getMyVehicles = (token) => request('/api/customer/vehicles', {}, token);
+export const addVehicle = (data, token) => request('/api/customer/vehicles', { method: 'POST', body: data }, token);
+export const getVehicleStats = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/stats`, {}, token);
 export const getVehicleJobs = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/jobs`, {}, token);
 export const getJobReport = (projectId, token) => request(`/api/customer/jobs/${projectId}`, {}, token);
 export const getJobQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote`, {}, token);
