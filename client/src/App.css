@@ -3083,9 +3083,29 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .cp-gallery-item { cursor: pointer; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; background: #000; position: relative; }
 .cp-gallery-item img, .cp-gallery-item video { width: 100%; height: 120px; object-fit: cover; display: block; }
 .cp-gallery-caption { font-size: 0.75rem; color: #374151; padding: 6px 8px; background: #fff; }
-.cp-gallery-date { font-size: 0.68rem; color: #94a3b8; }
+.cp-gallery-date { font-size: 0.68rem; color: #94a3b8; padding: 0 8px 6px; background: #fff; }
 .cp-gallery-video-thumb { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); }
 .cp-play-icon { font-size: 2rem; color: rgba(255,255,255,0.9); text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+.cp-gallery-photo-tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 8px 2px; background: #fff; }
+.cp-gallery-tag { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 1px 7px; font-size: 0.68rem; font-weight: 500; }
+.cp-photo-tag-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.cp-photo-tag-btn { background: #f1f5f9; color: #374151; border: 1px solid #e2e8f0; border-radius: 20px; padding: 4px 14px; font-size: 0.8rem; cursor: pointer; transition: all 0.1s; }
+.cp-photo-tag-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.cp-photo-tag-btn:hover:not(.active) { background: #e2e8f0; }
+
+/* Admin project photos tab */
+.pht-tab { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.pht-toolbar { display: flex; flex-direction: column; gap: 8px; }
+.pht-tag-row { display: flex; gap: 10px; align-items: center; }
+.pht-tag-input { flex: 1; max-width: 320px; font-size: 0.85rem; padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; }
+.pht-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.pht-card { display: flex; flex-direction: column; gap: 5px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px; }
+.pht-thumb { cursor: pointer; border-radius: 6px; overflow: hidden; background: #000; }
+.pht-thumb img { width: 100%; height: 130px; object-fit: cover; display: block; transition: opacity 0.15s; }
+.pht-thumb:hover img { opacity: 0.85; }
+.pht-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.pht-tag { background: #dbeafe; color: #1d4ed8; border-radius: 4px; padding: 1px 7px; font-size: 0.7rem; font-weight: 500; }
+.pht-caption-input { font-size: 0.78rem; padding: 4px 7px; border: 1px solid #e2e8f0; border-radius: 5px; background: #fff; color: #374151; width: 100%; }
 
 /* Lightbox / preview modal */
 .preview-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 1000; display: flex; align-items: center; justify-content: center; }

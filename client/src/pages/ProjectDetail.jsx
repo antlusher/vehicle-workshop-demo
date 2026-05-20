@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
@@ -945,6 +945,169 @@ function ReportTab({ project, token }) {
   );
 }
 
+function PhotosTab({ project, token }) {
+  const [photos, setPhotos]     = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [lightbox, setLightbox] = useState(null);
+  const [error, setError]       = useState('');
+  const fileRef = useRef(null);
+
+  const photoUrl = (filename) => {
+    const base = import.meta.env.VITE_API_BASE_URL || '';
+    return filename?.includes('/') ? filename : `${base}/uploads/${filename}`;
+  };
+
+  useEffect(() => {
+    fetch(`/api/projects/${project.id}/photos`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then(setPhotos)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [project.id]);
+
+  const handleFileChange = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true); setError('');
+    try {
+      const form = new FormData();
+      files.forEach((f) => form.append('photos', f));
+      if (tagInput.trim()) form.append('tags', tagInput.trim());
+      const res = await fetch(`/api/projects/${project.id}/photos`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+      setPhotos((prev) => [...prev, ...data]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleCaptionBlur = async (photoId, caption) => {
+    await fetch(`/api/projects/${project.id}/photos/${photoId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caption }),
+    }).catch(() => {});
+  };
+
+  const handleTagsSave = async (photoId, tagsStr) => {
+    const tags = tagsStr.split(',').map((t) => t.trim()).filter(Boolean);
+    const res = await fetch(`/api/projects/${project.id}/photos/${photoId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, tags: updated.tags } : p));
+    }
+  };
+
+  const handleDelete = async (photoId) => {
+    if (!window.confirm('Remove this photo?')) return;
+    await fetch(`/api/projects/${project.id}/photos/${photoId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    if (lightbox?.id === photoId) setLightbox(null);
+  };
+
+  return (
+    <div className="pht-tab">
+      <div className="pht-toolbar">
+        <div className="pht-tag-row">
+          <input
+            className="pht-tag-input"
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            placeholder="Tags for next upload (comma-separated, e.g. before, engine)"
+          />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            {uploading ? 'Uploading…' : '+ Upload photos'}
+          </button>
+        </div>
+        {error && <p className="error" style={{ margin: '4px 0 0', fontSize: '0.82rem' }}>{error}</p>}
+      </div>
+
+      <input ref={fileRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleFileChange} />
+
+      {loading ? (
+        <p style={{ color: '#9ca3af', padding: '16px 0' }}>Loading…</p>
+      ) : photos.length === 0 ? (
+        <p style={{ color: '#9ca3af', padding: '16px 0', fontSize: '0.9rem' }}>No photos yet. Upload some using the button above.</p>
+      ) : (
+        <div className="pht-grid">
+          {photos.map((photo) => (
+            <div key={photo.id} className="pht-card">
+              <div className="pht-thumb" onClick={() => setLightbox(photo)}>
+                <img src={photoUrl(photo.filename)} alt={photo.caption || 'Photo'} loading="lazy" />
+              </div>
+              {photo.tags?.length > 0 && (
+                <div className="pht-tags">
+                  {photo.tags.map((tag) => <span key={tag} className="pht-tag">{tag}</span>)}
+                </div>
+              )}
+              <input
+                className="pht-caption-input"
+                defaultValue={photo.caption}
+                placeholder="Add caption…"
+                onBlur={(e) => handleCaptionBlur(photo.id, e.target.value)}
+              />
+              <input
+                className="pht-caption-input"
+                defaultValue={photo.tags?.join(', ')}
+                placeholder="Tags (comma-separated)…"
+                onBlur={(e) => handleTagsSave(photo.id, e.target.value)}
+              />
+              <button
+                type="button"
+                className="secondary"
+                style={{ fontSize: '0.7rem', padding: '2px 8px', background: '#fee2e2', color: '#b91c1c', marginTop: 4 }}
+                onClick={() => handleDelete(photo.id)}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {lightbox && (
+        <div className="preview-overlay" onClick={() => setLightbox(null)}>
+          <div style={{ position: 'relative', maxWidth: 900, width: '100%' }} onClick={(e) => e.stopPropagation()}>
+            <button
+              className="preview-close"
+              style={{ position: 'absolute', top: -36, right: 0, color: '#fff', background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer' }}
+              onClick={() => setLightbox(null)}
+            >✕</button>
+            <img src={photoUrl(lightbox.filename)} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8 }} />
+            {lightbox.caption && (
+              <p style={{ color: '#e5e7eb', textAlign: 'center', marginTop: 8, fontSize: '0.9rem' }}>{lightbox.caption}</p>
+            )}
+            {lightbox.tags?.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 6 }}>
+                {lightbox.tags.map((t) => <span key={t} className="pht-tag">{t}</span>)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VehicleHistoryTab({ history, currentProjectId }) {
   if (!history) return <div className="chat-messages"><p className="chat-empty">No vehicle history available.</p></div>;
 
@@ -1253,6 +1416,7 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
         )}
         <button type="button" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>Quote</button>
         <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
+        <button type="button" className={`chat-tab${tab === 'photos' ? ' active' : ''}`} onClick={() => setTab('photos')}>Photos</button>
       </div>
 
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
@@ -1261,6 +1425,7 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
       {tab === 'mot' && <div className="tab-pane"><MotTab project={project} token={token} /></div>}
       {tab === 'quote' && <div className="tab-pane"><QuoteTab project={project} token={token} /></div>}
       {tab === 'report' && <div className="tab-pane"><ReportTab project={project} token={token} /></div>}
+      {tab === 'photos' && <div className="tab-pane"><PhotosTab project={project} token={token} /></div>}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (

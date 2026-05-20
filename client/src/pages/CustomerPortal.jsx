@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, addVehicle, getVehicleStats, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail, downloadInvoicePdf,
          getWorkshopInfo, acceptQuote, getProfile, updateProfile, changePassword,
-         getNotifications, submitEnquiry } from '../services/customerApi';
+         getNotifications, submitEnquiry, getVehiclePhotos } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -577,11 +577,85 @@ function VehicleJobs({ vehicle, token, onBack, onSelectJob }) {
   );
 }
 
+// ── Project photos tab ───────────────────────────────────────────────────────
+function ProjectPhotosTab({ vehicleId, token }) {
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null);
+  const [activeTag, setActiveTag] = useState('');
+
+  const photoUrl = (filename) => {
+    const base = import.meta.env.VITE_API_BASE_URL || '';
+    return filename?.includes('/') ? filename : `${base}/uploads/${filename}`;
+  };
+
+  useEffect(() => {
+    getVehiclePhotos(vehicleId, token).then(setPhotos).catch(() => {}).finally(() => setLoading(false));
+  }, [vehicleId]);
+
+  if (loading) return <div className="cp-loading">Loading photos…</div>;
+  if (!photos.length) return <p className="cp-empty">No photos have been uploaded for this vehicle yet.</p>;
+
+  const allTags = [...new Set(photos.flatMap((p) => p.tags || []))].sort();
+  const visible = activeTag ? photos.filter((p) => p.tags?.includes(activeTag)) : photos;
+
+  return (
+    <div className="cp-tab-content">
+      {allTags.length > 0 && (
+        <div className="cp-photo-tag-filters">
+          <button
+            className={`cp-photo-tag-btn${!activeTag ? ' active' : ''}`}
+            onClick={() => setActiveTag('')}
+          >All</button>
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              className={`cp-photo-tag-btn${activeTag === tag ? ' active' : ''}`}
+              onClick={() => setActiveTag(tag === activeTag ? '' : tag)}
+            >{tag}</button>
+          ))}
+        </div>
+      )}
+
+      <div className="cp-gallery-grid">
+        {visible.map((photo) => (
+          <div key={photo.id} className="cp-gallery-item" onClick={() => setLightbox(photo)}>
+            <img src={photoUrl(photo.filename)} alt={photo.caption || 'Photo'} loading="lazy" />
+            {photo.tags?.length > 0 && (
+              <div className="cp-gallery-photo-tags">
+                {photo.tags.map((t) => <span key={t} className="cp-gallery-tag">{t}</span>)}
+              </div>
+            )}
+            {photo.caption && <p className="cp-gallery-caption">{photo.caption}</p>}
+            <p className="cp-gallery-date">{fmtDate(photo.jobDate)}</p>
+          </div>
+        ))}
+      </div>
+
+      {lightbox && (
+        <div className="preview-overlay" onClick={() => setLightbox(null)}>
+          <div className="preview-modal" style={{ maxWidth: 800, background: '#000' }} onClick={(e) => e.stopPropagation()}>
+            <button className="preview-close" onClick={() => setLightbox(null)} style={{ color: '#fff' }}>✕</button>
+            <img src={photoUrl(lightbox.filename)} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
+            {lightbox.caption && <p style={{ color: '#e5e7eb', padding: '8px 16px', fontSize: '0.85rem', textAlign: 'center' }}>{lightbox.caption}</p>}
+            {lightbox.tags?.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '0 16px 12px' }}>
+                {lightbox.tags.map((t) => <span key={t} style={{ background: '#334155', color: '#e2e8f0', borderRadius: 4, padding: '2px 8px', fontSize: '0.75rem' }}>{t}</span>)}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Vehicle detail with tabs ─────────────────────────────────────────────────
 const TABS = [
   { id: 'jobs', label: 'Jobs' },
   { id: 'mycar', label: 'My Car' },
-  { id: 'gallery', label: 'Gallery' },
+  { id: 'photos', label: 'Photos' },
+  { id: 'gallery', label: 'Report Gallery' },
   { id: 'invoices', label: 'Invoices' },
 ];
 
@@ -623,6 +697,7 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
         <VehicleJobs vehicle={vehicle} token={token} onBack={onBack} onSelectJob={setSelectedJobId} />
       )}
       {tab === 'mycar' && <VehicleHistoryTab vehicleId={vehicle.id} token={token} />}
+      {tab === 'photos' && <ProjectPhotosTab vehicleId={vehicle.id} token={token} />}
       {tab === 'gallery' && <GalleryTab vehicleId={vehicle.id} token={token} />}
       {tab === 'invoices' && <InvoicesTab vehicleId={vehicle.id} token={token} onOpenInvoice={setSelectedInvoiceId} />}
     </div>

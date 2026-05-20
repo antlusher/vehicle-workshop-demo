@@ -1024,4 +1024,33 @@ router.post('/enquiry', requireCustomer, async (req, res) => {
   return res.status(201).json({ id: result.rows[0].id, createdAt: result.rows[0].created_at });
 });
 
+// GET /api/customer/vehicles/:vehicleId/photos — project photos across all jobs for this vehicle
+router.get('/vehicles/:vehicleId/photos', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    `SELECT pp.id, pp.filename, pp.caption, pp.tags, pp.mime_type, pp.created_at,
+            p.registration, p.created_at as job_date
+     FROM project_photos pp
+     JOIN projects p ON p.id = pp.project_id
+     WHERE p.vehicle_id = $1
+     ORDER BY pp.created_at DESC`,
+    [req.params.vehicleId]
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    caption: r.caption || '',
+    tags: r.tags || [],
+    mimeType: r.mime_type,
+    createdAt: r.created_at,
+    jobDate: r.job_date,
+    registration: r.registration,
+  })));
+});
+
 module.exports = router;

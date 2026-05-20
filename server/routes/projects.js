@@ -1,4 +1,8 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const { query } = require('../services/db');
 const { lookupVehicle } = require('../services/vehicleProviders');
 const { findUserByToken } = require('../services/authService');
@@ -7,7 +11,20 @@ const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleS
 const { fetchAndStoreMotHistory } = require('../services/motService');
 const { enrichEngineCode } = require('../services/engineEnrichment');
 const { getWorkshopSettings } = require('../services/partsService');
+const { s3Available, makeKey, uploadToS3, deleteFromS3 } = require('../services/mediaService');
 const router = express.Router();
+
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
 
 async function fetchAndStoreNhtsaRecalls(make, model, year) {
   try {
@@ -549,6 +566,105 @@ router.post('/:projectId/mot/refresh', requireAuth, async (req, res) => {
   }
   const result = await fetchAndStoreMotHistory(project.vehicle_id, project.registration);
   return res.json({ motTests: result?.tests || null, motVehicleMeta: result?.vehicleMeta || null });
+});
+
+// ── Project photos ──────────────────────────────────────────────────────────
+
+router.get('/:projectId/photos', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { rows } = await query(
+    `SELECT id, filename, original_name, caption, tags, mime_type, size, created_at, uploaded_by
+     FROM project_photos WHERE project_id = $1 ORDER BY created_at ASC`,
+    [req.params.projectId]
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    originalName: r.original_name,
+    caption: r.caption || '',
+    tags: r.tags || [],
+    mimeType: r.mime_type,
+    size: r.size,
+    createdAt: r.created_at,
+  })));
+});
+
+router.post('/:projectId/photos', requireAuth, upload.array('photos', 20), async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
+
+  const tags = req.body.tags ? req.body.tags.split(',').map((t) => t.trim()).filter(Boolean) : [];
+  const inserted = [];
+
+  for (const file of req.files) {
+    let filename;
+    if (s3Available()) {
+      filename = await uploadToS3(file.buffer, makeKey(req.params.projectId, file.originalname), file.mimetype);
+    } else {
+      const ext = path.extname(file.originalname);
+      filename = `${crypto.randomUUID()}${ext}`;
+      fs.writeFileSync(path.join(uploadsDir, filename), file.buffer);
+    }
+    const { rows } = await query(
+      `INSERT INTO project_photos (project_id, filename, original_name, mime_type, size, tags, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.params.projectId, filename, file.originalname, file.mimetype, file.size, tags, req.user.id]
+    );
+    inserted.push(rows[0]);
+  }
+
+  return res.json(inserted.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    originalName: r.original_name,
+    caption: r.caption || '',
+    tags: r.tags || [],
+    mimeType: r.mime_type,
+    size: r.size,
+    createdAt: r.created_at,
+  })));
+});
+
+router.patch('/:projectId/photos/:photoId', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { caption, tags } = req.body;
+  const updates = [];
+  const values = [];
+  if (caption !== undefined) { updates.push(`caption = $${values.length + 1}`); values.push(caption); }
+  if (tags !== undefined) { updates.push(`tags = $${values.length + 1}`); values.push(tags); }
+  if (!updates.length) return res.status(400).json({ error: 'Nothing to update' });
+  values.push(req.params.photoId, req.params.projectId);
+  const { rows } = await query(
+    `UPDATE project_photos SET ${updates.join(', ')} WHERE id = $${values.length - 1} AND project_id = $${values.length} RETURNING *`,
+    values
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Photo not found' });
+  const r = rows[0];
+  return res.json({ id: r.id, filename: r.filename, caption: r.caption || '', tags: r.tags || [] });
+});
+
+router.delete('/:projectId/photos/:photoId', requireAuth, async (req, res) => {
+  if (!await canAccessProject(req.params.projectId, req.user)) {
+    return res.status(404).json({ error: 'Project not found' });
+  }
+  const { rows } = await query(
+    'DELETE FROM project_photos WHERE id=$1 AND project_id=$2 RETURNING filename',
+    [req.params.photoId, req.params.projectId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Photo not found' });
+  const { filename } = rows[0];
+  if (filename.includes('/')) {
+    deleteFromS3(filename).catch(() => {});
+  } else {
+    fs.unlink(path.join(uploadsDir, filename), () => {});
+  }
+  return res.json({ ok: true });
 });
 
 module.exports = router;
