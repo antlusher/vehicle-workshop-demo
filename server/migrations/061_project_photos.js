@@ -1,14 +1,14 @@
 exports.up = (pgm) => {
   pgm.createTable('project_photos', {
     id:            { type: 'serial', primaryKey: true },
-    project_id:    { type: 'integer', notNull: true, references: 'projects(id)', onDelete: 'CASCADE' },
+    project_id:    { type: 'uuid', notNull: true, references: '"projects"', onDelete: 'CASCADE' },
     filename:      { type: 'text', notNull: true },
     original_name: { type: 'text' },
     mime_type:     { type: 'text' },
     size:          { type: 'integer' },
     caption:       { type: 'text' },
     tags:          { type: 'text[]', default: pgm.func("'{}'") },
-    uploaded_by:   { type: 'integer', references: 'users(id)', onDelete: 'SET NULL' },
+    uploaded_by:   { type: 'uuid', references: '"users"', onDelete: 'SET NULL' },
     created_at:    { type: 'timestamp', default: pgm.func('now()') },
   });
   pgm.createIndex('project_photos', 'project_id');
