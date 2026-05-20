@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
-         getWorkshopInfo } from '../services/customerApi';
+         getWorkshopInfo, acceptQuote } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -285,7 +285,21 @@ function InvoicesTab({ vehicleId, token, onOpenInvoice }) {
 }
 
 // ── Jobs (existing) ──────────────────────────────────────────────────────────
-function QuoteSection({ quote }) {
+function QuoteSection({ quote, onAccept }) {
+  const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState('');
+
+  const handleAccept = async () => {
+    setAccepting(true); setAcceptError('');
+    try {
+      await onAccept();
+    } catch (err) {
+      setAcceptError(err.message);
+    } finally {
+      setAccepting(false);
+    }
+  };
+
   const renderLines = (lines) => lines.map((l) => (
     <div key={l.id} className="cp-quote-line">
       <span className="cp-quote-line-desc">{l.description}</span>
@@ -297,7 +311,10 @@ function QuoteSection({ quote }) {
   const hasUngrouped = quote.ungroupedLines?.length > 0;
   return (
     <div className="cp-report-section cp-quote-section">
-      <h3 className="cp-section-title">Your estimate</h3>
+      <div className="cp-quote-section-header">
+        <h3 className="cp-section-title">Your estimate</h3>
+        <span className={`cp-status-badge cp-status-badge--${quote.status}`}>{quote.status}</span>
+      </div>
       {quote.diagnosticSummary && <p className="cp-section-text" style={{ marginBottom: 16 }}>{quote.diagnosticSummary}</p>}
       {hasItems && quote.items.map((item) => (
         <div key={item.id} className="cp-quote-item-group">
@@ -315,6 +332,14 @@ function QuoteSection({ quote }) {
         <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>£{quote.totals.total.toFixed(2)}</span></div>
       </div>
       {quote.notes && <p className="cp-quote-notes">{quote.notes}</p>}
+      {onAccept && quote.status === 'sent' && (
+        <div className="cp-quote-accept">
+          {acceptError && <p className="cp-error" style={{ marginBottom: 8 }}>{acceptError}</p>}
+          <button className="cp-quote-accept-btn" onClick={handleAccept} disabled={accepting}>
+            {accepting ? 'Approving…' : 'Approve this estimate'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -336,6 +361,11 @@ function JobDetail({ projectId, token, onBack }) {
     }).catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, [projectId]);
 
+  const handleAcceptQuote = async () => {
+    await acceptQuote(projectId, token);
+    setQuote((q) => ({ ...q, status: 'approved' }));
+  };
+
   if (loading) return <div className="cp-loading">Loading report…</div>;
   if (error) return <div className="cp-error">{error}</div>;
 
@@ -347,7 +377,7 @@ function JobDetail({ projectId, token, onBack }) {
           <h2 className="cp-detail-title">Estimate for your vehicle</h2>
           <span className="cp-status-badge cp-status-badge--quote">Quote pending</span>
         </div>
-        <QuoteSection quote={quote} />
+        <QuoteSection quote={quote} onAccept={handleAcceptQuote} />
       </div>
     );
   }
@@ -407,7 +437,7 @@ function JobDetail({ projectId, token, onBack }) {
         </div>
       )}
       <p className="cp-published-at">Report published {fmtDate(report.publishedAt)}</p>
-      {quote && <QuoteSection quote={quote} />}
+      {quote && <QuoteSection quote={quote} onAccept={handleAcceptQuote} />}
     </div>
   );
 }

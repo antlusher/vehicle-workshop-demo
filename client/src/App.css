@@ -2837,6 +2837,12 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .cp-quote-line-total { width: 70px; text-align: right; font-weight: 500; }
 .cp-quote-item-subtotal { font-size: 0.82rem; font-weight: 600; color: #1e40af; text-align: right; padding-top: 4px; border-top: 1px solid #bae6fd; margin-top: 4px; }
 .cp-quote-totals { border-top: 2px solid #bae6fd; padding-top: 12px; margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+.cp-quote-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.cp-quote-section-header .cp-section-title { margin-bottom: 0; }
+.cp-quote-accept { margin-top: 16px; padding-top: 16px; border-top: 1px solid #bae6fd; }
+.cp-quote-accept-btn { width: 100%; padding: 12px; background: #16a34a; color: #fff; border: none; border-radius: 8px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+.cp-quote-accept-btn:hover:not(:disabled) { background: #15803d; }
+.cp-quote-accept-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* MOT history tab */
 .cp-mot-list { display: flex; flex-direction: column; gap: 12px; }

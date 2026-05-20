@@ -505,6 +505,52 @@ router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
   });
 });
 
+// POST /api/customer/jobs/:projectId/quote/accept — customer approves a sent quote
+router.post('/jobs/:projectId/quote/accept', requireCustomer, async (req, res) => {
+  const { rows: proj } = await query(
+    'SELECT vehicle_id FROM projects WHERE id=$1',
+    [req.params.projectId]
+  );
+  if (!proj.length) return res.status(404).json({ error: 'Job not found' });
+
+  if (!proj[0].vehicle_id) return res.status(403).json({ error: 'Not authorised' });
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, proj[0].vehicle_id]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows: quoteRows } = await query(
+    `SELECT id, stock_deducted FROM quotes WHERE project_id=$1 AND status='sent' ORDER BY updated_at DESC LIMIT 1`,
+    [req.params.projectId]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'No pending quote found' });
+  const quote = quoteRows[0];
+
+  if (!quote.stock_deducted) {
+    const { rows: partLines } = await query(
+      `SELECT part_id, SUM(qty)::int AS total_qty
+       FROM quote_lines WHERE quote_id=$1 AND part_id IS NOT NULL
+       GROUP BY part_id`,
+      [quote.id]
+    );
+    for (const line of partLines) {
+      await query(
+        `UPDATE parts_catalogue SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2`,
+        [line.total_qty, line.part_id]
+      );
+    }
+    await query('UPDATE quotes SET stock_deducted=true WHERE id=$1', [quote.id]);
+  }
+
+  await query(
+    `UPDATE quotes SET status='approved', customer_id=$1, quote_token=NULL, quote_token_expires_at=NULL, updated_at=now() WHERE id=$2`,
+    [req.user.id, quote.id]
+  );
+
+  return res.json({ accepted: true });
+});
+
 // ── Public quick-quote routes (no auth required) ──────────────────────────────
 
 // GET /api/customer/quick-quote/:token — view quote details by token
