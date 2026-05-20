@@ -7,11 +7,13 @@ import VehicleRegistry from './VehicleRegistry';
 import Customers from './Customers';
 import WorkshopSettings from './WorkshopSettings';
 import Inventory from './Inventory';
+import Invoices from './Invoices';
 
 // owner: all nav | admin: no Staff/Workshop | tech: not in AdminShell
 const ALL_NAV = [
   { id: 'dashboard',  label: 'Dashboard',        roles: ['owner', 'admin'] },
   { id: 'projects',   label: 'Projects',          roles: ['owner', 'admin'] },
+  { id: 'invoices',   label: 'Invoices',          roles: ['owner', 'admin'] },
   { id: 'customers',  label: 'Customers',         roles: ['owner', 'admin'] },
   { id: 'ai',         label: 'AI & Knowledge',    roles: ['owner', 'admin'] },
   { id: 'registry',   label: 'Vehicle Registry',  roles: ['owner', 'admin'] },
@@ -61,6 +63,7 @@ export default function AdminShell({ token, userEmail, userRole = 'admin', onExi
         {activePage === 'registry' && <VehicleRegistry token={token} />}
         {activePage === 'customers' && <Customers token={token} />}
         {activePage === 'workshop' && <WorkshopSettings token={token} userRole={role} />}
+        {activePage === 'invoices' && <Invoices token={token} />}
         {activePage === 'inventory' && <Inventory token={token} />}
       </main>
     </div>

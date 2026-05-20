@@ -121,6 +121,71 @@ async function nextReference() {
   return rows[0].ref;
 }
 
+// GET /invoices — all invoices (approved + invoiced) for the workshop, with optional filters
+router.get('/invoices', requireAuth, async (req, res) => {
+  try {
+    const { status, search, from, to } = req.query;
+    const params = [req.user.workshopId];
+    const conditions = ["p.workshop_id = $1", "q.status IN ('approved','invoiced')"];
+
+    if (status && ['approved', 'invoiced'].includes(status)) {
+      params.push(status);
+      conditions.push(`q.status = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      conditions.push(`q.updated_at >= $${params.length}`);
+    }
+    if (to) {
+      params.push(to);
+      conditions.push(`q.updated_at < ($${params.length}::date + interval '1 day')`);
+    }
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      const i = params.length;
+      conditions.push(`(LOWER(q.reference) LIKE $${i} OR LOWER(COALESCE(q.title,'')) LIKE $${i} OR LOWER(COALESCE(u.name,'')) LIKE $${i} OR LOWER(COALESCE(u.email,'')) LIKE $${i} OR LOWER(COALESCE(p.registration_snapshot, p.registration,'')) LIKE $${i})`);
+    }
+
+    const { rows } = await query(
+      `SELECT q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate,
+              p.registration_snapshot, p.registration, p.make, p.model, p.year,
+              u.id AS customer_id, u.name AS customer_name, u.email AS customer_email,
+              COALESCE(SUM(ql.unit_cost * (1 + ql.markup_pct/100) * ql.qty), 0) AS subtotal_raw
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       LEFT JOIN users u ON u.id = q.customer_id
+       LEFT JOIN quote_lines ql ON ql.quote_id = q.id
+       WHERE ${conditions.join(' AND ')}
+       GROUP BY q.id, q.reference, q.title, q.status, q.updated_at, q.vat_rate,
+                p.registration_snapshot, p.registration, p.make, p.model, p.year,
+                u.id, u.name, u.email
+       ORDER BY q.updated_at DESC`,
+      params
+    );
+
+    const invoices = rows.map((r) => {
+      const subtotal = Math.round(parseFloat(r.subtotal_raw) * 100) / 100;
+      const vatRate = parseFloat(r.vat_rate);
+      const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+      return {
+        id: r.id,
+        reference: r.reference,
+        title: r.title || null,
+        status: r.status,
+        updatedAt: r.updated_at,
+        registration: r.registration_snapshot || r.registration || null,
+        vehicle: [r.make, r.model, r.year].filter(Boolean).join(' ') || null,
+        customer: r.customer_id ? { id: r.customer_id, name: r.customer_name || null, email: r.customer_email } : null,
+        totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+      };
+    });
+
+    res.json(invoices);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get customers linked to a project's vehicle (for the customer picker)
 router.get('/project-customers/:projectId', requireAuth, async (req, res) => {
   try {

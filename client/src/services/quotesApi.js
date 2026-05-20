@@ -32,6 +32,18 @@ export const updateSettings = (data, token) => request(`${BASE}/settings`, { met
 export const getQuotes = (projectId, token) =>
   request(`${BASE}?project_id=${projectId}`, {}, token);
 
+export const getQuoteDetail = (id, token) =>
+  request(`${BASE}/${id}`, {}, token);
+
+export const getInvoices = (filters = {}, token) => {
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.search) params.set('search', filters.search);
+  if (filters.from)   params.set('from', filters.from);
+  if (filters.to)     params.set('to', filters.to);
+  return request(`${BASE}/invoices?${params}`, {}, token);
+};
+
 export const createQuote = (data, token) =>
   request(BASE, { method: 'POST', body: data }, token);
 
