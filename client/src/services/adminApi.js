@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 async function request(path, options = {}, token) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -79,6 +79,18 @@ export async function parsePdf(file, token) {
 
 export const importPdfChunks = (chunks, token) =>
   request('/api/admin/knowledge/import-chunks', { method: 'POST', body: { chunks } }, token);
+
+export const scrapeUrl = (url, token) =>
+  request('/api/admin/knowledge/scrape-url', { method: 'POST', body: { url } }, token);
+
+export const trainingChat = (question, history, token) =>
+  request('/api/ai/training', { method: 'POST', body: { question, history } }, token);
+
+export const extractKnowledge = (text, token) =>
+  request('/api/ai/extract-knowledge', { method: 'POST', body: { text } }, token);
+
+export const getCustomerStats = (id, token) =>
+  request(`/api/admin/customers/${id}/stats`, {}, token);
 
 export function estimateCost(inputTokens, outputTokens) {
   const cost = (inputTokens * 0.000003) + (outputTokens * 0.000015);

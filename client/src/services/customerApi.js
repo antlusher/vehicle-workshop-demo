@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 async function request(path, options = {}, token) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -11,9 +11,40 @@ async function request(path, options = {}, token) {
   return data;
 }
 
+export const submitEnquiry = (data, token) => request('/api/customer/enquiry', { method: 'POST', body: data }, token);
+export const getWorkshopInfo = (token) => request('/api/customer/workshop', {}, token);
+export const getProfile = (token) => request('/api/customer/profile', {}, token);
+export const updateProfile = (data, token) => request('/api/customer/profile', { method: 'PATCH', body: data }, token);
+export const changePassword = (data, token) => request('/api/customer/change-password', { method: 'POST', body: data }, token);
+export const getNotifications = (token) => request('/api/customer/notifications', {}, token);
 export const getMyVehicles = (token) => request('/api/customer/vehicles', {}, token);
+export const addVehicle = (data, token) => request('/api/customer/vehicles', { method: 'POST', body: data }, token);
+export const getVehicleStats = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/stats`, {}, token);
 export const getVehicleJobs = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/jobs`, {}, token);
 export const getJobReport = (projectId, token) => request(`/api/customer/jobs/${projectId}`, {}, token);
+export const getJobQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote`, {}, token);
+export const getVehicleMot = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/mot`, {}, token);
+export const getVehicleGallery = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/gallery`, {}, token);
+export const getVehicleInvoices = (vehicleId, token) => request(`/api/customer/vehicles/${vehicleId}/invoices`, {}, token);
+export const getInvoiceDetail = (quoteId, token) => request(`/api/customer/invoices/${quoteId}`, {}, token);
+
+export async function downloadInvoicePdf(quoteId, token, filename) {
+  const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const res = await fetch(`${BASE_URL}/api/customer/invoices/${quoteId}/pdf`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to generate PDF');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || 'invoice.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+export const acceptQuote = (projectId, token) => request(`/api/customer/jobs/${projectId}/quote/accept`, { method: 'POST' }, token);
 
 // Admin customer management
 export const getCustomers = (token) => request('/api/admin/customers', {}, token);
@@ -25,3 +56,5 @@ export const unlinkVehicle = (customerId, vehicleId, token) =>
   request(`/api/admin/customers/${customerId}/vehicles/${vehicleId}`, { method: 'DELETE' }, token);
 export const updateCustomer = (customerId, data, token) =>
   request(`/api/admin/customers/${customerId}`, { method: 'PATCH', body: data }, token);
+export const deleteCustomer = (customerId, token) =>
+  request(`/api/admin/customers/${customerId}`, { method: 'DELETE' }, token);

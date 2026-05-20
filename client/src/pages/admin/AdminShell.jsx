@@ -5,31 +5,40 @@ import Projects from './Projects';
 import AiKnowledge from './AiKnowledge';
 import VehicleRegistry from './VehicleRegistry';
 import Customers from './Customers';
+import WorkshopSettings from './WorkshopSettings';
+import Inventory from './Inventory';
 
-const NAV = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'users', label: 'Users' },
-  { id: 'projects', label: 'Projects' },
-  { id: 'ai', label: 'AI & Knowledge' },
-  { id: 'registry', label: 'Vehicle Registry' },
-  { id: 'customers', label: 'Customers' },
+// owner: all nav | admin: no Staff/Workshop | tech: not in AdminShell
+const ALL_NAV = [
+  { id: 'dashboard',  label: 'Dashboard',        roles: ['owner', 'admin'] },
+  { id: 'projects',   label: 'Projects',          roles: ['owner', 'admin'] },
+  { id: 'customers',  label: 'Customers',         roles: ['owner', 'admin'] },
+  { id: 'ai',         label: 'AI & Knowledge',    roles: ['owner', 'admin'] },
+  { id: 'registry',   label: 'Vehicle Registry',  roles: ['owner', 'admin'] },
+  { id: 'inventory',  label: 'Inventory',         roles: ['owner', 'admin'] },
+  { id: 'staff',      label: 'Staff',             roles: ['owner'] },
+  { id: 'workshop',   label: 'Workshop',          roles: ['owner'] },
 ];
 
-export default function AdminShell({ token, userEmail, onExit }) {
-  const [page, setPage] = useState('dashboard');
+export default function AdminShell({ token, userEmail, userRole = 'admin', onExit }) {
+  const role = userRole;
+  const nav = ALL_NAV.filter((n) => n.roles.includes(role));
+  const [page, setPage] = useState(nav[0]?.id || 'dashboard');
+
+  const activePage = nav.find((n) => n.id === page) ? page : nav[0]?.id;
 
   return (
     <div className="admin-shell">
       <header className="admin-header">
         <div className="admin-header-left">
           <span className="admin-brand">Ask Bob</span>
-          <span className="admin-brand-sub">Admin</span>
+          <span className="admin-brand-sub">{role === 'owner' ? 'Owner' : 'Admin'}</span>
         </div>
         <nav className="admin-nav">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <button
               key={n.id}
-              className={`admin-nav-btn${page === n.id ? ' active' : ''}`}
+              className={`admin-nav-btn${activePage === n.id ? ' active' : ''}`}
               onClick={() => setPage(n.id)}
             >
               {n.label}
@@ -45,12 +54,14 @@ export default function AdminShell({ token, userEmail, onExit }) {
       </header>
 
       <main className="admin-content">
-        {page === 'dashboard' && <Dashboard token={token} />}
-        {page === 'users' && <Users token={token} currentUserEmail={userEmail} />}
-        {page === 'projects' && <Projects token={token} />}
-        {page === 'ai' && <AiKnowledge token={token} />}
-        {page === 'registry' && <VehicleRegistry token={token} />}
-        {page === 'customers' && <Customers token={token} />}
+        {activePage === 'dashboard' && <Dashboard token={token} />}
+        {activePage === 'staff' && <Users token={token} currentUserEmail={userEmail} />}
+        {activePage === 'projects' && <Projects token={token} />}
+        {activePage === 'ai' && <AiKnowledge token={token} />}
+        {activePage === 'registry' && <VehicleRegistry token={token} />}
+        {activePage === 'customers' && <Customers token={token} />}
+        {activePage === 'workshop' && <WorkshopSettings token={token} userRole={role} />}
+        {activePage === 'inventory' && <Inventory token={token} />}
       </main>
     </div>
   );

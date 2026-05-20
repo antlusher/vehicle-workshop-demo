@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react';
 import * as api from './services/api';
+import { exitActAs } from './services/sysadminApi';
 import Login from './pages/Login';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
+import SysAdminShell from './pages/SysAdminShell';
 import CustomerPortal from './pages/CustomerPortal';
+import CustomerLogin from './pages/CustomerLogin';
+import QuoteAcceptPage from './pages/QuoteAcceptPage';
+import AdminAgent from './pages/AdminAgent';
 import './App.css';
 
 function App() {
@@ -12,6 +17,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [adminView, setAdminView] = useState(false);
   const [projects, setProjects] = useState([]);
+  const [archivedProjects, setArchivedProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
@@ -21,12 +27,41 @@ function App() {
       setToken(null);
       setUser(null);
       setProjects([]);
+      setArchivedProjects([]);
       setSelectedProject(null);
       setError('Your session has expired. Please log in again.');
       setStatus('idle');
     };
     window.addEventListener('auth:logout', handleForcedLogout);
     return () => window.removeEventListener('auth:logout', handleForcedLogout);
+  }, []);
+
+  // Magic link auto-login: ?magic=TOKEN&project=ID
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const magic = params.get('magic');
+    const projectId = params.get('project');
+    if (!magic) return;
+
+    // Clear the URL immediately so refresh doesn't re-use the token
+    window.history.replaceState({}, '', '/portal');
+
+    fetch('/api/customer/magic-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: magic }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.token) {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('portalProjectId', projectId || '');
+          setToken(data.token);
+          setUser({ email: data.email, role: data.role });
+          setStatus('ready');
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -40,9 +75,27 @@ function App() {
       try {
         const userData = await api.getProfile(token);
         setUser(userData);
-        const savedProjects = await api.fetchProjects(token);
+        const [savedProjects, savedArchived] = await Promise.all([
+          api.fetchProjects(token),
+          api.getProjects(token, { archived: true }),
+        ]);
         setProjects(savedProjects);
+        setArchivedProjects(savedArchived);
         setStatus('ready');
+
+        api.getWorkshopSettings(token)
+          .then((s) => setAiEnabled(s.aiEnabled !== false))
+          .catch(() => {});
+
+        // Pre-generate specs in the background for any active project that's missing them
+        savedProjects
+          .filter((p) => !p.specs && p.make && p.model)
+          .forEach((p) => api.fetchProjectSpecs(p.id, token)
+            .then((specs) => setProjects((prev) =>
+              prev.map((x) => x.id === p.id ? { ...x, specs } : x)
+            ))
+            .catch(() => {})
+          );
       } catch (err) {
         setError(err.message);
         setToken(null);
@@ -69,6 +122,7 @@ function App() {
     setToken(null);
     setUser(null);
     setProjects([]);
+    setArchivedProjects([]);
     setSelectedProject(null);
     setAdminView(false);
     setError('');
@@ -76,8 +130,12 @@ function App() {
 
   const reloadProjects = async () => {
     if (!token) return;
-    const savedProjects = await api.fetchProjects(token);
+    const [savedProjects, savedArchived] = await Promise.all([
+      api.fetchProjects(token),
+      api.getProjects(token, { archived: true }),
+    ]);
     setProjects(savedProjects);
+    setArchivedProjects(savedArchived);
   };
 
   const handleCreateProject = async (identifier) => {
@@ -108,13 +166,23 @@ function App() {
     setProjects((current) => current.map((p) => p.id === projectId ? { ...p, ...updated } : p));
   };
 
+  const [projectLoading, setProjectLoading] = useState(false);
+
   const handleSelectProject = async (projectId) => {
     setError('');
+    setProjectLoading(true);
     try {
       const project = await api.getProject(projectId, token);
       setSelectedProject(project);
+      setProjects((current) => current.map((p) =>
+        p.id === projectId
+          ? { ...p, make: project.make, model: project.model, year: project.year, fuel_type: project.fuel_type }
+          : p
+      ));
     } catch (err) {
       setError(err.message);
+    } finally {
+      setProjectLoading(false);
     }
   };
 
@@ -129,10 +197,20 @@ function App() {
     }
   };
 
-  const handleAskQuestion = async (projectId, question) => {
+  const handleReopenProject = async (projectId) => {
     setError('');
     try {
-      const result = await api.askAI(projectId, question, token);
+      await api.reopenProject(projectId, token);
+      await reloadProjects();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleAskQuestion = async (projectId, question, chatMode) => {
+    setError('');
+    try {
+      const result = await api.askAI(projectId, question, token, chatMode);
       setSelectedProject(result.project);
       await reloadProjects();
       return result.answer;
@@ -155,6 +233,31 @@ function App() {
     });
   };
 
+  const handleArchiveProject = async (projectId) => {
+    setError('');
+    try {
+      await api.archiveProject(projectId, token);
+      const archived = projects.find((p) => p.id === projectId);
+      setProjects((current) => current.filter((p) => p.id !== projectId));
+      if (archived) setArchivedProjects((current) => [archived, ...current]);
+      if (selectedProject?.id === projectId) setSelectedProject(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleRestoreProject = async (projectId) => {
+    setError('');
+    try {
+      await api.restoreProject(projectId, token);
+      const restored = archivedProjects.find((p) => p.id === projectId);
+      setArchivedProjects((current) => current.filter((p) => p.id !== projectId));
+      if (restored) setProjects((current) => [restored, ...current]);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleClearHistory = async (projectId) => {
     await api.clearProjectHistory(projectId, token);
     const updated = await api.getProject(projectId, token);
@@ -171,15 +274,63 @@ function App() {
     }
   };
 
+  const [showAssistant, setShowAssistant] = useState(false);
+  const [actorState, setActorState] = useState(null);
+  const [aiEnabled, setAiEnabled] = useState(true);
+
+  const handleExitActor = async () => {
+    if (actorState?.token) {
+      try { await exitActAs(actorState.token, token); } catch (_) {}
+    }
+    setActorState(null);
+  };
+
+  const isCustomerSubdomain =
+    window.location.hostname.startsWith('customer.') ||
+    (import.meta.env.DEV && new URLSearchParams(window.location.search).has('cp'));
+  const urlParams = new URLSearchParams(window.location.search);
+  const activateToken = urlParams.get('activate');
+  const quoteToken = urlParams.get('quote');
+
+  // Public quote accept page — anyone with the link can view/accept, no auth needed
+  if (quoteToken) {
+    return <QuoteAcceptPage quoteToken={quoteToken} />;
+  }
+
+  const handleCustomerLoginSuccess = (data) => {
+    localStorage.setItem('token', data.token);
+    // Clear activate param from URL without reload
+    window.history.replaceState({}, '', '/');
+    setToken(data.token);
+    setUser({ email: data.email, role: data.role, name: data.name });
+    setStatus('ready');
+  };
+
   if (!token) {
+    if (isCustomerSubdomain || activateToken) {
+      return (
+        <CustomerLogin
+          activateToken={activateToken}
+          onSuccess={handleCustomerLoginSuccess}
+        />
+      );
+    }
     return <Login onLogin={handleLogin} error={error} />;
   }
 
   if (status === 'loading') {
-    return <div className="app-shell"><p>Loading your workshop...</p></div>;
+    return (
+      <div className="app-loading-overlay">
+        <div className="app-loading-inner">
+          <div className="app-loading-logo">Ask Bob</div>
+          <div className="app-loading-spinner" />
+          <p className="app-loading-text">Loading your workshop…</p>
+        </div>
+      </div>
+    );
   }
 
-  if (user && !user.subscribed) {
+  if (user && !user.subscribed && user.role !== 'customer') {
     return (
       <div className="app-shell">
         <header className="app-header">
@@ -200,11 +351,35 @@ function App() {
     return <CustomerPortal user={user} token={token} onLogout={handleLogout} />;
   }
 
-  if (adminView && user?.role === 'admin') {
+  if (user?.role === 'sysadmin') {
+    if (actorState) {
+      return (
+        <>
+          <div className="actor-banner">
+            Acting as <strong>{actorState.workshopName}</strong>
+            <button onClick={handleExitActor}>Exit</button>
+          </div>
+          <AdminShell
+            token={actorState.token}
+            userEmail={user.email}
+            userRole="owner"
+            onExit={handleExitActor}
+          />
+        </>
+      );
+    }
+    return <SysAdminShell token={token} userEmail={user.email} onLogout={handleLogout} onActAs={setActorState} />;
+  }
+
+  const isWorkshopStaff = ['owner', 'admin', 'tech'].includes(user?.role);
+  const canEnterAdmin = ['owner', 'admin'].includes(user?.role);
+
+  if (adminView && canEnterAdmin) {
     return (
       <AdminShell
         token={token}
         userEmail={user.email}
+        userRole={user.role}
         onExit={() => setAdminView(false)}
       />
     );
@@ -212,13 +387,25 @@ function App() {
 
   return (
     <div className="app-shell">
+      {showAssistant && (
+        <AdminAgent
+          token={token}
+          onClose={() => setShowAssistant(false)}
+          onProjectCreated={reloadProjects}
+        />
+      )}
       <header className="app-header">
         <div>
           <h1>Ask Bob</h1>
           <p>{user?.email}</p>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {user?.role === 'admin' && (
+          {aiEnabled && (
+            <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
+              Assistant
+            </button>
+          )}
+          {canEnterAdmin && (
             <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
               Admin
             </button>
@@ -235,10 +422,14 @@ function App() {
         <div className="panel panel-left">
           <Projects
             projects={projects}
+            archivedProjects={archivedProjects}
             onCreateProject={handleCreateProject}
             onCreateProjectManual={handleCreateProjectManual}
             onSelectProject={handleSelectProject}
             onCloseProject={handleCloseProject}
+            onReopenProject={handleReopenProject}
+            onArchiveProject={handleArchiveProject}
+            onRestoreProject={handleRestoreProject}
             selectedProject={selectedProject}
             error={error}
           />
@@ -246,11 +437,14 @@ function App() {
         <div className="panel-right">
           <ProjectDetail
             project={selectedProject}
+            projectLoading={projectLoading}
             onAsk={handleAskQuestion}
             onConfirmSuggestion={handleConfirmSuggestion}
             onClearHistory={handleClearHistory}
             onUpdateVehicle={handleUpdateVehicle}
+            onRefreshProject={handleSelectProject}
             token={token}
+            aiEnabled={aiEnabled}
           />
         </div>
       </main>

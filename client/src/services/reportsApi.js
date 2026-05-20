@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 async function request(path, options = {}, token) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -46,3 +46,17 @@ export const deleteImage = (projectId, imageId, token) =>
   request(`/api/reports/${projectId}/images/${imageId}`, { method: 'DELETE' }, token);
 
 export const imageUrl = (filename) => `${BASE_URL}/uploads/${filename}`;
+
+export async function mediaUrl(filename, token) {
+  if (!filename) return '';
+  // S3 keys contain a slash (projects/...), local files do not
+  if (filename.includes('/')) {
+    const res = await fetch(`${BASE_URL}/api/reports/media/url?key=${encodeURIComponent(filename)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.url || '';
+  }
+  return `${BASE_URL}/uploads/${filename}`;
+}

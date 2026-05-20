@@ -19,6 +19,8 @@
 !/server/**
 !/client
 !/client/**
+!/searxng
+!/searxng/**
 
 # Ignore frontend build output
 /client/dist/
@@ -29,7 +31,18 @@
 /server/node_modules/
 
 # Ignore environment files and IDE artifacts
+/.env
 /server/.env
+!/.env.example
+!/server/.env.example
 .vscode/
 .DS_Store
 npm-debug.log*
+
+# Large scraped/generated data — too big for git
+server/data/scraped-*.json
+server/data/wiki/
+server/data/pdfs/
+
+# Git worktrees — checked-out sibling directories
+/worktrees/

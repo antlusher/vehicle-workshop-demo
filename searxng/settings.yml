@@ -1,0 +1,27 @@
+use_default_settings: true
+
+server:
+  secret_key: "workshop-searxng-internal-key-change-in-production"
+  limiter: false
+  image_proxy: false
+  method: GET
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    engine: google
+    disabled: false
+  - name: bing
+    engine: bing
+    disabled: false
+  - name: duckduckgo
+    engine: duckduckgo
+    disabled: false
+  - name: wikipedia
+    engine: wikipedia
+    disabled: false

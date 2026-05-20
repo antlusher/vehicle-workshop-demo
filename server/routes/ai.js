@@ -1,8 +1,9 @@
 const express = require('express');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
-const { generateRepairAdvice } = require('../services/aiService');
+const { generateRepairAdvice, generateTrainingChat, extractKnowledgeFromText, generateAdminChat } = require('../services/aiService');
 const { getVehicleHistory } = require('../services/vehicleService');
+const { getWorkshopSettings } = require('../services/partsService');
 const router = express.Router();
 
 function requireAuth(req, res, next) {
@@ -14,24 +15,45 @@ function requireAuth(req, res, next) {
   }).catch(() => res.status(401).json({ error: 'Authentication required' }));
 }
 
-router.post('/ask', requireAuth, async (req, res) => {
-  const { projectId, question } = req.body;
+async function requireAiEnabled(req, res, next) {
+  try {
+    const settings = await getWorkshopSettings();
+    if (settings.aiEnabled === false) {
+      return res.status(503).json({ error: 'AI features are currently disabled for this workshop. Enable them in Workshop Settings.' });
+    }
+    next();
+  } catch {
+    next();
+  }
+}
+
+router.post('/ask', requireAuth, requireAiEnabled, async (req, res) => {
+  const { projectId, question, chatMode } = req.body;
   if (!projectId || !question) {
     return res.status(400).json({ error: 'Project ID and question are required' });
   }
 
+  // Wide roles (owner/admin) access by workshop_id; tech accesses by user_id
+  const isWide = ['owner', 'admin', 'sysadmin'].includes(req.user.role);
   const { rows: projectRows } = await query(
-    'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
-    [projectId, req.user.id]
+    isWide
+      ? 'SELECT * FROM projects WHERE id = $1 AND workshop_id = $2'
+      : 'SELECT * FROM projects WHERE id = $1 AND user_id = $2',
+    [projectId, isWide ? req.user.workshopId : req.user.id]
   );
   if (!projectRows.length) return res.status(404).json({ error: 'Project not found' });
 
   const project = projectRows[0];
-  const [historyResult, vehicleHistory] = await Promise.all([
+  const [historyResult, vehicleHistory, motRow] = await Promise.all([
     query('SELECT * FROM project_history WHERE project_id = $1 ORDER BY created_at ASC', [projectId]),
     project.vehicle_id ? getVehicleHistory(project.vehicle_id) : Promise.resolve(null),
+    project.vehicle_id
+      ? query('SELECT mot_tests, mot_vehicle_meta FROM vehicles WHERE id = $1', [project.vehicle_id])
+      : Promise.resolve({ rows: [] }),
   ]);
   const history = historyResult.rows.map((h) => ({ role: h.role, text: h.text }));
+  const motTests = motRow.rows[0]?.mot_tests || null;
+  const motVehicleMeta = motRow.rows[0]?.mot_vehicle_meta || null;
 
   // Cross-workshop confirmed fixes: all fixes on this vehicle excluding current project
   const crossWorkshopFixes = (vehicleHistory?.confirmedFixes || []).filter(
@@ -41,13 +63,15 @@ router.post('/ask', requireAuth, async (req, res) => {
   const startMs = Date.now();
   try {
     const result = await generateRepairAdvice(
-      { make: project.make, model: project.model, year: project.year,
+      { id: project.id, workshopId: project.workshop_id,
+        make: project.make, model: project.model, year: project.year,
         engineCode: project.engine_code, fuelType: project.fuel_type,
         registration: project.registration_snapshot || project.registration,
-        vin: project.vin },
+        vin: project.vin, motTests, motVehicleMeta },
       history,
       question,
-      crossWorkshopFixes
+      crossWorkshopFixes,
+      chatMode
     );
     const { answer, inputTokens, outputTokens } = result;
     const durationMs = Date.now() - startMs;
@@ -62,11 +86,11 @@ router.post('/ask', requireAuth, async (req, res) => {
     );
     await query('UPDATE projects SET updated_at = now() WHERE id = $1', [projectId]);
     query(
-      `INSERT INTO ai_requests (user_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [req.user.id, projectId,
+      `INSERT INTO ai_requests (user_id, workshop_id, project_id, question_preview, answer_preview, input_tokens, output_tokens, model, duration_ms, chat_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [req.user.id, req.user.workshopId || null, projectId,
        question.slice(0, 200), answer.slice(0, 200),
-       inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs]
+       inputTokens, outputTokens, 'claude-sonnet-4-6', durationMs, chatMode || 'diagnose']
     ).catch(() => {});
 
     const [{ rows: updatedHistory }, { rows: confirmedFixes }] = await Promise.all([
@@ -89,6 +113,8 @@ router.post('/ask', requireAuth, async (req, res) => {
       source: project.source,
       active: project.active,
       closed: project.closed,
+      motTests,
+      motVehicleMeta,
       confirmedFixes: confirmedFixes.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
       history: updatedHistory.map((h) => ({
         id: h.id, role: h.role, text: h.text, confirmed: h.confirmed, createdAt: h.created_at,
@@ -98,6 +124,28 @@ router.post('/ask', requireAuth, async (req, res) => {
     return res.json({ project: updatedProject, answer: answer });
   } catch (error) {
     return res.status(500).json({ error: 'AI request failed' });
+  }
+});
+
+router.post('/training', requireAuth, requireAiEnabled, async (req, res) => {
+  const { question, history = [] } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    const result = await generateTrainingChat(history, question);
+    res.json({ answer: result.answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/extract-knowledge', requireAuth, requireAiEnabled, async (req, res) => {
+  const { text } = req.body;
+  if (!text) return res.status(400).json({ error: 'text required' });
+  try {
+    const result = await extractKnowledgeFromText(text);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -125,6 +173,17 @@ router.post('/confirm-suggestion', requireAuth, async (req, res) => {
   );
 
   return res.json({ confirmed: true, id: rows[0].id });
+});
+
+router.post('/admin-agent', requireAuth, requireAiEnabled, async (req, res) => {
+  const { question, history = [] } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    const result = await generateAdminChat(history, question, req.user.id, req.user.workshopId);
+    res.json({ answer: result.answer });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

@@ -4,7 +4,8 @@ import {
   getAiRequests, getAiStats, getConversation, estimateCost,
   getLearningStats,
   getKnowledgeBase, createKbEntry, updateKbEntry, deleteKbEntry,
-  parsePdf, importPdfChunks,
+  parsePdf, importPdfChunks, scrapeUrl,
+  trainingChat, extractKnowledge,
 } from '../../services/adminApi';
 import { getEngines, getTransmissions } from '../../services/registryApi';
 
@@ -387,10 +388,12 @@ function KbForm({ initial, engines, transmissions, onSave, onCancel }) {
   );
 }
 
-// ── PDF Import sub-tab ────────────────────────────────────────────────────────
+// ── Import tab (PDF + URL) ────────────────────────────────────────────────────
 
-function PdfImport({ token }) {
+function ImportTab({ token }) {
   const fileRef = useRef(null);
+  const [mode, setMode] = useState('pdf'); // 'pdf' | 'url'
+  const [urlInput, setUrlInput] = useState('');
   const [chunks, setChunks] = useState([]);
   const [engines, setEngines] = useState([]);
   const [transmissions, setTransmissions] = useState([]);
@@ -407,10 +410,12 @@ function PdfImport({ token }) {
       .then(([e, t]) => { setEngines(e); setTransmissions(t); });
   }, [token]);
 
+  const resetChunks = () => { setChunks([]); setImported(null); setError(''); };
+
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setError(''); setChunks([]); setImported(null); setLoading(true);
+    resetChunks(); setLoading(true);
     try {
       const { chunks: parsed } = await parsePdf(file, token);
       setChunks(parsed.map((c) => ({ ...c, included: true })));
@@ -419,6 +424,21 @@ function PdfImport({ token }) {
     } finally {
       setLoading(false);
       e.target.value = '';
+    }
+  };
+
+  const handleScrape = async () => {
+    if (!urlInput.trim()) return;
+    resetChunks(); setLoading(true);
+    try {
+      const { chunks: extracted, pageTitle, url } = await scrapeUrl(urlInput.trim(), token);
+      if (!extracted?.length) { setError('No knowledge entries could be extracted from this page.'); return; }
+      setChunks(extracted.map((c) => ({ ...c, included: true })));
+      setG('source', pageTitle || url);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -436,7 +456,7 @@ function PdfImport({ token }) {
 
   const handleImport = async () => {
     const selected = chunks.filter((c) => c.included);
-    if (!selected.length) { setError('No chunks selected'); return; }
+    if (!selected.length) { setError('No entries selected'); return; }
     setImporting(true); setError('');
     try {
       const { imported: count } = await importPdfChunks(selected, token);
@@ -453,24 +473,61 @@ function PdfImport({ token }) {
 
   return (
     <div>
-      <h3 className="admin-section-title" style={{ marginTop: 0 }}>Import PDF</h3>
-      <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
-        Upload a PDF repair manual, technical service bulletin, or any automotive document. The text will be extracted and split into sections ready to review before saving to the knowledge base.
-      </p>
-
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
-        <button onClick={() => fileRef.current?.click()} disabled={loading}>{loading ? 'Parsing…' : 'Choose PDF…'}</button>
-        <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
-        {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} sections extracted</span>}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', width: 'fit-content' }}>
+        {[['pdf', 'PDF document'], ['url', 'Web page / URL']].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => { setMode(id); resetChunks(); }}
+            style={{ padding: '8px 20px', fontSize: '0.88rem', background: mode === id ? '#1e40af' : 'white', color: mode === id ? 'white' : '#374151', border: 'none', borderRight: id === 'pdf' ? '1px solid #e2e8f0' : 'none', cursor: 'pointer', fontWeight: mode === id ? 600 : 400 }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {error && <p className="error">{error}</p>}
-      {imported !== null && <p style={{ color: '#16a34a', marginBottom: 16 }}>✓ {imported} entries imported to knowledge base.</p>}
+      {mode === 'pdf' && (
+        <div>
+          <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
+            Upload a PDF repair manual, technical service bulletin, or parts catalogue. Text is extracted and structured by AI before you review and save.
+          </p>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+            <button onClick={() => fileRef.current?.click()} disabled={loading}>{loading ? 'Parsing…' : 'Choose PDF…'}</button>
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" style={{ display: 'none' }} onChange={handleFile} />
+            {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} sections extracted</span>}
+          </div>
+        </div>
+      )}
+
+      {mode === 'url' && (
+        <div>
+          <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: 16 }}>
+            Paste a URL from a Dayco or Gates bulletin, parts manufacturer procedure, engine code database, or any public automotive article. The page is fetched server-side, text extracted, and structured by AI for review.
+          </p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+            <input
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.9rem' }}
+              type="url"
+              placeholder="https://www.daycoaftermkt.com/..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleScrape()}
+              disabled={loading}
+            />
+            <button onClick={handleScrape} disabled={loading || !urlInput.trim()}>
+              {loading ? 'Fetching…' : 'Fetch & extract'}
+            </button>
+          </div>
+          {chunks.length > 0 && <span style={{ fontSize: '0.85rem', color: '#6b7280' }}>{chunks.length} entries extracted</span>}
+        </div>
+      )}
+
+      {error && <p className="error" style={{ marginTop: 8 }}>{error}</p>}
+      {imported !== null && <p style={{ color: '#16a34a', marginTop: 8, marginBottom: 0 }}>✓ {imported} entries imported to knowledge base.</p>}
 
       {chunks.length > 0 && (
         <>
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 20 }}>
-            <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#374151' }}>Apply scope to all sections</h4>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, margin: '20px 0' }}>
+            <h4 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: '#374151' }}>Apply scope to all entries</h4>
             <div className="kb-form-row" style={{ marginBottom: 8 }}>
               <div className="kb-form-group">
                 <label>Category</label>
@@ -480,7 +537,7 @@ function PdfImport({ token }) {
               </div>
               <div className="kb-form-group">
                 <label>Source / document name</label>
-                <input value={globalScope.source} onChange={(e) => setG('source', e.target.value)} placeholder="e.g. Haynes Manual, TSB-2023-001" />
+                <input value={globalScope.source} onChange={(e) => setG('source', e.target.value)} placeholder="e.g. Dayco EcoBlue Bulletin, Gates TSB-2024" />
               </div>
               <div className="kb-form-group">
                 <label>Engine (cross-make)</label>
@@ -495,10 +552,10 @@ function PdfImport({ token }) {
               </div>
               <div className="kb-form-group">
                 <label>Model</label>
-                <input value={globalScope.model} onChange={(e) => setG('model', e.target.value)} placeholder="e.g. Focus" />
+                <input value={globalScope.model} onChange={(e) => setG('model', e.target.value)} placeholder="e.g. Transit" />
               </div>
             </div>
-            <button className="secondary" onClick={applyGlobalScope}>Apply to all sections</button>
+            <button className="secondary" onClick={applyGlobalScope}>Apply to all entries</button>
           </div>
 
           <div className="admin-toolbar" style={{ marginBottom: 12 }}>
@@ -507,7 +564,7 @@ function PdfImport({ token }) {
               <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: true })))}>Select all</button>
               <button className="secondary" style={{ fontSize: '0.8rem' }} onClick={() => setChunks((cs) => cs.map((c) => ({ ...c, included: false })))}>Deselect all</button>
               <button onClick={handleImport} disabled={importing || !selectedCount}>
-                {importing ? 'Importing…' : `Import ${selectedCount} section${selectedCount !== 1 ? 's' : ''}`}
+                {importing ? 'Importing…' : `Import ${selectedCount} entr${selectedCount !== 1 ? 'ies' : 'y'}`}
               </button>
             </div>
           </div>
@@ -619,18 +676,23 @@ function KnowledgeBaseTab({ token }) {
                   ? <span className="badge badge-blue">{txLabel} tx</span>
                   : [e.make, e.model, e.year_from && `${e.year_from}${e.year_to ? '–' + e.year_to : '+'}`].filter(Boolean).join(' ') || <span style={{ color: '#9ca3af' }}>Universal</span>;
                 return (
-                <tr key={e.id}>
-                  <td><span className="badge badge-blue">{e.category}</span></td>
+                <tr key={e.id} style={e.is_global ? { background: 'rgba(99,102,241,0.05)' } : {}}>
+                  <td>
+                    <span className="badge badge-blue">{e.category}</span>
+                    {e.is_global && <span className="badge" style={{ marginLeft: 4, background: '#4f46e5', color: '#fff', fontSize: '0.7rem' }}>Global Brain</span>}
+                  </td>
                   <td>{scopeLabel}</td>
                   <td>{e.fault_code || <span style={{ color: '#9ca3af' }}>—</span>}</td>
                   <td>{e.title}</td>
                   <td style={{ color: '#6b7280', fontSize: '0.85rem' }}>{e.source || '—'}</td>
                   <td style={{ whiteSpace: 'nowrap', fontSize: '0.8rem', color: '#9ca3af' }}>{new Date(e.updated_at).toLocaleDateString()}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm('Delete this entry?')) return; await deleteKbEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>Delete</button>
-                    </div>
+                    {!e.is_global && (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
+                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm('Delete this entry?')) return; await deleteKbEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>Delete</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
@@ -644,13 +706,206 @@ function KnowledgeBaseTab({ token }) {
   );
 }
 
+// ── Training Chat sub-tab ─────────────────────────────────────────────────────
+
+function TrainingChat({ token }) {
+  const [history, setHistory] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [feedText, setFeedText] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extracted, setExtracted] = useState([]);
+  const [extractError, setExtractError] = useState('');
+  const [kbDraft, setKbDraft] = useState(null);
+  const [engines, setEngines] = useState([]);
+  const [transmissions, setTransmissions] = useState([]);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    Promise.all([getEngines(token), getTransmissions(token)])
+      .then(([e, t]) => { setEngines(e); setTransmissions(t); });
+  }, [token]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [history, loading]);
+
+  const handleSend = async () => {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput('');
+    const nextHistory = [...history, { role: 'user', text: q }];
+    setHistory(nextHistory);
+    setLoading(true);
+    try {
+      const { answer } = await trainingChat(q, history, token);
+      setHistory([...nextHistory, { role: 'ai', text: answer }]);
+    } catch (err) {
+      setHistory([...nextHistory, { role: 'ai', text: `Error: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExtract = async () => {
+    if (!feedText.trim() || extracting) return;
+    setExtracting(true);
+    setExtracted([]);
+    setExtractError('');
+    try {
+      const { entries } = await extractKnowledge(feedText, token);
+      setExtracted(entries);
+      if (!entries.length) setExtractError('No knowledge entries could be extracted from that text.');
+    } catch (err) {
+      setExtractError(err.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const openDraft = (entry) => setKbDraft({
+    title: entry.title || '',
+    content: entry.content || '',
+    category: entry.category || 'General',
+    make: entry.make || '',
+    model: entry.model || '',
+    year_from: entry.year_from || '',
+    year_to: entry.year_to || '',
+    fault_code: entry.fault_code || '',
+    source: entry.source || 'Technician Experience',
+    engine_id: '',
+    transmission_id: '',
+  });
+
+  const openDraftFromResponse = (text) => openDraft({
+    title: text.replace(/[#*`]/g, '').split('\n').find((l) => l.trim()) || 'Training chat response',
+    content: text,
+    category: 'General',
+    source: 'Bob Training Chat',
+  });
+
+  return (
+    <div className="training-layout">
+      <div className="training-chat-panel">
+        <div className="training-chat-feed">
+          {history.length === 0 && !loading && (
+            <p className="training-empty">Ask Bob anything — faults, procedures, diagnostic approaches — or share knowledge from your own experience.</p>
+          )}
+          {history.map((h, i) => (
+            <div key={i} className={`convo-entry convo-entry--${h.role === 'user' ? 'user' : 'assistant'}`}>
+              <div className={`convo-bubble convo-bubble--${h.role === 'user' ? 'user' : 'assistant'}`}>
+                {h.role === 'user' ? (
+                  <p style={{ margin: 0 }}>{h.text}</p>
+                ) : (
+                  <div className="ai-response convo-ai-prose">
+                    <ReactMarkdown>{h.text}</ReactMarkdown>
+                    <button
+                      className="secondary"
+                      style={{ fontSize: '0.75rem', marginTop: 10, padding: '4px 12px' }}
+                      onClick={() => openDraftFromResponse(h.text)}
+                    >
+                      Save to knowledge base
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div className="convo-entry convo-entry--assistant">
+              <div className="convo-bubble convo-bubble--assistant training-thinking">Bob is thinking...</div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+        <div className="training-chat-bar">
+          <input
+            className="admin-search"
+            style={{ flex: 1, margin: 0 }}
+            placeholder="Ask Bob or share your experience..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            disabled={loading}
+          />
+          <button onClick={handleSend} disabled={!input.trim() || loading} style={{ whiteSpace: 'nowrap' }}>
+            {loading ? 'Thinking...' : 'Send'}
+          </button>
+        </div>
+      </div>
+
+      <div className="training-feed-panel">
+        <h4 style={{ margin: '0 0 6px', fontSize: '0.9rem', fontWeight: 600 }}>Feed Knowledge</h4>
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: '0 0 12px', lineHeight: 1.5 }}>
+          Paste a fault description, confirmed fix, or procedure from your own experience. Bob will extract and structure it into knowledge base entries.
+        </p>
+        <textarea
+          className="training-feed-input"
+          rows={7}
+          placeholder="e.g. On the PSA DV5 1.5 BlueHDi, timing chain stretch is common after 80k miles. Symptoms include P0017, rattling on cold start. The chain tensioner fails first — replace the full kit including tensioner, guides and chain. Always check camshaft wear pattern..."
+          value={feedText}
+          onChange={(e) => setFeedText(e.target.value)}
+        />
+        <button
+          style={{ width: '100%', marginTop: 10 }}
+          disabled={!feedText.trim() || extracting}
+          onClick={handleExtract}
+        >
+          {extracting ? 'Processing...' : 'Extract knowledge entries'}
+        </button>
+
+        {extractError && <p className="error" style={{ marginTop: 10 }}>{extractError}</p>}
+
+        {extracted.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: '0.8rem', color: '#374151', margin: '0 0 10px', fontWeight: 500 }}>
+              {extracted.length} entr{extracted.length > 1 ? 'ies' : 'y'} extracted — review before saving:
+            </p>
+            {extracted.map((entry, i) => (
+              <div key={i} className="training-entry-card">
+                <div className="training-entry-title">{entry.title}</div>
+                <div className="training-entry-meta">
+                  <span className="badge badge-blue">{entry.category}</span>
+                  {entry.make && <span>{entry.make} {entry.model}</span>}
+                  {entry.fault_code && <span>{entry.fault_code}</span>}
+                  {entry.year_from && <span>{entry.year_from}{entry.year_to ? `–${entry.year_to}` : '+'}</span>}
+                </div>
+                <p className="training-entry-preview">{entry.content.slice(0, 140)}{entry.content.length > 140 ? '…' : ''}</p>
+                <button style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => openDraft(entry)}>
+                  Review &amp; save
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {kbDraft && (
+        <div className="training-modal-backdrop" onClick={() => setKbDraft(null)}>
+          <div className="training-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 16px', fontSize: '1rem' }}>Save to Knowledge Base</h3>
+            <KbForm
+              initial={kbDraft}
+              engines={engines}
+              transmissions={transmissions}
+              onSave={async (form) => { await createKbEntry(form, token); setKbDraft(null); }}
+              onCancel={() => setKbDraft(null)}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'requests', label: 'Request Log' },
   { id: 'kb', label: 'Knowledge Base' },
-  { id: 'pdf', label: 'PDF Import' },
+  { id: 'pdf', label: 'Import' },
+  { id: 'training', label: 'Training Chat' },
 ];
 
 export default function AiKnowledge({ token }) {
@@ -670,7 +925,8 @@ export default function AiKnowledge({ token }) {
       {tab === 'overview' && <Overview token={token} />}
       {tab === 'requests' && <RequestLog token={token} />}
       {tab === 'kb' && <KnowledgeBaseTab token={token} />}
-      {tab === 'pdf' && <PdfImport token={token} />}
+      {tab === 'pdf' && <ImportTab token={token} />}
+      {tab === 'training' && <TrainingChat token={token} />}
     </div>
   );
 }

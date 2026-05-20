@@ -3,11 +3,18 @@ import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
 import * as reportsApi from '../services/reportsApi';
+import QuoteTab from './QuoteTab';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
+const PREP_WH = /^(at|in|on|under|during|from|by|for)\s+(what|which|how|where|when|who)\b/i;
 const MULTI_OPTION = /,\s*or\b|\bor\s+(?:only|just)\b|\bor\s+(?:at|when|during|under|from|in|across|between)\s/i;
 const COMPOUND = /\?\s*(if|when|please|and)\b/i;
-const DIAGNOSTIC_VERB = /^(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|confirm that|see if|determine|evaluate)\b/i;
+const BINARY_START = /^(is|are|does|do|has|have|did|can|will|was|were|would|could|should)\b/i;
+const DIAGNOSTIC_VERB = /\b(check|inspect|test|measure|verify|monitor|scan|listen|look|try|assess|examine|observe|ensure|see if|determine|evaluate|consider|confirm|run\s+a|record|note|review|compare|document|identify|locate|connect)\b/i;
+const INSPECTION_PURPOSE = /\bto\s+(gain access|inspect|check|verify|examine|assess|look\b|see\b)/i;
+const WARNING_START = /^(do not|don't|never|warning|caution|important|note:|n\.b\.|avoid\b|stop\b)/i;
+const REPAIR_VERB = /\b(replace|fit|install|renew|swap|clean|flush|bleed|adjust|seal|remove|repair|rebuild|reset|clear|relearn|prime|top.?up|refill|tighten|torque|apply|lubricate)\b/i;
+const AWAITING_FINDINGS = /\breport\s+back\b|\byour\s+findings\b|\badvise\s+(on\s+the\s+correct|further)\b|\blet\s+me\s+know\s+(what|the|how)\b/i;
 
 function nodeText(node) {
   if (!node) return '';
@@ -18,12 +25,24 @@ function nodeText(node) {
 }
 
 function questionType(text) {
+  if (WARNING_START.test(text)) return 'warning';
   if (!text.endsWith('?')) {
-    if (DIAGNOSTIC_VERB.test(text)) return 'step';
-    return 'fix';
+    if (DIAGNOSTIC_VERB.test(text) || INSPECTION_PURPOSE.test(text)) return 'step';
+    if (REPAIR_VERB.test(text)) return 'fix';
+    return 'info';
   }
-  if (OPEN_ENDED_START.test(text) || MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
+  if (OPEN_ENDED_START.test(text) || PREP_WH.test(text)) return 'open';
+  if (MULTI_OPTION.test(text) || COMPOUND.test(text)) return 'open';
+  if (BINARY_START.test(text) && /\bor\b(?!\s*not\b)/i.test(text)) return 'open';
   return 'yesno';
+}
+
+function extractActionItems(text) {
+  return text
+    .split('\n')
+    .filter((l) => /^[\s]*(?:[-*•]|\d+\.)\s+/.test(l))
+    .map((l) => l.replace(/^[\s]*(?:[-*•]|\d+\.)\s+/, '').trim())
+    .filter((l) => questionType(l) === 'fix');
 }
 
 function YesNoButtons({ onAnswered }) {
@@ -55,29 +74,59 @@ function OpenAnswerInput({ itemText, onAnswer }) {
   );
 }
 
-function ConfirmFixButton({ itemText, onConfirm, initialConfirmed }) {
-  const [confirmed, setConfirmed] = useState(initialConfirmed || false);
-  const handle = async () => {
-    setConfirmed(true);
-    try { await onConfirm(itemText); } catch { setConfirmed(false); }
-  };
-  if (confirmed) return <small className="suggestion-confirmed">✓ This fixed it</small>;
-  return <button type="button" className="secondary suggestion-confirm-btn" onClick={handle}>This fixed it</button>;
+function FixChooser({ items, confirmedTexts, onConfirm, onCancel, isBusy }) {
+  const [selected, setSelected] = useState(new Set());
+  const toggle = (item) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(item) ? next.delete(item) : next.add(item);
+    return next;
+  });
+  const newFixes = [...selected].filter((i) => !confirmedTexts?.has(i));
+  return (
+    <div className="fix-chooser">
+      <p className="fix-chooser-label">Which of these fixed it?</p>
+      <ul className="fix-chooser-list">
+        {items.map((item, i) => {
+          const done = confirmedTexts?.has(item);
+          return (
+            <li key={i} className={`fix-chooser-item${done ? ' fix-chooser-item--done' : ''}`}>
+              <label>
+                <input type="checkbox" checked={done || selected.has(item)} disabled={done} onChange={() => !done && toggle(item)} />
+                <span>{item}</span>
+                {done && <small className="suggestion-confirmed">✓ confirmed</small>}
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="fix-chooser-actions">
+        <button type="button" disabled={!newFixes.length || isBusy} onClick={() => onConfirm(newFixes)}>
+          {isBusy ? 'Saving…' : `Confirm ${newFixes.length || ''} fix${newFixes.length !== 1 ? 'es' : ''}`}
+        </button>
+        <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
 }
 
-function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts }) {
+function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinue, isLatestAi, isBusy, confirmedTexts, chatMode }) {
   const [hasAnswers, setHasAnswers] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [showChooser, setShowChooser] = useState(false);
+  const [confirmingFixes, setConfirmingFixes] = useState(false);
   const answersRef = useRef({});
+
+  const actionItems = useMemo(() => extractActionItems(text), [text]);
+  const awaitingFindings = useMemo(() => AWAITING_FINDINGS.test(text), [text]);
+  const hasDiagnosticSteps = useMemo(() => text.split('\n')
+    .filter((l) => /^[\s]*(?:[-*•]|\d+\.)\s+/.test(l))
+    .map((l) => l.replace(/^[\s]*(?:[-*•]|\d+\.)\s+/, '').trim())
+    .some((l) => questionType(l) === 'step'), [text]);
 
   const handleAnswer = useCallback((key, value) => {
     answersRef.current[key] = value;
     setHasAnswers(Object.values(answersRef.current).some((v) => v !== null && v !== ''));
   }, []);
-
-  const handleConfirm = useCallback(async (itemText) => {
-    await onConfirmSuggestion(projectId, historyId, itemText);
-  }, [projectId, historyId, onConfirmSuggestion]);
 
   const handleContinue = useCallback(async () => {
     const answered = Object.entries(answersRef.current).filter(([, v]) => v !== null && v !== '');
@@ -91,37 +140,62 @@ function AiResponse({ text, historyId, projectId, onConfirmSuggestion, onContinu
     await onContinue(message);
   }, [onContinue]);
 
+  const handleConfirmFixes = useCallback(async (selected) => {
+    setConfirmingFixes(true);
+    try {
+      for (const itemText of selected) {
+        await onConfirmSuggestion(projectId, historyId, itemText);
+      }
+      setShowChooser(false);
+    } finally {
+      setConfirmingFixes(false);
+    }
+  }, [projectId, historyId, onConfirmSuggestion]);
+
+  const isDiagnose = chatMode === 'diagnose';
+  const hasConfirmedFromThis = actionItems.some((i) => confirmedTexts?.has(i));
+
   const components = useMemo(() => ({
     li({ children }) {
       const itemText = nodeText(children).trim();
       const type = questionType(itemText);
       return (
-        <li className={`ai-suggestion${type === 'open' ? ' ai-suggestion--open' : ''}`}>
+        <li className={`ai-suggestion ai-suggestion--${type}`}>
           <span>{children}</span>
-          {type === 'yesno' && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
-          {type === 'open' && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
-          {type === 'fix' && (
-            <ConfirmFixButton
-              itemText={itemText}
-              onConfirm={handleConfirm}
-              initialConfirmed={confirmedTexts?.has(itemText)}
-            />
+          {isDiagnose && type === 'yesno' && isLatestAi && <YesNoButtons onAnswered={(v) => handleAnswer(itemText, v)} />}
+          {isDiagnose && type === 'open' && isLatestAi && <OpenAnswerInput itemText={itemText} onAnswer={handleAnswer} />}
+          {isDiagnose && !isLatestAi && confirmedTexts?.has(itemText) && (
+            <small className="suggestion-confirmed">✓ This fixed it</small>
           )}
         </li>
       );
     },
-  }), [handleAnswer, handleConfirm, confirmedTexts]);
+  }), [handleAnswer, confirmedTexts, isDiagnose, isLatestAi]);
 
   return (
     <div className="ai-response">
       <ReactMarkdown components={components}>{text}</ReactMarkdown>
-      {isLatestAi && hasAnswers && !submitted && (
+      {isDiagnose && isLatestAi && hasAnswers && !submitted && (
         <button type="button" className="continue-btn" disabled={isBusy} onClick={handleContinue}>
           {isBusy ? 'Thinking...' : 'Continue diagnosis →'}
         </button>
       )}
       {submitted && !isBusy && (
         <small className="suggestion-confirmed">Answers sent — see next step below</small>
+      )}
+      {isDiagnose && isLatestAi && actionItems.length > 0 && !showChooser && !awaitingFindings && !hasDiagnosticSteps && (
+        <button type="button" className="what-fixed-btn" onClick={() => setShowChooser(true)}>
+          {hasConfirmedFromThis ? 'Update confirmed fixes' : 'What fixed it? →'}
+        </button>
+      )}
+      {isDiagnose && isLatestAi && showChooser && (
+        <FixChooser
+          items={actionItems}
+          confirmedTexts={confirmedTexts}
+          onConfirm={handleConfirmFixes}
+          onCancel={() => setShowChooser(false)}
+          isBusy={confirmingFixes}
+        />
       )}
     </div>
   );
@@ -151,18 +225,35 @@ function QuickReference({ project, token }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (specs) return;
+  const hasVehicleData = project.make && project.model;
+
+  const fetchSpecs = () => {
+    if (!hasVehicleData) return;
     setLoading(true);
     setError('');
     api.fetchProjectSpecs(project.id, token)
       .then(setSpecs)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (specs || !hasVehicleData) return;
+    fetchSpecs();
   }, [project.id]);
 
+  if (!hasVehicleData) return (
+    <p style={{ color: '#9ca3af', fontSize: '0.9rem', padding: '12px 0' }}>
+      Vehicle specs unavailable — make and model are not set for this project.
+    </p>
+  );
   if (loading) return <p className="specs-loading">Generating vehicle specs…</p>;
-  if (error) return <p className="error" style={{ padding: 16 }}>{error}</p>;
+  if (error) return (
+    <div style={{ padding: 16 }}>
+      <p className="error" style={{ marginBottom: 10 }}>{error}</p>
+      <button className="secondary" style={{ fontSize: '0.85rem' }} onClick={fetchSpecs}>Try again</button>
+    </div>
+  );
   if (!specs) return null;
 
   const s = specs;
@@ -304,149 +395,309 @@ function VehicleEditForm({ project, onSave, onCancel }) {
 function VehicleInfo({ project, onUpdateVehicle }) {
   const [editing, setEditing] = useState(false);
   const vd = project.vehicleData;
+  const md = project.motVehicleMeta;
 
   const handleSave = async (data) => {
     await onUpdateVehicle(project.id, data);
     setEditing(false);
   };
 
-  const editBtn = (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
-      <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => setEditing(true)}>
-        Edit vehicle details
-      </button>
-    </div>
-  );
-
   if (editing) {
     return <VehicleEditForm project={project} onSave={handleSave} onCancel={() => setEditing(false)} />;
   }
 
-  if (!vd) {
-    return (
-      <div>
-        {editBtn}
-        <div className="specs-grid">
-          <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-            <h4 className="spec-card-title">Vehicle</h4>
-            <VehicleInfoRow label="Registration" value={project.registration} />
-            <VehicleInfoRow label="VIN" value={project.vin} />
-            <VehicleInfoRow label="Make" value={project.make} />
-            <VehicleInfoRow label="Model" value={project.model} />
-            <VehicleInfoRow label="Year" value={project.year} />
-            <VehicleInfoRow label="Engine code" value={project.engineCode} />
-            <VehicleInfoRow label="Fuel type" value={project.fuelType} />
-            <VehicleInfoRow label="Trim" value={project.trim} />
-            <VehicleInfoRow label="Body type" value={project.bodyType} />
-          </div>
-        </div>
-        <p style={{ padding: '4px 16px 12px', color: '#9ca3af', fontSize: '0.8rem' }}>No extended data from API — use Edit to correct any fields above.</p>
-      </div>
-    );
-  }
-
+  const fmtDate = (d) => {
+    if (!d) return null;
+    const p = new Date(d);
+    return isNaN(p) ? d : p.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
   const fmt = (val, unit) => (val != null ? `${val}${unit ? ' ' + unit : ''}` : null);
-
-  const basicCard = (
-    <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-      <h4 className="spec-card-title">Vehicle</h4>
-      <VehicleInfoRow label="Registration" value={project.registration} />
-      <VehicleInfoRow label="VIN" value={project.vin} />
-      <VehicleInfoRow label="Make" value={project.make} />
-      <VehicleInfoRow label="Model" value={project.model} />
-      <VehicleInfoRow label="Year" value={project.year} />
-      <VehicleInfoRow label="Engine code" value={project.engineCode} />
-      <VehicleInfoRow label="Fuel type" value={project.fuelType} />
-      <VehicleInfoRow label="Trim" value={project.trim} />
-      <VehicleInfoRow label="Body type" value={project.bodyType} />
-    </div>
-  );
 
   return (
     <div>
-      {editBtn}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 16px 0' }}>
+        <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => setEditing(true)}>
+          Edit vehicle details
+        </button>
+      </div>
       <div className="specs-grid">
-      {basicCard}
-      <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
-        <h4 className="spec-card-title">Extended Data</h4>
-        <VehicleInfoRow label="Colour" value={vd.colour} />
-        <VehicleInfoRow label="First registered" value={vd.dateFirstRegistered} />
-        <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
-        <VehicleInfoRow label="Country of origin" value={vd.countryOfOrigin} />
-        <VehicleInfoRow label="Series / Gen" value={vd.series} />
-        <VehicleInfoRow label="Variant" value={vd.modelVariant} />
-        {vd.isScrapped && <VehicleInfoRow label="Status" value="SCRAPPED" />}
-        {vd.isExported && <VehicleInfoRow label="Status" value="EXPORTED" />}
-      </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Engine</h4>
-        <VehicleInfoRow label="Description" value={vd.engine?.description} />
-        <VehicleInfoRow label="Manufacturer" value={vd.engine?.manufacturer} />
-        <VehicleInfoRow label="Capacity" value={vd.engine?.capacityLitres != null ? `${vd.engine.capacityLitres}L (${vd.engine.capacityCc}cc)` : fmt(vd.engine?.capacityCc, 'cc')} />
-        <VehicleInfoRow label="Cylinders" value={vd.engine?.cylinders} />
-        <VehicleInfoRow label="Aspiration" value={vd.engine?.aspiration} />
-        <VehicleInfoRow label="Valve gear" value={vd.engine?.valveGear} />
-        <VehicleInfoRow label="Valves / cyl" value={vd.engine?.valvesPerCylinder} />
-      </div>
+        <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+          <h4 className="spec-card-title">Vehicle</h4>
+          <VehicleInfoRow label="Registration" value={project.registration} />
+          <VehicleInfoRow label="VIN" value={project.vin} />
+          <VehicleInfoRow label="Engine code" value={project.engineCode} />
+          {md ? (<>
+            <VehicleInfoRow label="Make" value={md.make} />
+            <VehicleInfoRow label="Model" value={md.model} />
+            <VehicleInfoRow label="Fuel type" value={md.fuelType} />
+            <VehicleInfoRow label="Engine size" value={md.engineSize ? `${md.engineSize}cc` : null} />
+            <VehicleInfoRow label="Colour" value={md.primaryColour} />
+            <VehicleInfoRow label="First used" value={fmtDate(md.firstUsedDate)} />
+            <VehicleInfoRow label="Manufacture date" value={fmtDate(md.manufactureDate)} />
+            <VehicleInfoRow label="Last MOT" value={fmtDate(md.lastMotTestDate)} />
+            <VehicleInfoRow label="MOT due" value={fmtDate(md.motTestDueDate)} />
+            {md.hasOutstandingRecall === true && <VehicleInfoRow label="Outstanding recall" value="Yes" />}
+          </>) : (<>
+            <VehicleInfoRow label="Make" value={project.make} />
+            <VehicleInfoRow label="Model" value={project.model} />
+            <VehicleInfoRow label="Year" value={project.year} />
+            <VehicleInfoRow label="Fuel type" value={project.fuelType} />
+            <VehicleInfoRow label="Trim" value={project.trim} />
+            <VehicleInfoRow label="Body type" value={project.bodyType} />
+          </>)}
+        </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Transmission</h4>
-        <VehicleInfoRow label="Type" value={vd.transmission?.type} />
-        <VehicleInfoRow label="Gears" value={vd.transmission?.gears} />
-        <VehicleInfoRow label="Drive" value={vd.transmission?.driveType} />
-        <VehicleInfoRow label="Driving axle" value={vd.transmission?.drivingAxle} />
-      </div>
+        {vd && (<>
+          <div className="spec-card" style={{ gridColumn: '1 / -1' }}>
+            <h4 className="spec-card-title">Registration History</h4>
+            <VehicleInfoRow label="Previous keepers" value={vd.numberOfKeepers} />
+            <VehicleInfoRow label="Country of origin" value={vd.countryOfOrigin} />
+            <VehicleInfoRow label="Series / Gen" value={vd.series} />
+            <VehicleInfoRow label="Variant" value={vd.modelVariant} />
+            {vd.isScrapped && <VehicleInfoRow label="Status" value="SCRAPPED" />}
+            {vd.isExported && <VehicleInfoRow label="Status" value="EXPORTED" />}
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Performance</h4>
-        <VehicleInfoRow label="Power" value={vd.performance?.powerBhp != null ? `${vd.performance.powerBhp} bhp / ${vd.performance.powerKw} kW` : null} />
-        <VehicleInfoRow label="Torque" value={vd.performance?.torqueNm != null ? `${vd.performance.torqueNm} Nm / ${vd.performance.torqueLbft} lb·ft` : null} />
-        <VehicleInfoRow label="0–60 mph" value={fmt(vd.performance?.zeroToSixtyMph, 's')} />
-        <VehicleInfoRow label="Top speed" value={fmt(vd.performance?.maxSpeedMph, 'mph')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Engine</h4>
+            <VehicleInfoRow label="Description" value={vd.engine?.description} />
+            <VehicleInfoRow label="Manufacturer" value={vd.engine?.manufacturer} />
+            <VehicleInfoRow label="Capacity" value={vd.engine?.capacityLitres != null ? `${vd.engine.capacityLitres}L (${vd.engine.capacityCc}cc)` : fmt(vd.engine?.capacityCc, 'cc')} />
+            <VehicleInfoRow label="Cylinders" value={vd.engine?.cylinders} />
+            <VehicleInfoRow label="Aspiration" value={vd.engine?.aspiration} />
+            <VehicleInfoRow label="Valve gear" value={vd.engine?.valveGear} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Fuel Economy</h4>
-        <VehicleInfoRow label="Combined" value={fmt(vd.economy?.combinedMpg, 'mpg')} />
-        <VehicleInfoRow label="Urban" value={fmt(vd.economy?.urbanMpg, 'mpg')} />
-        <VehicleInfoRow label="Extra-urban" value={fmt(vd.economy?.extraUrbanMpg, 'mpg')} />
-        <VehicleInfoRow label="Combined (l/100km)" value={fmt(vd.economy?.combinedL100km, 'L/100km')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Transmission</h4>
+            <VehicleInfoRow label="Type" value={vd.transmission?.type} />
+            <VehicleInfoRow label="Gears" value={vd.transmission?.gears} />
+            <VehicleInfoRow label="Drive" value={vd.transmission?.driveType} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Emissions</h4>
-        <VehicleInfoRow label="Euro status" value={vd.emissions?.euroStatus} />
-        <VehicleInfoRow label="CO2" value={fmt(vd.emissions?.co2, 'g/km')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Performance</h4>
+            <VehicleInfoRow label="Power" value={vd.performance?.powerBhp != null ? `${vd.performance.powerBhp} bhp / ${vd.performance.powerKw} kW` : null} />
+            <VehicleInfoRow label="Torque" value={vd.performance?.torqueNm != null ? `${vd.performance.torqueNm} Nm / ${vd.performance.torqueLbft} lb·ft` : null} />
+            <VehicleInfoRow label="0–60 mph" value={fmt(vd.performance?.zeroToSixtyMph, 's')} />
+            <VehicleInfoRow label="Top speed" value={fmt(vd.performance?.maxSpeedMph, 'mph')} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Body</h4>
-        <VehicleInfoRow label="Style" value={vd.body?.style} />
-        <VehicleInfoRow label="Shape" value={vd.body?.shape} />
-        <VehicleInfoRow label="Cab type" value={vd.body?.cabType} />
-        <VehicleInfoRow label="Wheelbase" value={vd.body?.wheelbaseType} />
-        <VehicleInfoRow label="Doors" value={vd.body?.numberOfDoors} />
-        <VehicleInfoRow label="Seats" value={vd.body?.numberOfSeats} />
-        <VehicleInfoRow label="Payload volume" value={fmt(vd.body?.payloadVolumeLitres, 'L')} />
-        <VehicleInfoRow label="Fuel tank" value={fmt(vd.body?.fuelTankLitres, 'L')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Economy</h4>
+            <VehicleInfoRow label="Combined" value={fmt(vd.economy?.combinedMpg, 'mpg')} />
+            <VehicleInfoRow label="Urban" value={fmt(vd.economy?.urbanMpg, 'mpg')} />
+            <VehicleInfoRow label="Extra-urban" value={fmt(vd.economy?.extraUrbanMpg, 'mpg')} />
+            <VehicleInfoRow label="CO2" value={fmt(vd.emissions?.co2, 'g/km')} />
+            <VehicleInfoRow label="Euro status" value={vd.emissions?.euroStatus} />
+          </div>
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Weights</h4>
-        <VehicleInfoRow label="Kerb" value={fmt(vd.weights?.kerbKg, 'kg')} />
-        <VehicleInfoRow label="Gross" value={fmt(vd.weights?.grossKg, 'kg')} />
-        <VehicleInfoRow label="Payload" value={fmt(vd.weights?.payloadKg, 'kg')} />
-      </div>
+          <div className="spec-card">
+            <h4 className="spec-card-title">Body</h4>
+            <VehicleInfoRow label="Style" value={vd.body?.style} />
+            <VehicleInfoRow label="Doors" value={vd.body?.numberOfDoors} />
+            <VehicleInfoRow label="Seats" value={vd.body?.numberOfSeats} />
+            <VehicleInfoRow label="Fuel tank" value={fmt(vd.body?.fuelTankLitres, 'L')} />
+            <VehicleInfoRow label="Kerb weight" value={fmt(vd.weights?.kerbKg, 'kg')} />
+          </div>
+        </>)}
 
-      <div className="spec-card">
-        <h4 className="spec-card-title">Dimensions</h4>
-        <VehicleInfoRow label="Length" value={fmt(vd.dimensions?.lengthMm, 'mm')} />
-        <VehicleInfoRow label="Width" value={fmt(vd.dimensions?.widthMm, 'mm')} />
-        <VehicleInfoRow label="Height" value={fmt(vd.dimensions?.heightMm, 'mm')} />
-        <VehicleInfoRow label="Wheelbase" value={fmt(vd.dimensions?.wheelbaseMm, 'mm')} />
       </div>
     </div>
+  );
+}
+
+const DEFECT_ORDER = ['DANGEROUS', 'FAIL', 'MAJOR', 'MINOR', 'PRS', 'USER_ENTERED', 'ADVISORY'];
+const DEFECT_LABELS = { DANGEROUS: 'Dangerous', FAIL: 'Fail', MAJOR: 'Major', MINOR: 'Minor', PRS: 'Pass after Rectification', USER_ENTERED: 'User Entered', ADVISORY: 'Advisory' };
+const DEFECT_CLASS = { DANGEROUS: 'mot-defect--dangerous', FAIL: 'mot-defect--fail', MAJOR: 'mot-defect--fail', MINOR: 'mot-defect--minor', PRS: 'mot-defect--prs', USER_ENTERED: 'mot-defect--advisory', ADVISORY: 'mot-defect--advisory' };
+
+function MotMetaRow({ label, value }) {
+  if (value == null || value === '' || value === false) return null;
+  return (
+    <div className="mot-meta-row">
+      <span className="mot-meta-label">{label}</span>
+      <span className="mot-meta-value">{value === true ? 'Yes' : String(value)}</span>
+    </div>
+  );
+}
+
+function MotTab({ project, token }) {
+  const [tests, setTests] = useState(project.motTests || null);
+  const [meta, setMeta] = useState(project.motVehicleMeta || null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!tests && project.registration) handleRefresh();
+  }, [project.id]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/projects/${project.id}/mot/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Refresh failed');
+      setTests(data.motTests);
+      setMeta(data.motVehicleMeta);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const fmtDate = (d) => {
+    if (!d) return '—';
+    const parsed = new Date(d);
+    return isNaN(parsed) ? d : parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  return (
+    <div className="mot-tab">
+      <div className="mot-header">
+        <div>
+          <strong>MOT History</strong>
+          {tests?.length > 0 && <span style={{ marginLeft: 8, color: '#6b7280', fontSize: '0.82rem' }}>{tests.length} test{tests.length !== 1 ? 's' : ''}</span>}
+        </div>
+        <button type="button" className="secondary" style={{ fontSize: '0.78rem', padding: '3px 10px' }} onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+
+      {error && <p className="error" style={{ margin: '8px 0' }}>{error}</p>}
+
+      {meta?.hasOutstandingRecall === true && (
+        <div className="mot-recall-banner">
+          ⚠ Outstanding safety recall on this vehicle
+        </div>
+      )}
+
+      {meta && (
+        <div className="mot-meta-block">
+          <div className="mot-section-heading">Vehicle Data from DVSA</div>
+          <MotMetaRow label="Make" value={meta.make} />
+          <MotMetaRow label="Model" value={meta.model} />
+          <MotMetaRow label="Fuel type" value={meta.fuelType} />
+          <MotMetaRow label="Engine size" value={meta.engineSize ? `${meta.engineSize}cc` : null} />
+          <MotMetaRow label="Primary colour" value={meta.primaryColour} />
+          <MotMetaRow label="Secondary colour" value={meta.secondaryColour} />
+          <MotMetaRow label="First used" value={fmtDate(meta.firstUsedDate)} />
+          <MotMetaRow label="Registration date" value={fmtDate(meta.registrationDate)} />
+          <MotMetaRow label="Manufacture date" value={fmtDate(meta.manufactureDate)} />
+          <MotMetaRow label="Last MOT test" value={fmtDate(meta.lastMotTestDate)} />
+          <MotMetaRow label="MOT due" value={fmtDate(meta.motTestDueDate)} />
+          <MotMetaRow label="Last updated" value={fmtDate(meta.last_update_date)} />
+          <MotMetaRow label="Data source" value={meta.dataSource} />
+          <MotMetaRow label="Outstanding recall" value={meta.hasOutstandingRecall} />
+        </div>
+      )}
+
+      {!tests || tests.length === 0 ? (
+        <p style={{ color: '#9ca3af', fontSize: '0.88rem', padding: '12px 0' }}>
+          No MOT test records found. {!tests && 'Try refreshing.'}
+        </p>
+      ) : (
+        tests.map((t, i) => {
+          const passed = t.result === 'PASSED';
+          const showOdometer = t.odometerResultType === 'READ' && t.odometerValue != null;
+          const regDiffers = t.regMarkAtTest && t.regMarkAtTest !== project.registration?.replace(/\s+/g, '');
+          const defectsByType = DEFECT_ORDER.reduce((acc, type) => {
+            const matches = (t.defects || []).filter((d) => d.type === type);
+            if (matches.length) acc[type] = matches;
+            return acc;
+          }, {});
+          return (
+            <div key={i} className={`mot-test-card ${passed ? 'mot-pass' : 'mot-fail'}`}>
+              <div className="mot-test-header">
+                <span className={`mot-badge ${passed ? 'mot-badge--pass' : 'mot-badge--fail'}`}>{t.result || 'Unknown'}</span>
+                <span className="mot-test-date">{fmtDate(t.testDate)}</span>
+                {showOdometer && (
+                  <span className="mot-mileage">{t.odometerValue.toLocaleString()} {t.odometerUnit === 'MI' ? 'miles' : 'km'}</span>
+                )}
+                {t.odometerResultType === 'NO_ODOMETER' && <span className="mot-mileage">No odometer</span>}
+                {t.odometerResultType === 'UNREADABLE' && <span className="mot-mileage">Odometer unreadable</span>}
+                {passed && t.expiryDate && (
+                  <span style={{ marginLeft: 'auto', fontSize: '0.78rem', color: '#6b7280' }}>Expires {fmtDate(t.expiryDate)}</span>
+                )}
+              </div>
+              {regDiffers && (
+                <div style={{ padding: '2px 14px 4px', fontSize: '0.75rem', color: '#6b7280' }}>
+                  Tested as {t.regMarkAtTest}
+                </div>
+              )}
+              {Object.entries(defectsByType).map(([type, defects]) => (
+                <div key={type} className="mot-defects">
+                  <div className="mot-defect-heading">{DEFECT_LABELS[type] || type}</div>
+                  {defects.map((d, j) => (
+                    <div key={j} className={`mot-defect ${DEFECT_CLASS[type] || ''}`}>{d.text}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function ReportPreviewModal({ project, form, images, confirmedFixes, onClose }) {
+  const fmt = (v) => v ? `£${parseFloat(v).toFixed(2)}` : null;
+  const hasCosts = form.costParts || form.costLabour || form.costTotal;
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>Customer view — report preview</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body cp-detail">
+          <div className="cp-detail-header">
+            <div>
+              <h2 className="cp-detail-title">{project.registration || 'Vehicle'} — Service Report</h2>
+              <p className="cp-detail-meta">{[project.make, project.model, project.year].filter(Boolean).join(' ')}</p>
+            </div>
+          </div>
+          {form.diagnosis && <div className="cp-report-section"><h3 className="cp-section-title">What we found</h3><p className="cp-section-text">{form.diagnosis}</p></div>}
+          {form.workCarriedOut && <div className="cp-report-section"><h3 className="cp-section-title">What we did</h3><p className="cp-section-text" style={{ whiteSpace: 'pre-line' }}>{form.workCarriedOut}</p></div>}
+          {confirmedFixes?.length > 0 && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Repairs confirmed</h3>
+              <ul className="cp-fixes">{confirmedFixes.map((f) => <li key={f.id} className="cp-fix">✓ {f.text}</li>)}</ul>
+            </div>
+          )}
+          {form.technicianNotes && <div className="cp-report-section cp-report-section--note"><h3 className="cp-section-title">Technician notes</h3><p className="cp-section-text" style={{ whiteSpace: 'pre-line' }}>{form.technicianNotes}</p></div>}
+          {hasCosts && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Your bill</h3>
+              <div className="cp-costs">
+                {form.costParts && <div className="cp-cost-row"><span>Parts</span><span>{fmt(form.costParts)}</span></div>}
+                {form.costLabour && <div className="cp-cost-row"><span>Labour</span><span>{fmt(form.costLabour)}</span></div>}
+                {form.costTotal && <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>{fmt(form.costTotal)}</span></div>}
+              </div>
+            </div>
+          )}
+          {images.length > 0 && (
+            <div className="cp-report-section">
+              <h3 className="cp-section-title">Photos</h3>
+              <div className="cp-photos">
+                {images.map((img) => (
+                  <div key={img.id} className="cp-photo">
+                    <img src={reportsApi.imageUrl(img.filename)} alt={img.caption || ''} />
+                    {img.caption && <p className="cp-photo-caption">{img.caption}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {!form.diagnosis && !form.workCarriedOut && !hasCosts && <p style={{ color: '#9ca3af', textAlign: 'center', padding: '24px 0' }}>Nothing to preview yet — fill in the report fields above.</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -460,6 +711,7 @@ function ReportTab({ project, token }) {
   const [uploading, setUploading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
   const fileRef = useRef(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -546,11 +798,23 @@ function ReportTab({ project, token }) {
 
   return (
     <div className="report-tab">
+      {previewing && (
+        <ReportPreviewModal
+          project={project}
+          form={form}
+          images={images}
+          confirmedFixes={project.confirmedFixes}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
       <div className="report-status-bar">
         <span className={`report-badge ${isPublished ? 'report-badge--published' : 'report-badge--draft'}`}>
           {isPublished ? 'Published to customer' : 'Draft — not visible to customer'}
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="secondary" onClick={() => setPreviewing(true)} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
+            Preview
+          </button>
           <button onClick={handleSave} disabled={saving} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
             {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save report'}
           </button>
@@ -576,7 +840,23 @@ function ReportTab({ project, token }) {
         </div>
 
         <div className="report-section">
-          <label className="report-label">Work carried out</label>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <label className="report-label">Work carried out</label>
+            {project.confirmedFixes?.length > 0 && (
+              <button
+                className="secondary"
+                style={{ fontSize: '0.72rem', padding: '2px 10px', marginBottom: 2 }}
+                onClick={() => {
+                  const fixes = project.confirmedFixes.map((f) => f.text).join('\n');
+                  set('workCarriedOut', form.workCarriedOut
+                    ? `${form.workCarriedOut}\n${fixes}`
+                    : fixes);
+                }}
+              >
+                Import confirmed fixes ({project.confirmedFixes.length})
+              </button>
+            )}
+          </div>
           <p className="report-hint">Step-by-step description of what was done</p>
           <textarea rows={5} value={form.workCarriedOut} onChange={(e) => set('workCarriedOut', e.target.value)}
             placeholder="e.g. 1. Removed and cleaned EGR valve&#10;2. Decarbonised inlet manifold&#10;3. Replaced EGR gasket&#10;4. Reset fault codes and road tested" />
@@ -590,7 +870,33 @@ function ReportTab({ project, token }) {
         </div>
 
         <div className="report-section">
-          <label className="report-label">Costs</label>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <label className="report-label">Costs</label>
+            <button
+              type="button"
+              className="secondary"
+              style={{ fontSize: '0.72rem', padding: '2px 10px', marginBottom: 2 }}
+              onClick={async () => {
+                try {
+                  const qs = await import('../services/quotesApi').then((m) => m.getQuotes(project.id, token));
+                  const sent = qs.find((q) => q.status === 'sent' || q.status === 'approved') || qs[0];
+                  if (!sent) { alert('No quote found for this project.'); return; }
+                  const partsTotal = sent.lines.filter((l) => l.type === 'part').reduce((s, l) => s + l.lineTotal, 0);
+                  const labourTotal = sent.lines.filter((l) => l.type === 'labour').reduce((s, l) => s + l.lineTotal, 0);
+                  setForm((f) => ({
+                    ...f,
+                    diagnosis: f.diagnosis || sent.diagnosticSummary || '',
+                    technicianNotes: f.technicianNotes || sent.notes || '',
+                    costParts: partsTotal > 0 ? partsTotal.toFixed(2) : f.costParts,
+                    costLabour: labourTotal > 0 ? labourTotal.toFixed(2) : f.costLabour,
+                    costTotal: sent.totals.total.toFixed(2),
+                  }));
+                } catch { alert('Could not load quote.'); }
+              }}
+            >
+              Load from quote
+            </button>
+          </div>
           <div className="report-costs">
             <div>
               <label style={{ fontSize: '0.8rem', color: '#6b7280' }}>Parts (£)</label>
@@ -708,11 +1014,110 @@ function VehicleHistoryTab({ history, currentProjectId }) {
   );
 }
 
-function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, token }) {
+function ProjectCustomerBar({ project, token, onUpdated }) {
+  const [open, setOpen] = useState(false);
+  const [customers, setCustomers] = useState(null);
+  const [filter, setFilter] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    setOpen(true);
+    if (customers) return;
+    try {
+      const list = await fetch(`/api/quotes/project-customers/${project.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then((r) => r.json());
+      setCustomers(Array.isArray(list) ? list : []);
+    } catch { setCustomers([]); }
+  };
+
+  const assign = async (customerId) => {
+    setSaving(true);
+    try {
+      await api.setProjectCustomer(project.id, customerId, token);
+      onUpdated(project.id);
+      setOpen(false);
+      setFilter('');
+    } finally { setSaving(false); }
+  };
+
+  const remove = () => assign(null);
+
+  const visible = (customers || []).filter((c) => {
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    return (c.name || '').toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
+  });
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {project.customer ? (
+        <button
+          type="button"
+          className="secondary"
+          style={{ fontSize: '0.78rem', padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6 }}
+          onClick={load}
+        >
+          <span style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Customer</span>
+          <span style={{ fontWeight: 600, color: '#e2e8f0' }}>{project.customer.name || project.customer.email}</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="secondary"
+          style={{ fontSize: '0.78rem', padding: '3px 10px', color: '#f59e0b', borderColor: '#f59e0b' }}
+          onClick={load}
+        >
+          + Attach customer
+        </button>
+      )}
+
+      {open && (
+        <div className="customer-picker-dropdown" style={{ top: '100%', right: 0, left: 'auto', minWidth: 240 }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid #1e293b' }}>
+            <input
+              autoFocus
+              placeholder="Search customers…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ width: '100%', padding: '4px 8px', borderRadius: 4, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0', fontSize: '0.82rem' }}
+            />
+          </div>
+          {!customers ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>Loading…</p>
+          ) : visible.length === 0 ? (
+            <p style={{ padding: '8px 12px', color: '#6b7280', fontSize: '0.85rem' }}>
+              {filter ? 'No matches.' : 'No customers in this workshop yet — add them under Customers.'}
+            </p>
+          ) : (
+            visible.map((c) => (
+              <button key={c.id} type="button" className="customer-picker-option" disabled={saving} onClick={() => assign(c.id)}>
+                <span className="cpo-name">{c.name || c.email}</span>
+                {c.name && <span className="cpo-email">{c.email}</span>}
+              </button>
+            ))
+          )}
+          {project.customer && (
+            <button type="button" className="customer-picker-option customer-picker-remove" onClick={remove} disabled={saving}>
+              Remove customer
+            </button>
+          )}
+          <button type="button" className="customer-picker-option" style={{ color: '#6b7280', fontSize: '0.75rem' }} onClick={() => { setOpen(false); setFilter(''); }}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject, token, aiEnabled = true }) {
   const [question, setQuestion] = useState('');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState('diagnosis');
+  const [chatMode, setChatMode] = useState(() => localStorage.getItem('chatMode') || 'diagnose');
+  const [chatExpanded, setChatExpanded] = useState(false);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
   const isBusy = !!status;
@@ -722,22 +1127,41 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     [project?.confirmedFixes]
   );
 
+  // Auto-refresh project when motVehicleMeta is missing (e.g. after createProject)
+  useEffect(() => {
+    if (project?.id && !project.motVehicleMeta && project.registration && onRefreshProject) {
+      onRefreshProject(project.id);
+    }
+  }, [project?.id]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [project?.history?.length, status]);
+
+  useEffect(() => {
+    if (!chatExpanded) return;
+    const handler = (e) => { if (e.key === 'Escape') setChatExpanded(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [chatExpanded]);
+
+  const selectMode = (mode) => {
+    setChatMode(mode);
+    localStorage.setItem('chatMode', mode);
+  };
 
   const submitQuestion = useCallback(async (text) => {
     setError('');
     setStatus('Thinking...');
     try {
-      await onAsk(project.id, text);
+      await onAsk(project.id, text, chatMode);
       setQuestion('');
       setStatus('');
     } catch (err) {
       setError(err.message);
       setStatus('');
     }
-  }, [onAsk, project]);
+  }, [onAsk, project, chatMode]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -755,10 +1179,17 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     await submitQuestion(composedMessage);
   }, [submitQuestion]);
 
-  if (!project) {
+  if (projectLoading || !project) {
     return (
       <div className="chat-shell chat-shell--empty">
-        <p>Select a project to begin the diagnostic session.</p>
+        {projectLoading ? (
+          <div className="project-loading">
+            <div className="project-loading-car">&#x1F697;</div>
+            <p>Loading vehicle data…</p>
+          </div>
+        ) : (
+          <p>Select a project to begin the diagnostic session.</p>
+        )}
       </div>
     );
   }
@@ -771,19 +1202,36 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
     .filter(Boolean).join(' · ');
 
   return (
-    <div className="chat-shell">
+    <>
+      {chatExpanded && (
+        <div className="chat-expand-overlay" onClick={() => setChatExpanded(false)} />
+      )}
+    <div className={`chat-shell${chatExpanded ? ' chat-shell--expanded' : ''}`}>
 
       <div className="chat-header">
         <div className="chat-header-info">
           <span className="chat-header-reg">{project.registration || project.vin || 'Project'}</span>
           {vehicleSummary && <span className="chat-header-meta">{vehicleSummary}</span>}
         </div>
-        {tab === 'diagnosis' && project.history?.length > 0 && (
-          <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
-            Start over
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ProjectCustomerBar project={project} token={token} onUpdated={onRefreshProject} />
+          {tab === 'diagnosis' && project.history?.length > 0 && (
+            <button type="button" className="secondary" style={{ fontSize: '0.75rem', padding: '4px 12px' }} onClick={() => onClearHistory(project.id)}>
+              Start over
+            </button>
+          )}
+        </div>
       </div>
+
+      {project.make && !project.engineCode && (
+        <button
+          type="button"
+          className="engine-code-nudge"
+          onClick={() => setTab('vehicle')}
+        >
+          Add engine code for more accurate AI diagnosis
+        </button>
+      )}
 
       <div className="chat-tabs">
         <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
@@ -797,17 +1245,62 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
             )}
           </button>
         )}
+        {project.registration && (
+          <button type="button" className={`chat-tab${tab === 'mot' ? ' active' : ''}`} onClick={() => setTab('mot')}>
+            MOT History
+            {project.motTests?.length > 0 && <span className="chat-tab-badge">{project.motTests.length}</span>}
+          </button>
+        )}
+        <button type="button" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>Quote</button>
         <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
       </div>
 
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
       {tab === 'specs' && <div className="tab-pane"><QuickReference project={project} token={token} /></div>}
       {tab === 'history' && <div className="tab-pane"><VehicleHistoryTab history={project.vehicleHistory} currentProjectId={project.id} /></div>}
+      {tab === 'mot' && <div className="tab-pane"><MotTab project={project} token={token} /></div>}
+      {tab === 'quote' && <div className="tab-pane"><QuoteTab project={project} token={token} /></div>}
       {tab === 'report' && <div className="tab-pane"><ReportTab project={project} token={token} /></div>}
 
       <div className="chat-messages" style={{ display: tab === 'diagnosis' ? 'flex' : 'none', flexDirection: 'column' }}>
         {!project.history?.length && !status && (
-          <p className="chat-empty">Ask a question to begin the diagnostic session.</p>
+          <div className="chat-mode-prompt">
+            <p className="chat-mode-prompt-label">What do you need help with?</p>
+            <div className="chat-mode-cards">
+              <button type="button" className={`chat-mode-card${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>
+                <span className="chat-mode-card-title">Diagnose</span>
+                <span className="chat-mode-card-desc">Investigate symptoms, fault codes, and intermittent faults</span>
+              </button>
+              <button type="button" className={`chat-mode-card${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>
+                <span className="chat-mode-card-title">How To</span>
+                <span className="chat-mode-card-desc">Step-by-step procedures for repairs and replacements</span>
+              </button>
+              <button type="button" className={`chat-mode-card${chatMode === 'workshop' ? ' active' : ''}`} onClick={() => selectMode('workshop')}>
+                <span className="chat-mode-card-title">Workshop</span>
+                <span className="chat-mode-card-desc">Create quotes, look up business stats, automate admin tasks</span>
+              </button>
+            </div>
+            {chatMode === 'workshop' && (
+              <div className="workshop-examples">
+                <p className="workshop-examples-label">Try asking:</p>
+                <div className="workshop-example-chips">
+                  {[
+                    'Create a full service quote',
+                    'How many VWs have we worked on?',
+                    'What are our most common repairs?',
+                    'How many customers do we have?',
+                    'Create a brake pad quote',
+                    'How many jobs this year?',
+                  ].map((ex) => (
+                    <button key={ex} type="button" className="workshop-chip"
+                      onClick={() => setQuestion(ex)}>
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {project.history?.map((entry) => {
@@ -846,6 +1339,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
                   isLatestAi={isLatestAi}
                   isBusy={isBusy}
                   confirmedTexts={confirmedTexts}
+                  chatMode={chatMode}
                 />
               </div>
               <small className="chat-time">{time}</small>
@@ -876,18 +1370,36 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
         </div>
       )}
 
-      {tab === 'diagnosis' && (
+      {tab === 'diagnosis' && !aiEnabled && (
+        <div className="chat-input-bar" style={{ padding: '14px 16px', textAlign: 'center', color: '#6b7280', fontSize: '0.875rem' }}>
+          AI assistant is currently disabled. Enable it in Admin &rarr; Workshop &rarr; AI Features.
+        </div>
+      )}
+
+      {tab === 'diagnosis' && aiEnabled && (
         <div className="chat-input-bar">
+          <div className="chat-verbosity-bar">
+            <span className="chat-verbosity-label">Mode:</span>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'diagnose' ? ' active' : ''}`} onClick={() => selectMode('diagnose')}>Diagnose</button>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'howto' ? ' active' : ''}`} onClick={() => selectMode('howto')}>How To</button>
+            <button type="button" className={`chat-verbosity-btn${chatMode === 'workshop' ? ' active' : ''}`} onClick={() => selectMode('workshop')}>Workshop</button>
+            {chatExpanded && (
+              <button type="button" className="chat-collapse-btn" onClick={() => setChatExpanded(false)} title="Collapse (Esc)">✕</button>
+            )}
+          </div>
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
               ref={textareaRef}
               id="question"
               name="question"
-              rows="2"
+              rows={chatExpanded ? 4 : 2}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask for repair guidance... (Enter to send, Shift+Enter for new line)"
+              onFocus={() => setChatExpanded(true)}
+              placeholder={chatMode === 'workshop'
+                ? 'Ask a workshop question or request a task… (Enter to send)'
+                : 'Ask for repair guidance... (Enter to send, Shift+Enter for new line)'}
               disabled={isBusy}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
@@ -899,6 +1411,7 @@ function ProjectDetail({ project, onAsk, onConfirmSuggestion, onClearHistory, on
       )}
 
     </div>
+    </>
   );
 }
 

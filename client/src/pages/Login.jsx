@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as api from '../services/api';
 
 function Login({ onLogin, error }) {
@@ -7,6 +7,16 @@ function Login({ onLogin, error }) {
   const [mode, setMode] = useState('login');
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [workshop, setWorkshop] = useState(null);
+
+  const slug = api.getWorkshopSlug();
+
+  useEffect(() => {
+    if (!slug) return;
+    api.getWorkshopBySlug(slug)
+      .then(setWorkshop)
+      .catch(() => setWorkshop(null));
+  }, [slug]);
 
   const switchMode = (newMode) => {
     setMode(newMode);
@@ -22,7 +32,7 @@ function Login({ onLogin, error }) {
 
     try {
       if (mode === 'login') {
-        const result = await api.login(email, password);
+        const result = await api.login(email, password, slug);
         onLogin(result);
       } else if (mode === 'register') {
         await api.register(email, password);
@@ -38,35 +48,41 @@ function Login({ onLogin, error }) {
   };
 
   return (
-    <div className="app-shell">
-      <div className="card" style={{ maxWidth: 420, margin: '60px auto' }}>
-        <h1>
+    <div className="login-page">
+      <div className="card" style={{ maxWidth: 420, margin: '0 auto' }}>
+        {workshop ? (
+          <>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', marginBottom: 2 }}>Ask Bob</p>
+            <h1 style={{ marginTop: 0 }}>{workshop.name}</h1>
+          </>
+        ) : (
+          <h1>Ask Bob</h1>
+        )}
+        <h2 style={{ fontWeight: 400, fontSize: '1rem', marginTop: 0, marginBottom: 20, color: '#4b5563' }}>
           {mode === 'login' && 'Sign in'}
           {mode === 'register' && 'Create account'}
           {mode === 'forgot' && 'Reset password'}
-        </h1>
+        </h2>
         <form onSubmit={handleSubmit}>
-          <label htmlFor="email">Email</label>
           <input
             id="email"
             name="email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
             required
           />
           {mode !== 'forgot' && (
-            <>
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              required
+            />
           )}
           <button type="submit">
             {mode === 'login' && 'Sign in'}
@@ -77,27 +93,6 @@ function Login({ onLogin, error }) {
           {formError && <p className="error">{formError}</p>}
           {error && <p className="error">{error}</p>}
         </form>
-
-        {/* <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {mode === 'login' && (
-            <>
-              <p>
-                Need an account?{' '}
-                <button className="secondary" type="button" onClick={() => switchMode('register')}>Register</button>
-              </p>
-              <p>
-                Forgot your password?{' '}
-                <button className="secondary" type="button" onClick={() => switchMode('forgot')}>Reset it</button>
-              </p>
-            </>
-          )}
-          {mode !== 'login' && (
-            <p>
-              Already have an account?{' '}
-              <button className="secondary" type="button" onClick={() => switchMode('login')}>Sign in</button>
-            </p>
-          )}
-        </div> */}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 function authHeaders(token) {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -17,7 +17,8 @@ async function request(path, options = {}, token = null) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
-  const data = await response.json();
+  let data;
+  try { data = await response.json(); } catch { data = {}; }
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem('token');
@@ -28,8 +29,21 @@ async function request(path, options = {}, token = null) {
   return data;
 }
 
-export async function login(email, password) {
-  return request('/api/auth/login', { method: 'POST', body: { email, password } });
+// Returns the workshop slug from the subdomain (e.g. acme.yourgofer.com → 'acme'), or null
+export function getWorkshopSlug() {
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  // subdomain present if 3+ parts and not 'www'
+  if (parts.length >= 3 && parts[0] !== 'www') return parts[0];
+  return null;
+}
+
+export async function getWorkshopBySlug(slug) {
+  return request(`/api/auth/workshop?slug=${encodeURIComponent(slug)}`);
+}
+
+export async function login(email, password, workshopSlug = null) {
+  return request('/api/auth/login', { method: 'POST', body: { email, password, workshopSlug } });
 }
 
 export async function register(email, password) {
@@ -80,18 +94,42 @@ export async function closeProject(projectId, token) {
   return request(`/api/projects/${projectId}/close`, { method: 'POST' }, token);
 }
 
+export async function reopenProject(projectId, token) {
+  return request(`/api/projects/${projectId}/reopen`, { method: 'POST' }, token);
+}
+
 export async function clearProjectHistory(projectId, token) {
   return request(`/api/projects/${projectId}/clear`, { method: 'POST' }, token);
+}
+
+export async function archiveProject(projectId, token) {
+  return request(`/api/projects/${projectId}/archive`, { method: 'POST' }, token);
+}
+
+export async function restoreProject(projectId, token) {
+  return request(`/api/projects/${projectId}/restore`, { method: 'POST' }, token);
+}
+
+export async function setProjectCustomer(projectId, customerId, token) {
+  return request(`/api/projects/${projectId}/customer`, { method: 'PATCH', body: { customerId } }, token);
+}
+
+export async function getProjects(token, { archived = false } = {}) {
+  return request(`/api/projects${archived ? '?archived=true' : ''}`, {}, token);
 }
 
 export async function fetchProjectSpecs(projectId, token) {
   return request(`/api/projects/${projectId}/specs`, { method: 'POST' }, token);
 }
 
-export async function askAI(projectId, question, token) {
-  return request('/api/ai/ask', { method: 'POST', body: { projectId, question } }, token);
+export async function askAI(projectId, question, token, chatMode) {
+  return request('/api/ai/ask', { method: 'POST', body: { projectId, question, chatMode } }, token);
 }
 
 export async function confirmSuggestion(projectId, historyId, text, token) {
   return request('/api/ai/confirm-suggestion', { method: 'POST', body: { projectId, historyId, text } }, token);
+}
+
+export async function getWorkshopSettings(token) {
+  return request('/api/quotes/settings', {}, token);
 }

@@ -1,8 +1,126 @@
 const express = require('express');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 const { query } = require('../services/db');
 const { findUserByToken } = require('../services/authService');
+const { sendCustomerActivation } = require('../services/emailService');
+const { fetchMotHistory } = require('../services/motService');
+const { generateInvoicePdf } = require('../services/pdfService');
 
 const router = express.Router();
+
+// POST /api/customer/activate — set password via magic token (first login / password reset)
+router.post('/activate', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) return res.status(400).json({ error: 'Token and password required' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE magic_token = $1 AND magic_token_expires_at > now() AND role = 'customer'`,
+    [token]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Activation link has expired or already been used' });
+
+  const user = rows[0];
+  const hashed = await bcrypt.hash(password, 10);
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+
+  await query(
+    `UPDATE users SET password=$1, magic_token=NULL, magic_token_expires_at=NULL,
+     token=$2, session_active=true, last_seen_at=now() WHERE id=$3`,
+    [hashed, sessionToken, user.id]
+  );
+
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
+});
+
+// POST /api/customer/login — email + password login
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND role = 'customer' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+    [email]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Invalid email or password' });
+
+  const user = rows[0];
+  if (!user.password) return res.status(401).json({ error: 'Account not yet activated — check your email for an activation link' });
+
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ error: 'Invalid email or password' });
+
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+  await query(
+    `UPDATE users SET token=$1, session_active=true, last_seen_at=now() WHERE id=$2`,
+    [sessionToken, user.id]
+  );
+
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
+});
+
+// POST /api/customer/forgot-password — send new activation link
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND role = 'customer' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1`,
+    [email]
+  );
+  // Always return success — avoid email enumeration
+  if (!rows.length) return res.json({ ok: true });
+
+  const user = rows[0];
+  const magicToken = crypto.randomBytes(32).toString('hex');
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await query(
+    `UPDATE users SET magic_token=$1, magic_token_expires_at=$2 WHERE id=$3`,
+    [magicToken, expires, user.id]
+  );
+
+  const { rows: wsRows } = await query('SELECT name FROM workshops WHERE id=$1', [user.workshop_id]);
+  const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+  sendCustomerActivation({
+    to: user.email,
+    customerName: user.name,
+    workshopName: wsRows[0]?.name || '',
+    activationUrl: `${customerOrigin}/?activate=${magicToken}`,
+    isReset: true,
+  }).catch((err) => console.error('[forgot-password email]', err.message));
+
+  return res.json({ ok: true });
+});
+
+// POST /api/customer/magic-login — exchange a magic token for a session token
+router.post('/magic-login', async (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  const { rows } = await query(
+    `SELECT * FROM users WHERE magic_token = $1 AND magic_token_expires_at > now()`,
+    [token]
+  );
+  if (!rows.length) return res.status(401).json({ error: 'Link expired or invalid' });
+
+  const user = rows[0];
+  // Generate a session token and burn the magic token in one update
+  const sessionToken = crypto.randomBytes(32).toString('hex');
+  await query(
+    `UPDATE users SET magic_token = NULL, magic_token_expires_at = NULL,
+     token = $2, session_active = true, last_seen_at = now() WHERE id = $1`,
+    [user.id, sessionToken]
+  );
+
+  return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
+});
+
+// GET /api/customer/workshop-public — workshop name for login page (no auth)
+router.get('/workshop-public', async (req, res) => {
+  const { rows } = await query('SELECT name FROM workshops ORDER BY created_at ASC LIMIT 1');
+  return res.json({ name: rows[0]?.name || null });
+});
 
 function requireCustomer(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -14,6 +132,121 @@ function requireCustomer(req, res, next) {
     next();
   }).catch(() => res.status(403).json({ error: 'Customer access required' }));
 }
+
+// GET /api/customer/workshop — workshop branding for the portal header
+router.get('/workshop', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    `SELECT w.name, ws.phone, ws.email, ws.address_line1, ws.city
+     FROM workshops w
+     LEFT JOIN workshop_settings ws ON true
+     WHERE w.id = $1
+     LIMIT 1`,
+    [req.user.workshopId]
+  );
+  if (!rows.length) return res.json({ name: 'Your Workshop' });
+  const r = rows[0];
+  return res.json({
+    name: r.name || 'Your Workshop',
+    phone: r.phone || null,
+    email: r.email || null,
+    address: [r.address_line1, r.city].filter(Boolean).join(', ') || null,
+  });
+});
+
+// GET /api/customer/profile
+router.get('/profile', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    'SELECT email, name, phone, address_line1, address_line2, city, postcode FROM users WHERE id=$1',
+    [req.user.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+  const r = rows[0];
+  return res.json({
+    email: r.email, name: r.name || '', phone: r.phone || '',
+    addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
+    city: r.city || '', postcode: r.postcode || '',
+  });
+});
+
+// PATCH /api/customer/profile — update name, phone, address
+router.patch('/profile', requireCustomer, async (req, res) => {
+  const { name, phone, addressLine1, addressLine2, city, postcode } = req.body;
+  await query(
+    `UPDATE users SET name=$1, phone=$2, address_line1=$3, address_line2=$4, city=$5, postcode=$6 WHERE id=$7`,
+    [name || null, phone || null, addressLine1 || null, addressLine2 || null, city || null, postcode || null, req.user.id]
+  );
+  const { rows } = await query(
+    'SELECT email, name, phone, address_line1, address_line2, city, postcode FROM users WHERE id=$1',
+    [req.user.id]
+  );
+  const r = rows[0];
+  return res.json({
+    email: r.email, name: r.name || '', phone: r.phone || '',
+    addressLine1: r.address_line1 || '', addressLine2: r.address_line2 || '',
+    city: r.city || '', postcode: r.postcode || '',
+  });
+});
+
+// POST /api/customer/change-password
+router.post('/change-password', requireCustomer, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords are required' });
+  if (newPassword.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+
+  const { rows } = await query('SELECT password FROM users WHERE id=$1', [req.user.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Not found' });
+
+  const match = await bcrypt.compare(currentPassword, rows[0].password);
+  if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password=$1 WHERE id=$2', [hashed, req.user.id]);
+  return res.json({ ok: true });
+});
+
+// GET /api/customer/notifications — recent reports + quotes (last 60 days)
+router.get('/notifications', requireCustomer, async (req, res) => {
+  const { rows } = await query(
+    `SELECT
+       'report' AS type,
+       p.id AS project_id,
+       COALESCE(p.registration_snapshot, p.registration) AS registration,
+       COALESCE(p.make, v.make) AS make,
+       COALESCE(p.model, v.model) AS model,
+       jr.published_at AS event_at
+     FROM job_reports jr
+     JOIN projects p ON p.id = jr.project_id
+     LEFT JOIN vehicles v ON v.id = p.vehicle_id
+     JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+     WHERE jr.status = 'published'
+       AND jr.published_at > now() - interval '60 days'
+     UNION ALL
+     SELECT
+       'quote' AS type,
+       p.id AS project_id,
+       COALESCE(p.registration_snapshot, p.registration) AS registration,
+       COALESCE(p.make, v.make) AS make,
+       COALESCE(p.model, v.model) AS model,
+       q.sent_at AS event_at
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     LEFT JOIN vehicles v ON v.id = p.vehicle_id
+     JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
+     WHERE q.status IN ('sent','approved')
+       AND q.sent_at IS NOT NULL
+       AND q.sent_at > now() - interval '60 days'
+     ORDER BY event_at DESC
+     LIMIT 20`,
+    [req.user.id]
+  );
+  return res.json(rows.map((r) => ({
+    type: r.type,
+    projectId: r.project_id,
+    registration: r.registration,
+    vehicle: [r.make, r.model].filter(Boolean).join(' '),
+    eventAt: r.event_at,
+  })));
+});
 
 // GET /api/customer/vehicles — list all vehicles linked to this customer
 router.get('/vehicles', requireCustomer, async (req, res) => {
@@ -44,7 +277,7 @@ router.get('/vehicles', requireCustomer, async (req, res) => {
   })));
 });
 
-// GET /api/customer/vehicles/:vehicleId/jobs — list published jobs for a vehicle
+// GET /api/customer/vehicles/:vehicleId/jobs — list published jobs + jobs with sent quotes
 router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
   // Verify customer is linked to this vehicle
   const { rows: link } = await query(
@@ -56,10 +289,14 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
   const { rows } = await query(
     `SELECT p.id, p.registration_snapshot, p.registration, p.make, p.model, p.year,
             p.created_at, p.closed,
-            jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at, jr.status
+            jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at,
+            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
+            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
      FROM projects p
-     JOIN job_reports jr ON jr.project_id = p.id
-     WHERE p.vehicle_id = $1 AND jr.status = 'published'
+     LEFT JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
+     WHERE p.vehicle_id = $1
+       AND (jr.id IS NOT NULL
+            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved')))
      ORDER BY p.created_at DESC`,
     [req.params.vehicleId]
   );
@@ -74,6 +311,8 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
     reportId: r.report_id,
     diagnosisSummary: r.diagnosis ? r.diagnosis.slice(0, 120) + (r.diagnosis.length > 120 ? '…' : '') : null,
     costTotal: r.cost_total ? parseFloat(r.cost_total) : null,
+    quoteId: r.quote_id || null,
+    quoteStatus: r.quote_status || null,
     publishedAt: r.published_at,
   })));
 });
@@ -136,6 +375,653 @@ router.get('/jobs/:projectId', requireCustomer, async (req, res) => {
     })),
     confirmedFixes: fixRows.map((f) => ({ id: f.id, text: f.text, createdAt: f.created_at })),
   });
+});
+
+// GET /api/customer/jobs/:projectId/quote — sent/approved quote visible to customer
+router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
+  const { rows: proj } = await query('SELECT vehicle_id FROM projects WHERE id=$1', [req.params.projectId]);
+  if (!proj.length) return res.status(404).json({ error: 'Not found' });
+
+  if (proj[0].vehicle_id) {
+    const { rows: link } = await query(
+      'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+      [req.user.id, proj[0].vehicle_id]
+    );
+    if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+  } else {
+    return res.status(403).json({ error: 'Not authorised' });
+  }
+
+  const { rows } = await query(
+    `SELECT * FROM quotes WHERE project_id=$1 AND status IN ('sent','approved')
+     ORDER BY updated_at DESC LIMIT 1`,
+    [req.params.projectId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'No quote available' });
+  const quote = rows[0];
+
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+
+  const formatLine = (row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+
+  const items = itemRows.map((item) => {
+    const lines = allLines.filter((l) => l.quoteItemId === item.id);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    return {
+      id: item.id,
+      title: item.title,
+      description: item.description || '',
+      notes: item.notes || '',
+      lines,
+      subtotal,
+    };
+  });
+
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  return res.json({
+    id: quote.id,
+    status: quote.status,
+    notes: quote.notes || '',
+    diagnosticSummary: quote.diagnostic_summary || '',
+    vatRate,
+    createdAt: quote.created_at,
+    updatedAt: quote.updated_at,
+    items,
+    ungroupedLines,
+    lines: allLines,
+    totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+  });
+});
+
+// GET /api/customer/vehicles/:vehicleId/mot — MOT history + vehicle meta for customer
+router.get('/vehicles/:vehicleId/mot', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    'SELECT mot_tests, mot_vehicle_meta, make, model, year, fuel_type, registration FROM vehicles WHERE id=$1',
+    [req.params.vehicleId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Vehicle not found' });
+  const v = rows[0];
+  return res.json({
+    make: v.make,
+    model: v.model,
+    year: v.year,
+    fuelType: v.fuel_type,
+    registration: v.registration,
+    motTests: v.mot_tests || [],
+    motMeta: v.mot_vehicle_meta || {},
+  });
+});
+
+// GET /api/customer/vehicles/:vehicleId/gallery — all media across all jobs
+router.get('/vehicles/:vehicleId/gallery', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    `SELECT ji.id, ji.filename, ji.original_name, ji.caption, ji.media_type, ji.created_at,
+            p.registration_snapshot, p.registration, p.created_at as job_date
+     FROM job_images ji
+     JOIN projects p ON p.id = ji.project_id
+     WHERE p.vehicle_id = $1
+     ORDER BY ji.created_at DESC`,
+    [req.params.vehicleId]
+  );
+  return res.json(rows.map((r) => ({
+    id: r.id,
+    filename: r.filename,
+    originalName: r.original_name,
+    caption: r.caption || '',
+    mediaType: r.media_type || 'image',
+    createdAt: r.created_at,
+    jobRegistration: r.registration_snapshot || r.registration,
+    jobDate: r.job_date,
+  })));
+});
+
+// GET /api/customer/vehicles/:vehicleId/invoices — all approved quotes (invoices)
+router.get('/vehicles/:vehicleId/invoices', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows } = await query(
+    `SELECT q.id, q.reference, q.title, q.status, q.vat_rate, q.updated_at, q.sent_at,
+            p.registration_snapshot, p.registration, p.make, p.model, p.year,
+            (SELECT SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct/100)))
+             FROM quote_lines ql WHERE ql.quote_id = q.id) AS subtotal
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE p.vehicle_id = $1
+       AND q.status IN ('approved', 'sent')
+       AND q.customer_id = $2
+     ORDER BY q.updated_at DESC`,
+    [req.params.vehicleId, req.user.id]
+  );
+  return res.json(rows.map((r) => {
+    const subtotal = parseFloat(r.subtotal) || 0;
+    const vat = Math.round(subtotal * (parseFloat(r.vat_rate) / 100) * 100) / 100;
+    return {
+      id: r.id,
+      reference: r.reference,
+      title: r.title || null,
+      status: r.status,
+      subtotal: Math.round(subtotal * 100) / 100,
+      vat,
+      total: Math.round((subtotal + vat) * 100) / 100,
+      vatRate: parseFloat(r.vat_rate),
+      date: r.updated_at,
+      registration: r.registration_snapshot || r.registration,
+      vehicle: [r.make, r.model, r.year].filter(Boolean).join(' '),
+    };
+  }));
+});
+
+// GET /api/customer/invoices/:quoteId — full invoice detail (line items + totals)
+router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
+  // Verify customer owns this quote
+  const { rows: quoteRows } = await query(
+    `SELECT q.*, p.vehicle_id, p.registration_snapshot, p.registration, p.make, p.model, p.year
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+    [req.params.quoteId, req.user.id]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
+  const quote = quoteRows[0];
+
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+
+  const formatLine = (row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+  const items = itemRows.map((item) => {
+    const lines = allLines.filter((l) => l.quoteItemId === item.id);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    return { id: item.id, title: item.title, description: item.description || '', notes: item.notes || '', lines, subtotal };
+  });
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  return res.json({
+    id: quote.id,
+    reference: quote.reference,
+    title: quote.title || null,
+    status: quote.status,
+    notes: quote.notes || '',
+    diagnosticSummary: quote.diagnostic_summary || '',
+    vatRate,
+    createdAt: quote.created_at,
+    updatedAt: quote.updated_at,
+    registration: quote.registration_snapshot || quote.registration,
+    vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+    items,
+    ungroupedLines,
+    lines: allLines,
+    totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+  });
+});
+
+// GET /api/customer/invoices/:quoteId/pdf — download invoice as PDF
+router.get('/invoices/:quoteId/pdf', requireCustomer, async (req, res) => {
+  const { rows: quoteRows } = await query(
+    `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year
+     FROM quotes q
+     JOIN projects p ON p.id = q.project_id
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+    [req.params.quoteId, req.user.id]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
+  const quote = quoteRows[0];
+
+  const { rows: itemRows } = await query(
+    'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const { rows: lineRows } = await query(
+    'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+    [quote.id]
+  );
+  const [{ rows: wsRows }, tmpl] = await Promise.all([
+    query('SELECT name, address_line1, address_line2, city, postcode, phone, email FROM workshops w JOIN workshop_settings ws ON true WHERE w.id=$1 LIMIT 1', [req.user.workshopId]).catch(() => query('SELECT name FROM workshops WHERE id=$1', [req.user.workshopId])),
+    require('../services/partsService').getWorkshopSettings(),
+  ]);
+  const ws = wsRows[0] || {};
+
+  const formatLine = (row) => {
+    const unitCost = parseFloat(row.unit_cost);
+    const markupPct = parseFloat(row.markup_pct);
+    const qty = parseFloat(row.qty);
+    const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+    const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+    return { id: row.id, type: row.type, description: row.description, qty, lineTotal, quoteItemId: row.quote_item_id || null };
+  };
+
+  const allLines = lineRows.map(formatLine);
+  const vatRate = parseFloat(quote.vat_rate);
+  const items = itemRows.map((item) => ({
+    id: item.id,
+    title: item.title,
+    lines: allLines.filter((l) => l.quoteItemId === item.id),
+  }));
+  const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+  const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+  const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+  try {
+    const pdf = await generateInvoicePdf({
+      workshopName: tmpl.workshopName || ws.name || '',
+      address: [tmpl.addressLine1, tmpl.addressLine2, tmpl.city, tmpl.postcode].filter(Boolean),
+      phone: tmpl.phone || null,
+      email: tmpl.email || null,
+      logoUrl: tmpl.invoiceLogoUrl || null,
+      accentColor: tmpl.invoiceAccentColor || '#1e40af',
+      vatNumber: tmpl.invoiceVatNumber || null,
+      footerText: tmpl.invoiceFooterText || null,
+      showBankDetails: tmpl.invoiceShowBankDetails || false,
+      bankName: tmpl.invoiceBankName || null,
+      accountName: tmpl.invoiceAccountName || null,
+      accountNumber: tmpl.invoiceAccountNumber || null,
+      sortCode: tmpl.invoiceSortCode || null,
+      reference: quote.reference,
+      title: quote.title || null,
+      status: quote.status,
+      registration: quote.registration_snapshot || quote.registration,
+      vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+      date: quote.updated_at,
+      items,
+      ungroupedLines,
+      subtotal,
+      vat,
+      total: Math.round((subtotal + vat) * 100) / 100,
+      vatRate,
+      notes: quote.notes || null,
+    });
+
+    const filename = `invoice-${quote.reference.replace(/[^a-zA-Z0-9-]/g, '-')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdf.length);
+    return res.send(pdf);
+  } catch (err) {
+    console.error('[pdf] generation failed:', err.message);
+    return res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// POST /api/customer/jobs/:projectId/quote/accept — customer approves a sent quote
+router.post('/jobs/:projectId/quote/accept', requireCustomer, async (req, res) => {
+  const { rows: proj } = await query(
+    'SELECT vehicle_id FROM projects WHERE id=$1',
+    [req.params.projectId]
+  );
+  if (!proj.length) return res.status(404).json({ error: 'Job not found' });
+
+  if (!proj[0].vehicle_id) return res.status(403).json({ error: 'Not authorised' });
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, proj[0].vehicle_id]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const { rows: quoteRows } = await query(
+    `SELECT id, stock_deducted FROM quotes WHERE project_id=$1 AND status='sent' ORDER BY updated_at DESC LIMIT 1`,
+    [req.params.projectId]
+  );
+  if (!quoteRows.length) return res.status(404).json({ error: 'No pending quote found' });
+  const quote = quoteRows[0];
+
+  if (!quote.stock_deducted) {
+    const { rows: partLines } = await query(
+      `SELECT part_id, SUM(qty)::int AS total_qty
+       FROM quote_lines WHERE quote_id=$1 AND part_id IS NOT NULL
+       GROUP BY part_id`,
+      [quote.id]
+    );
+    for (const line of partLines) {
+      await query(
+        `UPDATE parts_catalogue SET stock_qty = GREATEST(0, stock_qty - $1) WHERE id=$2`,
+        [line.total_qty, line.part_id]
+      );
+    }
+    await query('UPDATE quotes SET stock_deducted=true WHERE id=$1', [quote.id]);
+  }
+
+  await query(
+    `UPDATE quotes SET status='approved', customer_id=$1, quote_token=NULL, quote_token_expires_at=NULL, updated_at=now() WHERE id=$2`,
+    [req.user.id, quote.id]
+  );
+
+  return res.json({ accepted: true });
+});
+
+// ── Public quick-quote routes (no auth required) ──────────────────────────────
+
+// GET /api/customer/quick-quote/:token — view quote details by token
+router.get('/quick-quote/:token', async (req, res) => {
+  try {
+    const { rows } = await query(
+      `SELECT q.id, q.reference, q.title, q.notes, q.diagnostic_summary,
+              q.vat_rate, q.status, q.quote_email, q.created_at,
+              p.id as project_id, p.make, p.model, p.year,
+              p.registration, p.registration_snapshot,
+              w.name as workshop_name, w.id as workshop_id
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN workshops w ON w.id = p.workshop_id
+       WHERE q.quote_token = $1 AND q.quote_token_expires_at > now()`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Quote not found or link has expired' });
+    const q = rows[0];
+
+    const { rows: itemRows } = await query(
+      'SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at',
+      [q.id]
+    );
+    const { rows: lineRows } = await query(
+      'SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at',
+      [q.id]
+    );
+
+    const formatLine = (row) => {
+      const unitCost = parseFloat(row.unit_cost);
+      const markupPct = parseFloat(row.markup_pct);
+      const qty = parseFloat(row.qty);
+      const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+      const lineTotal = Math.round(unitPrice * qty * 100) / 100;
+      return { id: row.id, type: row.type, description: row.description, qty, unitPrice, lineTotal, quoteItemId: row.quote_item_id || null };
+    };
+
+    const allLines = lineRows.map(formatLine);
+    const vatRate = parseFloat(q.vat_rate);
+    const items = itemRows.map((item) => {
+      const lines = allLines.filter((l) => l.quoteItemId === item.id);
+      const subtotal = Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+      return { id: item.id, title: item.title, description: item.description || '', notes: item.notes || '', lines, subtotal };
+    });
+    const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+    const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+    return res.json({
+      id: q.id,
+      reference: q.reference,
+      title: q.title || null,
+      notes: q.notes || '',
+      diagnosticSummary: q.diagnostic_summary || '',
+      status: q.status,
+      quoteEmail: q.quote_email,
+      workshopName: q.workshop_name,
+      workshopId: q.workshop_id,
+      projectId: q.project_id,
+      vehicle: [q.year, q.make, q.model].filter(Boolean).join(' ') || q.registration_snapshot || q.registration || '',
+      registration: q.registration_snapshot || q.registration || '',
+      createdAt: q.created_at,
+      items,
+      ungroupedLines,
+      totals: { subtotal, vat, total: Math.round((subtotal + vat) * 100) / 100, vatRate },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/customer/quick-quote/:token/accept — accept quote, create customer
+router.post('/quick-quote/:token/accept', async (req, res) => {
+  try {
+    const { name, phone, email: bodyEmail } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    const { rows } = await query(
+      `SELECT q.id, q.project_id, q.quote_email, q.customer_id,
+              p.vehicle_id, p.customer_id as project_customer_id,
+              w.id as workshop_id, w.name as workshop_name
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN workshops w ON w.id = p.workshop_id
+       WHERE q.quote_token = $1 AND q.quote_token_expires_at > now()`,
+      [req.params.token]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Quote not found or link has expired' });
+    const q = rows[0];
+
+    const customerEmail = q.quote_email || bodyEmail;
+    if (!customerEmail) return res.status(400).json({ error: 'Email address is required' });
+
+    // Find or create customer scoped to this workshop
+    let customerId;
+    const { rows: existing } = await query(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) AND workshop_id = $2 AND role = 'customer'`,
+      [customerEmail, q.workshop_id]
+    );
+
+    if (existing.length) {
+      customerId = existing[0].id;
+      await query(
+        `UPDATE users SET name=COALESCE($1,name), phone=COALESCE($2,phone) WHERE id=$3`,
+        [name || null, phone || null, customerId]
+      );
+    } else {
+      const magicToken = crypto.randomBytes(32).toString('hex');
+      const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const placeholderPassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const { rows: created } = await query(
+        `INSERT INTO users (email, password, role, subscribed, name, phone, workshop_id, magic_token, magic_token_expires_at)
+         VALUES ($1,$2,'customer',true,$3,$4,$5,$6,$7) RETURNING id`,
+        [customerEmail, placeholderPassword, name || null, phone || null, q.workshop_id, magicToken, expires]
+      );
+      customerId = created[0].id;
+
+      const customerOrigin = process.env.CUSTOMER_PORTAL_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+      sendCustomerActivation({
+        to: customerEmail,
+        customerName: name,
+        workshopName: q.workshop_name,
+        activationUrl: `${customerOrigin}/?activate=${magicToken}`,
+      }).catch((err) => console.error('[quick-quote activation email]', err.message));
+    }
+
+    // Link customer to project + vehicle
+    await query(`UPDATE projects SET customer_id=$1 WHERE id=$2 AND customer_id IS NULL`, [customerId, q.project_id]);
+    if (q.vehicle_id) {
+      await query(
+        `INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+        [customerId, q.vehicle_id]
+      );
+    }
+
+    // Mark quote approved + clear token
+    await query(
+      `UPDATE quotes SET status='approved', customer_id=$1, quote_token=NULL, quote_token_expires_at=NULL WHERE id=$2`,
+      [customerId, q.id]
+    );
+
+    return res.json({ accepted: true, email: q.quote_email });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/customer/vehicles — customer self-registers a vehicle
+router.post('/vehicles', requireCustomer, async (req, res) => {
+  const reg = (req.body.registration || '').toUpperCase().replace(/\s/g, '');
+  if (!reg) return res.status(400).json({ error: 'Registration is required' });
+
+  let { rows } = await query(
+    'SELECT id, registration, make, model, year, fuel_type FROM vehicles WHERE registration=$1',
+    [reg]
+  );
+  let vehicle = rows[0] || null;
+
+  if (!vehicle) {
+    let motData = null;
+    try { motData = await fetchMotHistory(reg); } catch (_) {}
+
+    if (motData) {
+      const { vehicleMeta, tests } = motData;
+      const year = vehicleMeta.firstUsedDate
+        ? new Date(vehicleMeta.firstUsedDate).getFullYear().toString()
+        : null;
+      const { rows: created } = await query(
+        `INSERT INTO vehicles (registration, make, model, year, fuel_type, mot_tests, mot_vehicle_meta, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'dvsa') RETURNING *`,
+        [reg, vehicleMeta.make || null, vehicleMeta.model || null, year,
+         vehicleMeta.fuelType || null, JSON.stringify(tests), JSON.stringify(vehicleMeta)]
+      );
+      vehicle = created[0];
+    } else {
+      const { rows: created } = await query(
+        `INSERT INTO vehicles (registration, source) VALUES ($1,'customer') RETURNING *`,
+        [reg]
+      );
+      vehicle = created[0];
+    }
+  }
+
+  const { rows: existing } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, vehicle.id]
+  );
+  if (existing.length) return res.status(409).json({ error: 'Vehicle already linked to your account' });
+
+  await query('INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2)', [req.user.id, vehicle.id]);
+
+  return res.status(201).json({
+    id: vehicle.id,
+    registration: vehicle.registration,
+    make: vehicle.make || null,
+    model: vehicle.model || null,
+    year: vehicle.year || null,
+    fuelType: vehicle.fuel_type || null,
+    linkedAt: new Date(),
+    publishedJobCount: 0,
+    lastJobAt: null,
+  });
+});
+
+// GET /api/customer/vehicles/:vehicleId/stats — service history + spend data
+router.get('/vehicles/:vehicleId/stats', requireCustomer, async (req, res) => {
+  const { rows: link } = await query(
+    'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+    [req.user.id, req.params.vehicleId]
+  );
+  if (!link.length) return res.status(403).json({ error: 'Not authorised' });
+
+  const [{ rows: reportRows }, { rows: byYearRows }] = await Promise.all([
+    query(
+      `SELECT p.id, p.created_at AS job_date, jr.published_at,
+              jr.diagnosis, jr.work_carried_out,
+              jr.cost_parts, jr.cost_labour, jr.cost_total
+       FROM projects p
+       JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
+       WHERE p.vehicle_id = $1
+       ORDER BY p.created_at DESC`,
+      [req.params.vehicleId]
+    ),
+    query(
+      `SELECT EXTRACT(year FROM p.created_at)::int AS year,
+              SUM(ql.qty * (ql.unit_cost * (1 + ql.markup_pct/100)))::numeric AS total
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       JOIN quote_lines ql ON ql.quote_id = q.id
+       WHERE p.vehicle_id = $1 AND q.status = 'approved' AND q.customer_id = $2
+       GROUP BY year ORDER BY year`,
+      [req.params.vehicleId, req.user.id]
+    ),
+  ]);
+
+  const totalParts = reportRows.reduce((s, r) => s + (parseFloat(r.cost_parts) || 0), 0);
+  const totalLabour = reportRows.reduce((s, r) => s + (parseFloat(r.cost_labour) || 0), 0);
+  const totalSpend = reportRows.reduce((s, r) => s + (parseFloat(r.cost_total) || 0), 0);
+
+  return res.json({
+    jobCount: reportRows.length,
+    totalParts: Math.round(totalParts * 100) / 100,
+    totalLabour: Math.round(totalLabour * 100) / 100,
+    totalSpend: Math.round(totalSpend * 100) / 100,
+    lastServiceAt: reportRows[0]?.job_date || null,
+    jobs: reportRows.map((r) => ({
+      id: r.id,
+      date: r.job_date,
+      publishedAt: r.published_at,
+      diagnosis: r.diagnosis ? r.diagnosis.slice(0, 200) : null,
+      workCarriedOut: r.work_carried_out ? r.work_carried_out.slice(0, 200) : null,
+      costParts: r.cost_parts ? parseFloat(r.cost_parts) : null,
+      costLabour: r.cost_labour ? parseFloat(r.cost_labour) : null,
+      costTotal: r.cost_total ? parseFloat(r.cost_total) : null,
+    })),
+    spendByYear: byYearRows.map((r) => ({ year: r.year, total: Math.round(parseFloat(r.total) * 100) / 100 })),
+  });
+});
+
+// POST /api/customer/enquiry — submit a message to the workshop
+router.post('/enquiry', requireCustomer, async (req, res) => {
+  const { message, vehicleId } = req.body;
+  if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+
+  // If vehicleId provided, verify this customer owns it
+  if (vehicleId) {
+    const owns = await query(
+      'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
+      [req.user.id, vehicleId]
+    );
+    if (!owns.rows.length) return res.status(403).json({ error: 'Vehicle not linked to your account' });
+  }
+
+  const result = await query(
+    `INSERT INTO enquiries (customer_id, workshop_id, vehicle_id, message)
+     VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+    [req.user.id, req.user.workshopId, vehicleId || null, message.trim()]
+  );
+
+  return res.status(201).json({ id: result.rows[0].id, createdAt: result.rows[0].created_at });
 });
 
 module.exports = router;
