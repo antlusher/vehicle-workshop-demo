@@ -790,8 +790,8 @@ export default function CustomerPortal({ user, token, onLogout }) {
         <div className="cp-header-right">
           <button className="cp-enquiry-btn" onClick={() => setShowEnquiry(true)}>Enquiry</button>
           <NotificationBell token={token} onNavigate={handleNotifNavigate} />
-          <button className="cp-user-email cp-profile-btn" onClick={() => setShowProfile(true)}>
-            {user.name || user.email}
+          <button className="cp-profile-btn" onClick={() => setShowProfile(true)}>
+            My account
           </button>
           <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
         </div>
