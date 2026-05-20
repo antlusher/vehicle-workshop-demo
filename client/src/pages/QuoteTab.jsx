@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as quotesApi from '../services/quotesApi';
 
-const STATUS_LABELS = { draft: 'Draft', published: 'Published', sent: 'Sent', approved: 'Customer accepted', invoiced: 'Invoiced' };
+const STATUS_LABELS = { draft: 'Draft', published: 'Published', sent: 'Sent', approved: 'Customer accepted', invoiced: 'Paid' };
 const TYPE_LABELS   = { part: 'Part', labour: 'Labour', other: 'Other' };
 
 // ── Preview modal ─────────────────────────────────────────────────────────────
@@ -711,6 +711,120 @@ function EditQuoteModal({ quote, token, onUpdated, onClose }) {
   );
 }
 
+// ── Admin invoice view ────────────────────────────────────────────────────────
+
+function AdminInvoiceView({ quote, settings, project, token, onClose, onStatusChange }) {
+  const [downloading, setDownloading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      await quotesApi.downloadInvoicePdf(quote.id, token, `invoice-${quote.reference}.pdf`);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleStatus = async (status) => {
+    setBusy(true);
+    try {
+      await onStatusChange(status);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const fmt = (v) => v == null ? '—' : `£${parseFloat(v).toFixed(2)}`;
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const isInvoice = quote.status === 'approved' || quote.status === 'invoiced';
+  const registration = project.registration || '';
+  const vehicle = [project.make, project.model, project.year].filter(Boolean).join(' ');
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="admin-invoice-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cp-invoice-toolbar">
+          <button type="button" className="cp-back secondary" onClick={onClose}>← Back</button>
+          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', alignItems: 'center' }}>
+            {quote.status === 'approved' && (
+              <button type="button" onClick={() => handleStatus('invoiced')} disabled={busy}>
+                {busy ? 'Saving…' : 'Mark as paid'}
+              </button>
+            )}
+            {quote.status === 'invoiced' && (
+              <button type="button" className="secondary" onClick={() => handleStatus('approved')} disabled={busy}>
+                {busy ? 'Saving…' : 'Revert to invoice'}
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={handleDownload} disabled={downloading}>
+              {downloading ? 'Generating…' : '↓ Download PDF'}
+            </button>
+          </div>
+        </div>
+
+        <div className="cp-invoice-paper">
+          <div className="cp-inv-header">
+            <div>
+              {settings.workshopName && <p className="cp-inv-workshop">{settings.workshopName}</p>}
+              <h1 className="cp-inv-title">{isInvoice ? 'Invoice' : 'Estimate'}</h1>
+              <p className="cp-inv-ref">{quote.reference}{quote.title ? ` — ${quote.title}` : ''}</p>
+            </div>
+            <div className="cp-inv-meta">
+              <p>{fmtDate(quote.updatedAt)}</p>
+              {registration && <p>{registration}{vehicle ? ` · ${vehicle}` : ''}</p>}
+              <span className={`cp-status-badge cp-status-badge--${quote.status}`}>{STATUS_LABELS[quote.status] || quote.status}</span>
+            </div>
+          </div>
+
+          <table className="cp-inv-table">
+            <thead>
+              <tr><th>Type</th><th>Description</th><th className="right">Qty</th><th className="right">Total</th></tr>
+            </thead>
+            <tbody>
+              {quote.items?.map((item) => (
+                <React.Fragment key={item.id}>
+                  {item.title && <tr><td colSpan={4} style={{ fontWeight: 700, paddingTop: 10, color: '#1e293b', borderBottom: '1px solid #e2e8f0' }}>{item.title}</td></tr>}
+                  {item.lines.map((l) => (
+                    <tr key={l.id}>
+                      <td>{TYPE_LABELS[l.type] || l.type}</td>
+                      <td>{l.description}</td>
+                      <td className="right">×{l.qty}</td>
+                      <td className="right">{fmt(l.lineTotal)}</td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+              {quote.ungroupedLines?.map((l) => (
+                <tr key={l.id}>
+                  <td>{TYPE_LABELS[l.type] || l.type}</td>
+                  <td>{l.description}</td>
+                  <td className="right">×{l.qty}</td>
+                  <td className="right">{fmt(l.lineTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16, borderTop: '2px solid #1e293b', paddingTop: 12 }}>
+            <table style={{ fontSize: '0.88rem', color: '#374151', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr><td style={{ padding: '3px 0', paddingRight: 32 }}>Subtotal</td><td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(quote.totals.subtotal)}</td></tr>
+                <tr><td style={{ padding: '3px 0', paddingRight: 32 }}>VAT ({quote.totals.vatRate}%)</td><td style={{ textAlign: 'right', fontFamily: 'monospace' }}>{fmt(quote.totals.vat)}</td></tr>
+                <tr style={{ fontWeight: 700, fontSize: '0.95rem' }}><td style={{ padding: '6px 0', paddingRight: 32, borderTop: '1px solid #e2e8f0' }}>Total</td><td style={{ textAlign: 'right', fontFamily: 'monospace', borderTop: '1px solid #e2e8f0' }}>{fmt(quote.totals.total)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          {quote.notes && <p style={{ marginTop: 20, fontSize: '0.82rem', color: '#6b7280', fontStyle: 'italic' }}>{quote.notes}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Quote detail panel ────────────────────────────────────────────────────────
 
 function QuickSendModal({ quote, token, onClose, onUpdated }) {
@@ -797,6 +911,7 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
   const [showSend, setShowSend]             = useState(false);
   const [showPreview, setShowPreview]       = useState(false);
   const [showQuickSend, setShowQuickSend]   = useState(false);
+  const [showInvoice, setShowInvoice]       = useState(false);
 
   const isReadOnly = false;
 
@@ -826,6 +941,16 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
       {showPreview && <QuotePreviewModal quote={quote} onClose={() => setShowPreview(false)} />}
       {showSend && <SendModal quote={quoteForModal} onClose={() => setShowSend(false)} onSent={handleSend} />}
       {showQuickSend && <QuickSendModal quote={quote} token={token} onClose={() => setShowQuickSend(false)} onUpdated={onUpdated} />}
+      {showInvoice && (
+        <AdminInvoiceView
+          quote={quote}
+          settings={settings}
+          project={project}
+          token={token}
+          onClose={() => setShowInvoice(false)}
+          onStatusChange={async (status) => { const updated = await quotesApi.updateQuote(quote.id, { status }, token); onUpdated(updated); }}
+        />
+      )}
 
       {/* Detail header */}
       <div className="qd-header">
@@ -926,12 +1051,16 @@ function QuoteDetail({ quote, project, settings, token, onUpdated, onDeleted }) 
         )}
         {quote.status === 'approved' && (
           <>
-            <button type="button" className="secondary" onClick={() => handleStatusChange('invoiced')}>Mark invoiced</button>
+            <button type="button" onClick={() => setShowInvoice(true)}>View Invoice</button>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('invoiced')}>Mark as paid</button>
             <button type="button" className="secondary" onClick={() => handleStatusChange('sent')}>Revert to quote</button>
           </>
         )}
         {quote.status === 'invoiced' && (
-          <button type="button" className="secondary" onClick={() => handleStatusChange('approved')}>Revert to invoice</button>
+          <>
+            <button type="button" onClick={() => setShowInvoice(true)}>View Invoice</button>
+            <button type="button" className="secondary" onClick={() => handleStatusChange('approved')}>Revert to invoice</button>
+          </>
         )}
         <button type="button" className="secondary" onClick={() => setShowPreview(true)}>Preview</button>
       </div>

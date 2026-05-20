@@ -9,6 +9,7 @@ const { applyMarkup, getWorkshopSettings } = require('../services/partsService')
 const { sendQuoteToCustomer, sendQuickQuote } = require('../services/emailService');
 const { sendSMS } = require('../services/smsService');
 const { s3Available, uploadToS3, deleteFromS3 } = require('../services/mediaService');
+const { generateInvoicePdf } = require('../services/pdfService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -606,6 +607,80 @@ router.post('/:id/quick-send', requireAuth, async (req, res) => {
     return res.json({ quoteUrl, token });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /:id/pdf — download invoice/quote as PDF (admin)
+router.get('/:id/pdf', requireAuth, async (req, res) => {
+  try {
+    const { rows: quoteRows } = await query(
+      `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year
+       FROM quotes q
+       JOIN projects p ON p.id = q.project_id
+       WHERE q.id = $1`,
+      [req.params.id]
+    );
+    if (!quoteRows.length) return res.status(404).json({ error: 'Quote not found' });
+    const quote = quoteRows[0];
+
+    const [{ rows: itemRows }, { rows: lineRows }, tmpl] = await Promise.all([
+      query('SELECT * FROM quote_items WHERE quote_id=$1 ORDER BY sort_order, created_at', [quote.id]),
+      query('SELECT * FROM quote_lines WHERE quote_id=$1 ORDER BY sort_order, created_at', [quote.id]),
+      getWorkshopSettings(),
+    ]);
+
+    const fmtLine = (row) => {
+      const unitCost = parseFloat(row.unit_cost);
+      const markupPct = parseFloat(row.markup_pct);
+      const qty = parseFloat(row.qty);
+      const unitPrice = Math.round(unitCost * (1 + markupPct / 100) * 100) / 100;
+      return { id: row.id, type: row.type, description: row.description, qty, lineTotal: Math.round(unitPrice * qty * 100) / 100, quoteItemId: row.quote_item_id || null };
+    };
+
+    const allLines = lineRows.map(fmtLine);
+    const vatRate = parseFloat(quote.vat_rate);
+    const items = itemRows.map((item) => ({ id: item.id, title: item.title, lines: allLines.filter((l) => l.quoteItemId === item.id) }));
+    const ungroupedLines = allLines.filter((l) => !l.quoteItemId);
+    const subtotal = Math.round(allLines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+    const vat = Math.round(subtotal * (vatRate / 100) * 100) / 100;
+
+    const pdf = await generateInvoicePdf({
+      workshopName: tmpl.workshopName || '',
+      address: [tmpl.addressLine1, tmpl.addressLine2, tmpl.city, tmpl.postcode].filter(Boolean),
+      phone: tmpl.phone || null,
+      email: tmpl.email || null,
+      logoUrl: tmpl.invoiceLogoUrl || null,
+      accentColor: tmpl.invoiceAccentColor || '#1e40af',
+      vatNumber: tmpl.invoiceVatNumber || null,
+      footerText: tmpl.invoiceFooterText || null,
+      showBankDetails: tmpl.invoiceShowBankDetails || false,
+      bankName: tmpl.invoiceBankName || null,
+      accountName: tmpl.invoiceAccountName || null,
+      accountNumber: tmpl.invoiceAccountNumber || null,
+      sortCode: tmpl.invoiceSortCode || null,
+      reference: quote.reference,
+      title: quote.title || null,
+      status: quote.status,
+      registration: quote.registration_snapshot || quote.registration,
+      vehicle: [quote.make, quote.model, quote.year].filter(Boolean).join(' '),
+      date: quote.updated_at,
+      items,
+      ungroupedLines,
+      subtotal,
+      vat,
+      total: Math.round((subtotal + vat) * 100) / 100,
+      vatRate,
+      notes: quote.notes || null,
+    });
+
+    const filename = `invoice-${(quote.reference || 'invoice').replace(/[^a-zA-Z0-9-]/g, '-')}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdf.length);
+    return res.send(pdf);
+  } catch (err) {
+    console.error('[admin pdf]', err.message);
+    return res.status(500).json({ error: 'Failed to generate PDF' });
   }
 });
 

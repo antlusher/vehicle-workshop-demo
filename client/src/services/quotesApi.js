@@ -67,3 +67,22 @@ export const deleteItem = (quoteId, itemId, token) =>
 
 export const quickSend = (quoteId, data, token) =>
   request(`${BASE}/${quoteId}/quick-send`, { method: 'POST', body: data }, token);
+
+export const downloadInvoicePdf = async (id, token, filename = 'invoice.pdf') => {
+  const res = await fetch(`${BASE}/${id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
