@@ -5,6 +5,7 @@ const { findUserByToken } = require('../services/authService');
 const { generateVehicleSpecs } = require('../services/aiService');
 const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleService');
 const { fetchAndStoreMotHistory } = require('../services/motService');
+const { enrichEngineCode } = require('../services/engineEnrichment');
 const router = express.Router();
 
 async function fetchAndStoreNhtsaRecalls(make, model, year) {
@@ -228,8 +229,13 @@ router.post('/', requireAuth, async (req, res) => {
     const vehicleHistory = vehicle.id ? await getVehicleHistory(vehicle.id) : null;
     const project = rows[0];
 
-    // Background chain: MOT fetch → patch missing fields → generate specs
+    // Background chain: engine enrichment + MOT fetch → patch missing fields → generate specs
     const runBackground = async () => {
+      // Enrich engine knowledge if we have a new engine code
+      if (vehicleData.engineCode) {
+        enrichEngineCode(vehicleData.engineCode, vehicleData.make).catch(() => {});
+      }
+
       let motMeta = null;
       if (vehicle.id && vehicleData.registration) {
         const motResult = await fetchAndStoreMotHistory(vehicle.id, vehicleData.registration);
