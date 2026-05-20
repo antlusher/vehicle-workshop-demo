@@ -133,7 +133,7 @@ router.get('/workshop', requireCustomer, async (req, res) => {
      LEFT JOIN workshop_settings ws ON true
      WHERE w.id = $1
      LIMIT 1`,
-    [req.user.workshop_id]
+    [req.user.workshopId]
   );
   if (!rows.length) return res.json({ name: 'Your Workshop' });
   const r = rows[0];
@@ -793,7 +793,7 @@ router.post('/enquiry', requireCustomer, async (req, res) => {
   if (vehicleId) {
     const owns = await query(
       'SELECT id FROM customer_vehicles WHERE customer_id=$1 AND vehicle_id=$2',
-      [req.customer.id, vehicleId]
+      [req.user.id, vehicleId]
     );
     if (!owns.rows.length) return res.status(403).json({ error: 'Vehicle not linked to your account' });
   }
@@ -801,7 +801,7 @@ router.post('/enquiry', requireCustomer, async (req, res) => {
   const result = await query(
     `INSERT INTO enquiries (customer_id, workshop_id, vehicle_id, message)
      VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
-    [req.customer.id, req.customer.workshopId, vehicleId || null, message.trim()]
+    [req.user.id, req.user.workshopId, vehicleId || null, message.trim()]
   );
 
   return res.status(201).json({ id: result.rows[0].id, createdAt: result.rows[0].created_at });
