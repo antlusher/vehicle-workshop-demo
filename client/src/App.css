@@ -1692,6 +1692,10 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
 .quote-status-badge.approved  { background: #d1fae5; color: #065f46; }
 .quote-status-badge.invoiced  { background: #ede9fe; color: #4c1d95; }
 .cp-status-badge--quote      { background: #fef3c7; color: #92400e; }
+.cp-status-badge--published  { background: #dbeafe; color: #1d4ed8; }
+.cp-status-badge--sent       { background: #fef9c3; color: #92400e; }
+.cp-status-badge--approved   { background: #d1fae5; color: #065f46; }
+.cp-status-badge--invoiced   { background: #ede9fe; color: #4c1d95; }
 
 .diag-summary-block {
   background: #f0f9ff;

@@ -58,7 +58,7 @@ function InvoiceView({ invoiceId, token, onBack, workshopName }) {
         <div className="cp-inv-header">
           <div>
             {workshopName && <p className="cp-inv-workshop">{workshopName}</p>}
-            <h1 className="cp-inv-title">{status === 'approved' ? 'Invoice' : 'Estimate'}</h1>
+            <h1 className="cp-inv-title">{(status === 'approved' || status === 'invoiced') ? 'Invoice' : 'Estimate'}</h1>
             <p className="cp-inv-ref">{reference}{title ? ` — ${title}` : ''}</p>
           </div>
           <div className="cp-inv-meta">

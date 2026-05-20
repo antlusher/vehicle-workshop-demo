@@ -232,7 +232,7 @@ router.get('/notifications', requireCustomer, async (req, res) => {
      JOIN projects p ON p.id = q.project_id
      LEFT JOIN vehicles v ON v.id = p.vehicle_id
      JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
-     WHERE q.status IN ('published','sent','approved')
+     WHERE q.status IN ('published','sent','approved','invoiced')
        AND q.customer_id = $1
        AND q.updated_at > now() - interval '60 days'
      ORDER BY event_at DESC
@@ -290,13 +290,13 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
     `SELECT p.id, p.registration_snapshot, p.registration, p.make, p.model, p.year,
             p.created_at, p.closed,
             jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at,
-            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
-            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
+            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved','invoiced') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
+            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved','invoiced') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
      FROM projects p
      LEFT JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
      WHERE p.vehicle_id = $1
        AND (jr.id IS NOT NULL
-            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved')))
+            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved','invoiced')))
      ORDER BY p.created_at DESC`,
     [req.params.vehicleId]
   );
@@ -523,7 +523,7 @@ router.get('/vehicles/:vehicleId/invoices', requireCustomer, async (req, res) =>
      FROM quotes q
      JOIN projects p ON p.id = q.project_id
      WHERE p.vehicle_id = $1
-       AND q.status IN ('approved', 'sent')
+       AND q.status IN ('approved', 'sent', 'invoiced')
        AND q.customer_id = $2
      ORDER BY q.updated_at DESC`,
     [req.params.vehicleId, req.user.id]
@@ -554,7 +554,7 @@ router.get('/invoices/:quoteId', requireCustomer, async (req, res) => {
     `SELECT q.*, p.vehicle_id, p.registration_snapshot, p.registration, p.make, p.model, p.year
      FROM quotes q
      JOIN projects p ON p.id = q.project_id
-     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved','invoiced')`,
     [req.params.quoteId, req.user.id]
   );
   if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
@@ -614,7 +614,7 @@ router.get('/invoices/:quoteId/pdf', requireCustomer, async (req, res) => {
     `SELECT q.*, p.registration_snapshot, p.registration, p.make, p.model, p.year
      FROM quotes q
      JOIN projects p ON p.id = q.project_id
-     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved')`,
+     WHERE q.id = $1 AND q.customer_id = $2 AND q.status IN ('sent','approved','invoiced')`,
     [req.params.quoteId, req.user.id]
   );
   if (!quoteRows.length) return res.status(404).json({ error: 'Invoice not found' });
@@ -971,7 +971,7 @@ router.get('/vehicles/:vehicleId/stats', requireCustomer, async (req, res) => {
        FROM quotes q
        JOIN projects p ON p.id = q.project_id
        JOIN quote_lines ql ON ql.quote_id = q.id
-       WHERE p.vehicle_id = $1 AND q.status = 'approved' AND q.customer_id = $2
+       WHERE p.vehicle_id = $1 AND q.status IN ('approved','invoiced') AND q.customer_id = $2
        GROUP BY year ORDER BY year`,
       [req.params.vehicleId, req.user.id]
     ),
