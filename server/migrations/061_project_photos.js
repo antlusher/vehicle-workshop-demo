@@ -7,7 +7,7 @@ exports.up = (pgm) => {
     mime_type:     { type: 'text' },
     size:          { type: 'integer' },
     caption:       { type: 'text' },
-    tags:          { type: 'text[]', default: "'{}'" },
+    tags:          { type: 'text[]', default: pgm.func("'{}'") },
     uploaded_by:   { type: 'integer', references: 'users(id)', onDelete: 'SET NULL' },
     created_at:    { type: 'timestamp', default: pgm.func('now()') },
   });
