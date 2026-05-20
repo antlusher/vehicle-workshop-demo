@@ -121,7 +121,7 @@ function DetailsTab({ token }) {
 // ── Rates ─────────────────────────────────────────────────────────────────────
 
 function RatesTab({ token }) {
-  const [form, setForm] = useState({ labourRatePerHour: '', defaultMarkupPct: '', vatRate: '' });
+  const [form, setForm] = useState({ labourRatePerHour: '75', defaultMarkupPct: '30', vatRate: '20' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -134,21 +134,28 @@ function RatesTab({ token }) {
         vatRate: String(s.vatRate ?? 20),
       }))
       .catch(() => {});
-  }, []);
+  }, [token]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const toNum = (v, fallback) => { const n = parseFloat(v); return Number.isFinite(n) ? n : fallback; };
 
   const handleSave = async () => {
     setSaving(true); setError(''); setSaved(false);
     try {
-      await apiFetch('/quotes/settings', {
+      const updated = await apiFetch('/quotes/settings', {
         method: 'PATCH',
         body: {
-          labourRatePerHour: parseFloat(form.labourRatePerHour) || null,
-          defaultMarkupPct: parseFloat(form.defaultMarkupPct) || null,
-          vatRate: parseFloat(form.vatRate) || null,
+          labourRatePerHour: toNum(form.labourRatePerHour, 75),
+          defaultMarkupPct: toNum(form.defaultMarkupPct, 30),
+          vatRate: toNum(form.vatRate, 20),
         },
       }, token);
+      setForm({
+        labourRatePerHour: String(updated.labourRatePerHour ?? 75),
+        defaultMarkupPct: String(updated.defaultMarkupPct ?? 30),
+        vatRate: String(updated.vatRate ?? 20),
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (err) { setError(err.message); }

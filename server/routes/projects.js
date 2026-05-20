@@ -6,6 +6,7 @@ const { generateVehicleSpecs } = require('../services/aiService');
 const { findOrCreateVehicle, getVehicleHistory } = require('../services/vehicleService');
 const { fetchAndStoreMotHistory } = require('../services/motService');
 const { enrichEngineCode } = require('../services/engineEnrichment');
+const { getWorkshopSettings } = require('../services/partsService');
 const router = express.Router();
 
 async function fetchAndStoreNhtsaRecalls(make, model, year) {
@@ -232,7 +233,8 @@ router.post('/', requireAuth, async (req, res) => {
     // Background chain: engine enrichment + MOT fetch → patch missing fields → generate specs
     const runBackground = async () => {
       // Enrich engine knowledge if we have a new engine code
-      if (vehicleData.engineCode) {
+      const settings = await getWorkshopSettings();
+      if (settings.aiEnabled && vehicleData.engineCode) {
         enrichEngineCode(vehicleData.engineCode, vehicleData.make).catch(() => {});
       }
 
@@ -283,7 +285,7 @@ router.post('/', requireAuth, async (req, res) => {
 
       const specMake = vehicleData.make;
       const specModel = vehicleData.model;
-      if (specMake && specModel && vehicleData.year) {
+      if (settings.aiEnabled && specMake && specModel && vehicleData.year) {
         const specs = await generateVehicleSpecs({
           make: specMake,
           model: specModel,
@@ -448,6 +450,9 @@ router.post('/:projectId/specs', requireAuth, async (req, res) => {
     const project = rows[0];
 
     if (project.specs) return res.json(project.specs);
+
+    const { aiEnabled } = await getWorkshopSettings();
+    if (!aiEnabled) return res.status(503).json({ error: 'AI features are disabled' });
 
     const motData = await getMotData(project.vehicle_id);
     const motMeta = motData.motVehicleMeta;
