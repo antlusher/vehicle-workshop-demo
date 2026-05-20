@@ -11,6 +11,7 @@ async function request(path, options = {}, token) {
   return data;
 }
 
+export const submitEnquiry = (data, token) => request('/api/customer/enquiry', { method: 'POST', body: data }, token);
 export const getProfile = (token) => request('/api/customer/profile', {}, token);
 export const updateProfile = (data, token) => request('/api/customer/profile', { method: 'PATCH', body: data }, token);
 export const changePassword = (data, token) => request('/api/customer/change-password', { method: 'POST', body: data }, token);

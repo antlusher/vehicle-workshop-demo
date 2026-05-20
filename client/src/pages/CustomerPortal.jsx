@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { getMyVehicles, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail,
-         getProfile, updateProfile, changePassword } from '../services/customerApi';
+         getProfile, updateProfile, changePassword, submitEnquiry } from '../services/customerApi';
 import { mediaUrl } from '../services/reportsApi';
 
 const TYPE_LABELS = { part: 'Part', labour: 'Labour', other: 'Other' };
@@ -591,12 +591,88 @@ function ProfilePanel({ token, onClose }) {
   );
 }
 
+// ── Enquiry modal ─────────────────────────────────────────────────────────────
+function EnquiryModal({ token, vehicles, onClose }) {
+  const [vehicleId, setVehicleId] = useState('');
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setSending(true);
+    setError('');
+    try {
+      await submitEnquiry({ message, vehicleId: vehicleId || undefined }, token);
+      setDone(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="cp-enquiry-overlay" onClick={onClose}>
+      <div className="cp-enquiry-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cp-enquiry-header">
+          <h2>Send an enquiry</h2>
+          <button className="cp-enquiry-close" onClick={onClose}>✕</button>
+        </div>
+        {done ? (
+          <div className="cp-enquiry-done">
+            <p>Your message has been sent. We'll be in touch soon.</p>
+            <button className="cp-enquiry-submit" onClick={onClose}>Close</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="cp-enquiry-form">
+            {vehicles.length > 0 && (
+              <label className="cp-enquiry-label">
+                Vehicle (optional)
+                <select className="cp-enquiry-select" value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
+                  <option value="">— General enquiry —</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.registration} — {[v.make, v.model].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label className="cp-enquiry-label">
+              Message
+              <textarea
+                className="cp-enquiry-textarea"
+                rows={5}
+                placeholder="How can we help?"
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                required
+              />
+            </label>
+            {error && <p className="cp-enquiry-error">{error}</p>}
+            <div className="cp-enquiry-actions">
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+              <button type="submit" className="cp-enquiry-submit" disabled={sending || !message.trim()}>
+                {sending ? 'Sending…' : 'Send enquiry'}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Root portal ──────────────────────────────────────────────────────────────
 export default function CustomerPortal({ user, token, onLogout }) {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showEnquiry, setShowEnquiry] = useState(false);
 
   useEffect(() => {
     getMyVehicles(token).then((v) => {
@@ -613,6 +689,7 @@ export default function CustomerPortal({ user, token, onLogout }) {
           <span className="cp-brand-sub">Customer Portal</span>
         </div>
         <div className="cp-header-right">
+          <button className="cp-enquiry-btn" onClick={() => setShowEnquiry(true)}>Enquiry</button>
           <button className="cp-user-email cp-profile-btn" onClick={() => setShowProfile(true)}>
             {user.name || user.email}
           </button>
@@ -621,6 +698,7 @@ export default function CustomerPortal({ user, token, onLogout }) {
       </header>
 
       {showProfile && <ProfilePanel token={token} onClose={() => setShowProfile(false)} />}
+      {showEnquiry && <EnquiryModal token={token} vehicles={vehicles} onClose={() => setShowEnquiry(false)} />}
 
       <main className="cp-main">
         {selectedVehicle ? (
