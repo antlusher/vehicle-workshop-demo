@@ -232,9 +232,9 @@ router.get('/notifications', requireCustomer, async (req, res) => {
      JOIN projects p ON p.id = q.project_id
      LEFT JOIN vehicles v ON v.id = p.vehicle_id
      JOIN customer_vehicles cv ON cv.vehicle_id = p.vehicle_id AND cv.customer_id = $1
-     WHERE q.status IN ('sent','approved')
-       AND q.sent_at IS NOT NULL
-       AND q.sent_at > now() - interval '60 days'
+     WHERE q.status IN ('published','sent','approved')
+       AND q.customer_id = $1
+       AND q.updated_at > now() - interval '60 days'
      ORDER BY event_at DESC
      LIMIT 20`,
     [req.user.id]
@@ -290,13 +290,13 @@ router.get('/vehicles/:vehicleId/jobs', requireCustomer, async (req, res) => {
     `SELECT p.id, p.registration_snapshot, p.registration, p.make, p.model, p.year,
             p.created_at, p.closed,
             jr.id as report_id, jr.diagnosis, jr.cost_total, jr.published_at,
-            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
-            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
+            (SELECT q.id   FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_id,
+            (SELECT q.status FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved') ORDER BY q.updated_at DESC LIMIT 1) AS quote_status
      FROM projects p
      LEFT JOIN job_reports jr ON jr.project_id = p.id AND jr.status = 'published'
      WHERE p.vehicle_id = $1
        AND (jr.id IS NOT NULL
-            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('sent','approved')))
+            OR EXISTS (SELECT 1 FROM quotes q WHERE q.project_id = p.id AND q.status IN ('published','sent','approved')))
      ORDER BY p.created_at DESC`,
     [req.params.vehicleId]
   );
@@ -393,7 +393,7 @@ router.get('/jobs/:projectId/quote', requireCustomer, async (req, res) => {
   }
 
   const { rows } = await query(
-    `SELECT * FROM quotes WHERE project_id=$1 AND status IN ('sent','approved')
+    `SELECT * FROM quotes WHERE project_id=$1 AND status IN ('published','sent','approved')
      ORDER BY updated_at DESC LIMIT 1`,
     [req.params.projectId]
   );
@@ -711,7 +711,7 @@ router.post('/jobs/:projectId/quote/accept', requireCustomer, async (req, res) =
   if (!link.length) return res.status(403).json({ error: 'Not authorised' });
 
   const { rows: quoteRows } = await query(
-    `SELECT id, stock_deducted FROM quotes WHERE project_id=$1 AND status='sent' ORDER BY updated_at DESC LIMIT 1`,
+    `SELECT id, stock_deducted FROM quotes WHERE project_id=$1 AND status IN ('published','sent') ORDER BY updated_at DESC LIMIT 1`,
     [req.params.projectId]
   );
   if (!quoteRows.length) return res.status(404).json({ error: 'No pending quote found' });

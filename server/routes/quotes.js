@@ -365,9 +365,9 @@ router.patch('/:id', requireAuth, async (req, res) => {
       }
     }
 
-    // When marking approved: inherit customer from project and ensure vehicle is linked
+    // When publishing or approving: inherit customer from project and ensure vehicle is linked
     let resolvedCustomerId = customer_id ?? null;
-    if (status === 'approved' && !resolvedCustomerId) {
+    if ((status === 'published' || status === 'approved') && !resolvedCustomerId) {
       const { rows: projRows } = await query(
         `SELECT p.customer_id, p.vehicle_id
          FROM quotes q JOIN projects p ON p.id = q.project_id
