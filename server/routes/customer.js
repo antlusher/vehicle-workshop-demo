@@ -114,6 +114,12 @@ router.post('/magic-login', async (req, res) => {
   return res.json({ token: sessionToken, role: user.role, email: user.email, name: user.name });
 });
 
+// GET /api/customer/workshop-public — workshop name for login page (no auth)
+router.get('/workshop-public', async (req, res) => {
+  const { rows } = await query('SELECT name FROM workshops ORDER BY created_at ASC LIMIT 1');
+  return res.json({ name: rows[0]?.name || null });
+});
+
 function requireCustomer(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   findUserByToken(token).then((user) => {

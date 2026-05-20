@@ -1,6 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+async function fetchWorkshopName() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/customer/workshop-public`);
+    const data = await res.json();
+    return data.name || null;
+  } catch {
+    return null;
+  }
+}
 
 async function apiPost(path, body) {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -13,8 +23,12 @@ async function apiPost(path, body) {
   return data;
 }
 
+function WorkshopLogo({ name }) {
+  return <div className="customer-login-logo">{name || 'Customer Portal'}</div>;
+}
+
 // ── Set password screen (activation + reset) ──────────────────────────────────
-function SetPasswordForm({ activateToken, onSuccess }) {
+function SetPasswordForm({ activateToken, onSuccess, workshopName }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +51,7 @@ function SetPasswordForm({ activateToken, onSuccess }) {
   return (
     <div className="customer-login-wrap">
       <div className="customer-login-card">
-        <div className="customer-login-logo">Your Gofer</div>
+        <WorkshopLogo name={workshopName} />
         <h2 className="customer-login-title">Set your password</h2>
         <p className="customer-login-sub">Choose a password to secure your customer account.</p>
         <form onSubmit={handleSubmit} className="customer-login-form">
@@ -70,7 +84,7 @@ function SetPasswordForm({ activateToken, onSuccess }) {
 }
 
 // ── Forgot password screen ────────────────────────────────────────────────────
-function ForgotPasswordForm({ onBack }) {
+function ForgotPasswordForm({ onBack, workshopName }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -93,7 +107,7 @@ function ForgotPasswordForm({ onBack }) {
     return (
       <div className="customer-login-wrap">
         <div className="customer-login-card">
-          <div className="customer-login-logo">Your Gofer</div>
+          <WorkshopLogo name={workshopName} />
           <h2 className="customer-login-title">Check your email</h2>
           <p className="customer-login-sub">
             If an account exists for <strong>{email}</strong>, you'll receive a password reset link shortly.
@@ -107,7 +121,7 @@ function ForgotPasswordForm({ onBack }) {
   return (
     <div className="customer-login-wrap">
       <div className="customer-login-card">
-        <div className="customer-login-logo">Your Gofer</div>
+        <WorkshopLogo name={workshopName} />
         <h2 className="customer-login-title">Forgot password?</h2>
         <p className="customer-login-sub">Enter your email and we'll send you a reset link.</p>
         <form onSubmit={handleSubmit} className="customer-login-form">
@@ -138,12 +152,17 @@ export default function CustomerLogin({ activateToken, onSuccess }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [workshopName, setWorkshopName] = useState(null);
+
+  useEffect(() => {
+    fetchWorkshopName().then(setWorkshopName);
+  }, []);
 
   if (screen === 'activate') {
-    return <SetPasswordForm activateToken={activateToken} onSuccess={onSuccess} />;
+    return <SetPasswordForm activateToken={activateToken} onSuccess={onSuccess} workshopName={workshopName} />;
   }
   if (screen === 'forgot') {
-    return <ForgotPasswordForm onBack={() => setScreen('login')} />;
+    return <ForgotPasswordForm onBack={() => setScreen('login')} workshopName={workshopName} />;
   }
 
   const handleLogin = async (e) => {
@@ -162,8 +181,8 @@ export default function CustomerLogin({ activateToken, onSuccess }) {
   return (
     <div className="customer-login-wrap">
       <div className="customer-login-card">
-        <div className="customer-login-logo">Your Gofer</div>
-        <h2 className="customer-login-title">Customer portal</h2>
+        <WorkshopLogo name={workshopName} />
+        <h2 className="customer-login-title">{workshopName ? `${workshopName} — Customer portal` : 'Customer portal'}</h2>
         <p className="customer-login-sub">Sign in to view your vehicles, reports and quotes.</p>
         <form onSubmit={handleLogin} className="customer-login-form">
           <label>Email address</label>
