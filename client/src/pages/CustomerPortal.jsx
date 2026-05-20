@@ -431,7 +431,7 @@ function QuoteSection({ quote, onAccept }) {
         <div className="cp-cost-row cp-cost-row--total"><span>Total</span><span>£{quote.totals.total.toFixed(2)}</span></div>
       </div>
       {quote.notes && <p className="cp-quote-notes">{quote.notes}</p>}
-      {onAccept && quote.status === 'sent' && (
+      {onAccept && (quote.status === 'sent' || quote.status === 'published') && (
         <div className="cp-quote-accept">
           {acceptError && <p className="cp-error" style={{ marginBottom: 8 }}>{acceptError}</p>}
           <button className="cp-quote-accept-btn" onClick={handleAccept} disabled={accepting}>
