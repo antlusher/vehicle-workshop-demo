@@ -945,8 +945,23 @@ function ReportTab({ project, token }) {
   );
 }
 
+async function resolvePhotoUrl(filename, token) {
+  if (!filename) return '';
+  const base = import.meta.env.VITE_API_BASE_URL || '';
+  if (filename.includes('/')) {
+    const res = await fetch(`${base}/api/reports/media/url?key=${encodeURIComponent(filename)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.url || '';
+  }
+  return `${base}/uploads/${filename}`;
+}
+
 function PhotosTab({ project, token }) {
   const [photos, setPhotos]     = useState([]);
+  const [urls, setUrls]         = useState({});
   const [loading, setLoading]   = useState(true);
   const [uploading, setUploading] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -954,9 +969,9 @@ function PhotosTab({ project, token }) {
   const [error, setError]       = useState('');
   const fileRef = useRef(null);
 
-  const photoUrl = (filename) => {
-    const base = import.meta.env.VITE_API_BASE_URL || '';
-    return filename?.includes('/') ? filename : `${base}/uploads/${filename}`;
+  const resolveUrls = async (list) => {
+    const entries = await Promise.all(list.map(async (p) => [p.id, await resolvePhotoUrl(p.filename, token)]));
+    setUrls(Object.fromEntries(entries));
   };
 
   useEffect(() => {
@@ -964,7 +979,7 @@ function PhotosTab({ project, token }) {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then(setPhotos)
+      .then((list) => { setPhotos(list); resolveUrls(list); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [project.id]);
@@ -985,6 +1000,7 @@ function PhotosTab({ project, token }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       setPhotos((prev) => [...prev, ...data]);
+      resolveUrls(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1052,7 +1068,7 @@ function PhotosTab({ project, token }) {
           {photos.map((photo) => (
             <div key={photo.id} className="pht-card">
               <div className="pht-thumb" onClick={() => setLightbox(photo)}>
-                <img src={photoUrl(photo.filename)} alt={photo.caption || 'Photo'} loading="lazy" />
+                <img src={urls[photo.id] || ''} alt={photo.caption || 'Photo'} loading="lazy" />
               </div>
               {photo.tags?.length > 0 && (
                 <div className="pht-tags">
@@ -1092,7 +1108,7 @@ function PhotosTab({ project, token }) {
               style={{ position: 'absolute', top: -36, right: 0, color: '#fff', background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer' }}
               onClick={() => setLightbox(null)}
             >✕</button>
-            <img src={photoUrl(lightbox.filename)} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8 }} />
+            <img src={urls[lightbox.id] || ''} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain', borderRadius: 8 }} />
             {lightbox.caption && (
               <p style={{ color: '#e5e7eb', textAlign: 'center', marginTop: 8, fontSize: '0.9rem' }}>{lightbox.caption}</p>
             )}

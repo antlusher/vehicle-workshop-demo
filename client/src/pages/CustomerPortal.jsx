@@ -578,19 +578,36 @@ function VehicleJobs({ vehicle, token, onBack, onSelectJob }) {
 }
 
 // ── Project photos tab ───────────────────────────────────────────────────────
+async function resolvePhotoUrl(filename, token) {
+  if (!filename) return '';
+  const base = import.meta.env.VITE_API_BASE_URL || '';
+  if (filename.includes('/')) {
+    const res = await fetch(`${base}/api/reports/media/url?key=${encodeURIComponent(filename)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return data.url || '';
+  }
+  return `${base}/uploads/${filename}`;
+}
+
 function ProjectPhotosTab({ vehicleId, token }) {
   const [photos, setPhotos] = useState([]);
+  const [urls, setUrls]     = useState({});
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState(null);
   const [activeTag, setActiveTag] = useState('');
 
-  const photoUrl = (filename) => {
-    const base = import.meta.env.VITE_API_BASE_URL || '';
-    return filename?.includes('/') ? filename : `${base}/uploads/${filename}`;
-  };
-
   useEffect(() => {
-    getVehiclePhotos(vehicleId, token).then(setPhotos).catch(() => {}).finally(() => setLoading(false));
+    getVehiclePhotos(vehicleId, token)
+      .then(async (list) => {
+        setPhotos(list);
+        const entries = await Promise.all(list.map(async (p) => [p.id, await resolvePhotoUrl(p.filename, token)]));
+        setUrls(Object.fromEntries(entries));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [vehicleId]);
 
   if (loading) return <div className="cp-loading">Loading photos…</div>;
@@ -620,7 +637,7 @@ function ProjectPhotosTab({ vehicleId, token }) {
       <div className="cp-gallery-grid">
         {visible.map((photo) => (
           <div key={photo.id} className="cp-gallery-item" onClick={() => setLightbox(photo)}>
-            <img src={photoUrl(photo.filename)} alt={photo.caption || 'Photo'} loading="lazy" />
+            <img src={urls[photo.id] || ''} alt={photo.caption || 'Photo'} loading="lazy" />
             {photo.tags?.length > 0 && (
               <div className="cp-gallery-photo-tags">
                 {photo.tags.map((t) => <span key={t} className="cp-gallery-tag">{t}</span>)}
@@ -636,7 +653,7 @@ function ProjectPhotosTab({ vehicleId, token }) {
         <div className="preview-overlay" onClick={() => setLightbox(null)}>
           <div className="preview-modal" style={{ maxWidth: 800, background: '#000' }} onClick={(e) => e.stopPropagation()}>
             <button className="preview-close" onClick={() => setLightbox(null)} style={{ color: '#fff' }}>✕</button>
-            <img src={photoUrl(lightbox.filename)} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
+            <img src={urls[lightbox.id] || ''} alt={lightbox.caption} style={{ width: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
             {lightbox.caption && <p style={{ color: '#e5e7eb', padding: '8px 16px', fontSize: '0.85rem', textAlign: 'center' }}>{lightbox.caption}</p>}
             {lightbox.tags?.length > 0 && (
               <div style={{ display: 'flex', justifyContent: 'center', gap: 6, padding: '0 16px 12px' }}>
