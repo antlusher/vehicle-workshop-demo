@@ -144,6 +144,19 @@ router.delete('/customers/:id/vehicles/:vehicleId', async (req, res) => {
   return res.json({ deleted: true });
 });
 
+router.post('/customers/:id/set-password', async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  const { rows } = await query(
+    `SELECT id FROM users WHERE id=$1 AND role='customer' AND workshop_id=$2`,
+    [req.params.id, req.workshopId]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+  const hash = await bcrypt.hash(password, 10);
+  await query('UPDATE users SET password=$1, token=NULL, session_active=false WHERE id=$2', [hash, req.params.id]);
+  return res.json({ ok: true });
+});
+
 router.delete('/customers/:id', async (req, res) => {
   try {
     const { rows } = await query(

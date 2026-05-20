@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
-import { getCustomerStats } from '../../services/adminApi';
+import { getCustomerStats, setCustomerPassword } from '../../services/adminApi';
 
 const EMPTY_DETAILS = { name: '', phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '', email: '' };
 
@@ -227,7 +227,24 @@ function DetailsTab({ customer, token, onUpdated }) {
 function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   const [tab, setTab] = useState('activity');
   const [deleting, setDeleting] = useState(false);
+  const [showPwForm, setShowPwForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwDone, setPwDone] = useState(false);
   const TABS = [{ id: 'activity', label: 'Activity' }, { id: 'details', label: 'Details' }, { id: 'vehicles', label: 'Vehicles' }];
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setPwSaving(true); setPwError(''); setPwDone(false);
+    try {
+      await setCustomerPassword(customer.id, newPassword, token);
+      setPwDone(true);
+      setNewPassword('');
+      setTimeout(() => { setPwDone(false); setShowPwForm(false); }, 1500);
+    } catch (err) { setPwError(err.message); }
+    finally { setPwSaving(false); }
+  };
 
   const handleDelete = async () => {
     if (!confirm(`Delete ${customer.name || customer.email}? This cannot be undone. Their vehicles and job history will remain but the customer record will be removed.`)) return;
@@ -261,15 +278,41 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
         {tab === 'vehicles' && <VehiclesTab customer={customer} token={token} />}
       </div>
 
-      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #f1f5f9' }}>
-        <button
-          className="secondary"
-          style={{ fontSize: '0.8rem', background: '#fee2e2', color: '#b91c1c', borderColor: '#fecaca' }}
-          onClick={handleDelete}
-          disabled={deleting}
-        >
-          {deleting ? 'Deleting…' : 'Delete customer'}
-        </button>
+      <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            className="secondary"
+            style={{ fontSize: '0.8rem' }}
+            onClick={() => { setShowPwForm((v) => !v); setPwError(''); setNewPassword(''); setPwDone(false); }}
+          >
+            Set password
+          </button>
+          <button
+            className="secondary"
+            style={{ fontSize: '0.8rem', background: '#fee2e2', color: '#b91c1c', borderColor: '#fecaca' }}
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting…' : 'Delete customer'}
+          </button>
+        </div>
+        {showPwForm && (
+          <form onSubmit={handleSetPassword} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <input
+              type="password"
+              placeholder="New password (min 8 chars)"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={8}
+              required
+              style={{ flex: 1, minWidth: 180, fontSize: '0.85rem' }}
+            />
+            <button type="submit" disabled={pwSaving} style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+              {pwSaving ? 'Saving…' : pwDone ? 'Done ✓' : 'Confirm'}
+            </button>
+            {pwError && <p className="error" style={{ width: '100%', margin: 0, fontSize: '0.8rem' }}>{pwError}</p>}
+          </form>
+        )}
       </div>
     </div>
   );

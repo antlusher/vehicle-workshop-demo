@@ -92,6 +92,9 @@ export const extractKnowledge = (text, token) =>
 export const getCustomerStats = (id, token) =>
   request(`/api/admin/customers/${id}/stats`, {}, token);
 
+export const setCustomerPassword = (id, password, token) =>
+  request(`/api/admin/customers/${id}/set-password`, { method: 'POST', body: { password } }, token);
+
 export function estimateCost(inputTokens, outputTokens) {
   const cost = (inputTokens * 0.000003) + (outputTokens * 0.000015);
   return cost.toFixed(4);
