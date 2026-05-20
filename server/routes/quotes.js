@@ -365,6 +365,26 @@ router.patch('/:id', requireAuth, async (req, res) => {
       }
     }
 
+    // When marking approved: inherit customer from project and ensure vehicle is linked
+    let resolvedCustomerId = customer_id ?? null;
+    if (status === 'approved' && !resolvedCustomerId) {
+      const { rows: projRows } = await query(
+        `SELECT p.customer_id, p.vehicle_id
+         FROM quotes q JOIN projects p ON p.id = q.project_id
+         WHERE q.id = $1 AND q.customer_id IS NULL`,
+        [req.params.id]
+      );
+      if (projRows.length && projRows[0].customer_id) {
+        resolvedCustomerId = projRows[0].customer_id;
+        if (projRows[0].vehicle_id) {
+          await query(
+            `INSERT INTO customer_vehicles (customer_id, vehicle_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
+            [resolvedCustomerId, projRows[0].vehicle_id]
+          );
+        }
+      }
+    }
+
     await query(
       `UPDATE quotes SET
          status=COALESCE($1,status),
@@ -375,7 +395,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
          updated_at=now()
        WHERE id=$6`,
       [status || null, notes ?? null, diagnostic_summary ?? null,
-       title ?? null, customer_id ?? null, req.params.id]
+       title ?? null, resolvedCustomerId, req.params.id]
     );
     const quote = await getQuoteWithLines(req.params.id);
     if (!quote) return res.status(404).json({ error: 'Quote not found' });
