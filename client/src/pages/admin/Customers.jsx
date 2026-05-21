@@ -272,9 +272,11 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   };
 
   return (
-    <div className="detail-panel">
-      <button className="detail-close" onClick={onClose}>✕</button>
-      <h3 className="detail-title">{customer.name || customer.email}</h3>
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 className="detail-title" style={{ margin: 0 }}>{customer.name || customer.email}</h3>
+        <button className="preview-close" onClick={onClose}>✕</button>
+      </div>
       <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: 14 }}>{customer.email}</p>
 
       <div className="cust-detail-tabs">
@@ -437,8 +439,8 @@ export default function Customers({ token }) {
         </div>
       )}
 
-      <div className="admin-split">
-        <div className={`admin-split-main${selected ? ' admin-split-main--narrow' : ''}`}>
+      <div>
+        <div>
           {loading ? <p className="admin-loading">Loading…</p> : (
             <div className="admin-table-wrap">
               <table className="admin-table">
@@ -474,15 +476,22 @@ export default function Customers({ token }) {
             </div>
           )}
         </div>
-        {selected && (
-          <CustomerDetail
-            customer={selected} token={token}
-            onClose={() => setSelected(null)}
-            onUpdated={handleUpdated}
-            onDeleted={handleDeleted}
-          />
-        )}
       </div>
+
+      {selected && (
+        <div className="preview-overlay" onClick={() => setSelected(null)}>
+          <div className="preview-modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-body" style={{ padding: 0 }}>
+              <CustomerDetail
+                customer={selected} token={token}
+                onClose={() => setSelected(null)}
+                onUpdated={handleUpdated}
+                onDeleted={handleDeleted}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

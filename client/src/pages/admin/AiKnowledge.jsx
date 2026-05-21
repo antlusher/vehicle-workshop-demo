@@ -179,8 +179,11 @@ function ConversationPanel({ projectId, token, onClose }) {
   }, [projectId, token]);
 
   return (
-    <div className="detail-panel" style={{ flex: '0 0 46%' }}>
-      <button className="detail-close" onClick={onClose}>✕</button>
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span />
+        <button className="preview-close" onClick={onClose}>✕</button>
+      </div>
       {loading && <p className="admin-loading">Loading...</p>}
       {data && (
         <>
@@ -245,8 +248,8 @@ function RequestLog({ token }) {
         <StatCard label="Estimated cost" value={`$${parseFloat(estimateCost(totalIn, totalOut)).toFixed(2)}`} />
       </div>
 
-      <div className="admin-split">
-        <div className={`admin-split-main${selectedProjectId ? ' admin-split-main--narrow' : ''}`}>
+      <div>
+        <div>
           <input
             className="admin-search"
             style={{ marginBottom: 12, maxWidth: 360 }}
@@ -285,8 +288,17 @@ function RequestLog({ token }) {
             </table>
           </div>
         </div>
-        {selectedProjectId && <ConversationPanel projectId={selectedProjectId} token={token} onClose={() => setSelectedProjectId(null)} />}
       </div>
+
+      {selectedProjectId && (
+        <div className="preview-overlay" onClick={() => setSelectedProjectId(null)}>
+          <div className="preview-modal" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-body" style={{ padding: 0 }}>
+              <ConversationPanel projectId={selectedProjectId} token={token} onClose={() => setSelectedProjectId(null)} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

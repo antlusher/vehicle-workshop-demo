@@ -41,16 +41,21 @@ function UserDetailPanel({ userId, token, onClose, onUpdated, currentUserEmail }
   };
 
   if (!user) return (
-    <div className="detail-panel">
-      <button className="detail-close" onClick={onClose}>✕</button>
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span />
+        <button className="preview-close" onClick={onClose}>✕</button>
+      </div>
       <p className="admin-loading">Loading...</p>
     </div>
   );
 
   return (
-    <div className="detail-panel">
-      <button className="detail-close" onClick={onClose}>✕</button>
-      <h3 className="detail-title">{user.email}</h3>
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 className="detail-title" style={{ margin: 0 }}>{user.email}</h3>
+        <button className="preview-close" onClick={onClose}>✕</button>
+      </div>
 
       <div className="detail-meta">
         <RoleBadge role={user.role} />
@@ -229,79 +234,83 @@ export default function Users({ token, currentUserEmail }) {
   if (loading) return <p className="admin-loading">Loading...</p>;
 
   return (
-    <div className="admin-split">
-      <div className={`admin-split-main${selectedId ? ' admin-split-main--narrow' : ''}`}>
-        <div className="admin-toolbar">
-          <h2 className="admin-page-title" style={{ margin: 0 }}>Users</h2>
-          <input
-            className="admin-search"
-            placeholder="Search by email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button onClick={() => { setShowCreate(true); setSelectedId(null); }} style={{ marginLeft: 'auto' }}>+ Add user</button>
-        </div>
+    <div>
+      <div className="admin-toolbar">
+        <h2 className="admin-page-title" style={{ margin: 0 }}>Users</h2>
+        <input
+          className="admin-search"
+          placeholder="Search by email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button onClick={() => { setShowCreate(true); setSelectedId(null); }} style={{ marginLeft: 'auto' }}>+ Add user</button>
+      </div>
 
-        {showCreate && (
-          <div className="preview-overlay" onClick={() => setShowCreate(false)}>
-            <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-              <div className="preview-modal-header">
-                <h3>New user</h3>
-                <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
-              </div>
-              <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
-                <CreateUserForm
-                  token={token}
-                  onCreated={() => { setShowCreate(false); load(); }}
-                  onCancel={() => setShowCreate(false)}
-                />
-              </div>
+      {showCreate && (
+        <div className="preview-overlay" onClick={() => setShowCreate(false)}>
+          <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>New user</h3>
+              <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              <CreateUserForm
+                token={token}
+                onCreated={() => { setShowCreate(false); load(); }}
+                onCancel={() => setShowCreate(false)}
+              />
             </div>
           </div>
-        )}
-
-        <div className="admin-table-wrap">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Subscribed</th>
-                <th>Last login</th>
-                <th>Projects</th>
-                <th>AI requests</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((u) => (
-                <tr
-                  key={u.id}
-                  className={`admin-table-row${selectedId === u.id ? ' admin-table-row--active' : ''}`}
-                  onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}
-                >
-                  <td>
-                    <span className={u.session_active ? 'user-active-pill' : ''}>{u.email}</span>
-                  </td>
-                  <td><RoleBadge role={u.role} /></td>
-                  <td><Badge value={u.subscribed} trueLabel="Yes" falseLabel="No" /></td>
-                  <td>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
-                  <td>{u.project_count}</td>
-                  <td>{u.ai_request_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
+      )}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Subscribed</th>
+              <th>Last login</th>
+              <th>Projects</th>
+              <th>AI requests</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((u) => (
+              <tr
+                key={u.id}
+                className={`admin-table-row${selectedId === u.id ? ' admin-table-row--active' : ''}`}
+                onClick={() => setSelectedId(u.id === selectedId ? null : u.id)}
+              >
+                <td>
+                  <span className={u.session_active ? 'user-active-pill' : ''}>{u.email}</span>
+                </td>
+                <td><RoleBadge role={u.role} /></td>
+                <td><Badge value={u.subscribed} trueLabel="Yes" falseLabel="No" /></td>
+                <td>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
+                <td>{u.project_count}</td>
+                <td>{u.ai_request_count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {selectedId && (
-        <UserDetailPanel
-          userId={selectedId}
-          token={token}
-          onClose={() => setSelectedId(null)}
-          onUpdated={load}
-          currentUserEmail={currentUserEmail}
-        />
+        <div className="preview-overlay" onClick={() => setSelectedId(null)}>
+          <div className="preview-modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-body" style={{ padding: 0 }}>
+              <UserDetailPanel
+                userId={selectedId}
+                token={token}
+                onClose={() => setSelectedId(null)}
+                onUpdated={load}
+                currentUserEmail={currentUserEmail}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

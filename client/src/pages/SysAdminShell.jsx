@@ -543,9 +543,11 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
   const f = (key) => ({ value: form[key], onChange: (e) => setForm((s) => ({ ...s, [key]: e.target.value })) });
 
   return (
-    <div className="detail-panel">
-      <button className="detail-close" onClick={onClose}>✕</button>
-      <h3 className="detail-title">{workshop.name}</h3>
+    <div style={{ padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 className="detail-title" style={{ margin: 0 }}>{workshop.name}</h3>
+        <button className="preview-close" onClick={onClose}>✕</button>
+      </div>
       <p style={{ fontSize: '0.8rem', color: '#94a3b8', marginBottom: 14 }}>
         ID: <code style={{ fontSize: '0.72rem' }}>{workshop.id}</code>
       </p>
@@ -718,142 +720,155 @@ function WorkshopsPage({ token, onActAs }) {
     <div>
       <div className="admin-toolbar">
         <h2 className="admin-page-title" style={{ margin: 0 }}>Workshops</h2>
-        <button onClick={() => setShowCreate((s) => !s)}>{showCreate ? 'Cancel' : '+ New workshop'}</button>
+        <button onClick={() => setShowCreate(true)}>+ New workshop</button>
       </div>
 
       {showCreate && (
-        <div className="kb-form-wrap" style={{ marginBottom: 20 }}>
-          <h3 className="admin-section-title" style={{ marginTop: 0 }}>Onboard new workshop</h3>
-          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="kb-form-row">
-              <div className="kb-form-group">
-                <label>Workshop name <span style={{ color: '#b91c1c' }}>*</span></label>
-                <input required placeholder="Acme Auto" {...ff('name')} />
-              </div>
-              <div className="kb-form-group">
-                <label>Plan</label>
-                <select {...ff('plan')}>
-                  {PLANS.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                </select>
-              </div>
+        <div className="preview-overlay" onClick={() => setShowCreate(false)}>
+          <div className="preview-modal" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>Onboard new workshop</h3>
+              <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
             </div>
-            <div className="kb-form-group">
-              <label>Slug <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>(optional, auto-generated if blank)</span></label>
-              <input placeholder="acme-auto" {...ff('slug')} />
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="kb-form-row">
+                  <div className="kb-form-group">
+                    <label>Workshop name <span style={{ color: '#b91c1c' }}>*</span></label>
+                    <input required placeholder="Acme Auto" {...ff('name')} />
+                  </div>
+                  <div className="kb-form-group">
+                    <label>Plan</label>
+                    <select {...ff('plan')}>
+                      {PLANS.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="kb-form-group">
+                  <label>Slug <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>(optional, auto-generated if blank)</span></label>
+                  <input placeholder="acme-auto" {...ff('slug')} />
+                </div>
+                <h4 className="admin-section-title" style={{ marginTop: 8, marginBottom: 4 }}>Initial owner account</h4>
+                <div className="kb-form-row">
+                  <div className="kb-form-group">
+                    <label>Manager name</label>
+                    <input placeholder="Jane Smith" {...ff('ownerName')} />
+                  </div>
+                  <div className="kb-form-group">
+                    <label>Manager email</label>
+                    <input type="email" placeholder="jane@acmeauto.co.uk" {...ff('ownerEmail')} />
+                  </div>
+                </div>
+                <div className="kb-form-group">
+                  <label>Temporary password</label>
+                  <input type="password" placeholder="They can change this on first login" {...ff('ownerPassword')} />
+                </div>
+                {createErr && <p className="error">{createErr}</p>}
+                <div className="kb-form-actions">
+                  <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create workshop'}</button>
+                  <button type="button" className="secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+                </div>
+              </form>
             </div>
-            <h4 className="admin-section-title" style={{ marginTop: 8, marginBottom: 4 }}>Initial owner account</h4>
-            <div className="kb-form-row">
-              <div className="kb-form-group">
-                <label>Manager name</label>
-                <input placeholder="Jane Smith" {...ff('ownerName')} />
-              </div>
-              <div className="kb-form-group">
-                <label>Manager email</label>
-                <input type="email" placeholder="jane@acmeauto.co.uk" {...ff('ownerEmail')} />
-              </div>
-            </div>
-            <div className="kb-form-group">
-              <label>Temporary password</label>
-              <input type="password" placeholder="They can change this on first login" {...ff('ownerPassword')} />
-            </div>
-            {createErr && <p className="error">{createErr}</p>}
-            <div className="kb-form-actions">
-              <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create workshop'}</button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
 
-      <div className="admin-split">
-        <div className={`admin-split-main${selected ? ' admin-split-main--narrow' : ''}`}>
-          {loading ? <p className="admin-loading">Loading…</p> : (() => {
-            const maxAi = Math.max(...workshops.map((w) => w.ai_requests_30d || 0), 0);
-            const maxKb = Math.max(...workshops.map((w) => w.kb_entries || 0), 0);
-            return (
-            <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead>
-                  <tr><th>Workshop</th><th>Plan</th><th>Staff</th><th>Projects</th><th>AI 30d</th><th>KB</th><th>Last active</th><th>Status</th><th></th></tr>
-                </thead>
-                <tbody>
-                  {workshops.map((w) => {
-                    const tags = [];
-                    if (maxAi > 0 && w.ai_requests_30d === maxAi) tags.push({ label: 'Most Active', color: '#3b82f6' });
-                    if (maxKb > 0 && w.kb_entries === maxKb) tags.push({ label: 'Top Contributor', color: '#10b981' });
-                    const lastActivity = w.last_ai_at || w.last_login_at;
-                    const recentMs = lastActivity ? Date.now() - new Date(lastActivity).getTime() : null;
-                    const isLive = recentMs !== null && recentMs < 60 * 60 * 1000;
-                    return (
-                    <tr key={w.id} className={`admin-table-row${selected?.id===w.id?' admin-table-row--active':''}`}>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{w.name}</div>
-                        <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
-                          {isLive && <span style={{ fontSize: '0.65rem', background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>● LIVE</span>}
-                          {tags.map((t) => (
-                            <span key={t.label} style={{ fontSize: '0.65rem', background: t.color, color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>{t.label}</span>
-                          ))}
-                        </div>
-                      </td>
-                      <td><span className={`sys-plan-badge sys-plan-badge--${w.plan}`}>{w.plan}</span></td>
-                      <td style={{ textAlign: 'center' }}>{w.staff_count || 0}</td>
-                      <td style={{ textAlign: 'center' }}>{w.project_count || 0}</td>
-                      <td style={{ textAlign: 'center' }}>
-                        <span style={{ fontWeight: 600, color: w.ai_requests_30d > 0 ? '#e2e8f0' : '#6b7280' }}>{(w.ai_requests_30d || 0).toLocaleString()}</span>
-                        {w.tokens_30d > 0 && <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>{(w.tokens_30d / 1000).toFixed(0)}k tok</div>}
-                      </td>
-                      <td style={{ textAlign: 'center', color: w.kb_entries > 0 ? '#e2e8f0' : '#6b7280' }}>{w.kb_entries || 0}</td>
-                      <td style={{ fontSize: '0.78rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
-                        {lastActivity ? fmtRelative(lastActivity) : '—'}
-                      </td>
-                      <td>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: w.active ? '#16a34a' : '#dc2626' }}>
-                          {w.active ? 'Active' : 'Suspended'}
-                        </span>
-                      </td>
-                      <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
-                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 12px' }}
-                          onClick={() => setSelected(selected?.id===w.id ? null : w)}>
-                          {selected?.id===w.id ? 'Close' : 'Manage'}
-                        </button>
-                        <button
-                          className="secondary"
-                          style={{ fontSize: '0.75rem', padding: '3px 12px', color: '#7c3aed', borderColor: '#7c3aed' }}
-                          disabled={actingAs === w.id}
-                          onClick={async () => {
-                            setActingAs(w.id);
-                            try {
-                              const result = await actAs(w.id, token);
-                              onActAs({ token: result.token, workshopName: result.workshopName });
-                            } catch (e) { alert(e.message); }
-                            finally { setActingAs(null); }
-                          }}
-                        >
-                          {actingAs === w.id ? '…' : 'Act as'}
-                        </button>
-                      </td>
-                    </tr>
-                    );
-                  })}
-                  {!workshops.length && (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No workshops yet.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            );
-          })()}
-        </div>
-        {selected && (
-          <WorkshopDetail
-            workshop={selected} token={token}
-            onClose={() => setSelected(null)}
-            onUpdated={(updated) => {
-              setWorkshops((ws) => ws.map((w) => w.id === updated.id ? { ...w, ...updated } : w));
-              setSelected((s) => ({ ...s, ...updated }));
-            }}
-          />
-        )}
+      <div>
+        {loading ? <p className="admin-loading">Loading…</p> : (() => {
+          const maxAi = Math.max(...workshops.map((w) => w.ai_requests_30d || 0), 0);
+          const maxKb = Math.max(...workshops.map((w) => w.kb_entries || 0), 0);
+          return (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr><th>Workshop</th><th>Plan</th><th>Staff</th><th>Projects</th><th>AI 30d</th><th>KB</th><th>Last active</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody>
+                {workshops.map((w) => {
+                  const tags = [];
+                  if (maxAi > 0 && w.ai_requests_30d === maxAi) tags.push({ label: 'Most Active', color: '#3b82f6' });
+                  if (maxKb > 0 && w.kb_entries === maxKb) tags.push({ label: 'Top Contributor', color: '#10b981' });
+                  const lastActivity = w.last_ai_at || w.last_login_at;
+                  const recentMs = lastActivity ? Date.now() - new Date(lastActivity).getTime() : null;
+                  const isLive = recentMs !== null && recentMs < 60 * 60 * 1000;
+                  return (
+                  <tr key={w.id} className={`admin-table-row${selected?.id===w.id?' admin-table-row--active':''}`}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{w.name}</div>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 3, flexWrap: 'wrap' }}>
+                        {isLive && <span style={{ fontSize: '0.65rem', background: '#16a34a', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>● LIVE</span>}
+                        {tags.map((t) => (
+                          <span key={t.label} style={{ fontSize: '0.65rem', background: t.color, color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>{t.label}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td><span className={`sys-plan-badge sys-plan-badge--${w.plan}`}>{w.plan}</span></td>
+                    <td style={{ textAlign: 'center' }}>{w.staff_count || 0}</td>
+                    <td style={{ textAlign: 'center' }}>{w.project_count || 0}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <span style={{ fontWeight: 600, color: w.ai_requests_30d > 0 ? '#e2e8f0' : '#6b7280' }}>{(w.ai_requests_30d || 0).toLocaleString()}</span>
+                      {w.tokens_30d > 0 && <div style={{ fontSize: '0.68rem', color: '#6b7280' }}>{(w.tokens_30d / 1000).toFixed(0)}k tok</div>}
+                    </td>
+                    <td style={{ textAlign: 'center', color: w.kb_entries > 0 ? '#e2e8f0' : '#6b7280' }}>{w.kb_entries || 0}</td>
+                    <td style={{ fontSize: '0.78rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                      {lastActivity ? fmtRelative(lastActivity) : '—'}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: w.active ? '#16a34a' : '#dc2626' }}>
+                        {w.active ? 'Active' : 'Suspended'}
+                      </span>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
+                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 12px' }}
+                        onClick={() => setSelected(selected?.id===w.id ? null : w)}>
+                        {selected?.id===w.id ? 'Close' : 'Manage'}
+                      </button>
+                      <button
+                        className="secondary"
+                        style={{ fontSize: '0.75rem', padding: '3px 12px', color: '#7c3aed', borderColor: '#7c3aed' }}
+                        disabled={actingAs === w.id}
+                        onClick={async () => {
+                          setActingAs(w.id);
+                          try {
+                            const result = await actAs(w.id, token);
+                            onActAs({ token: result.token, workshopName: result.workshopName });
+                          } catch (e) { alert(e.message); }
+                          finally { setActingAs(null); }
+                        }}
+                      >
+                        {actingAs === w.id ? '…' : 'Act as'}
+                      </button>
+                    </td>
+                  </tr>
+                  );
+                })}
+                {!workshops.length && (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9ca3af', padding: 32 }}>No workshops yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          );
+        })()}
       </div>
+
+      {selected && (
+        <div className="preview-overlay" onClick={() => setSelected(null)}>
+          <div className="preview-modal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-body" style={{ padding: 0 }}>
+              <WorkshopDetail
+                workshop={selected} token={token}
+                onClose={() => setSelected(null)}
+                onUpdated={(updated) => {
+                  setWorkshops((ws) => ws.map((w) => w.id === updated.id ? { ...w, ...updated } : w));
+                  setSelected((s) => ({ ...s, ...updated }));
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
