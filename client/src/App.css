@@ -1,3 +1,29 @@
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #16a34a;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  z-index: 99999;
+  white-space: nowrap;
+  animation: toast-in 0.2s ease;
+  pointer-events: none;
+}
+.toast--error   { background: #dc2626; }
+.toast--warning { background: #d97706; }
+.toast--info    { background: #3b82f6; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0);    }
+}
+
 /* ── Base ── */
 .login-page {
   min-height: 100vh;

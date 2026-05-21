@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../context/ToastContext';
 import ConfirmDialog from '../components/ConfirmDialog';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import StoreRoundedIcon from '@mui/icons-material/StoreRounded';
@@ -505,7 +506,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
     active: workshop.active !== false,
   });
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'owner' });
@@ -520,12 +521,11 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
   }, [tab, workshop.id]);
 
   const handleSave = async () => {
-    setSaving(true); setSaved(false);
+    setSaving(true);
     try {
       const updated = await updateWorkshop(workshop.id, form, token);
       onUpdated(updated);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      toast('Workshop config saved');
     } finally { setSaving(false); }
   };
 
@@ -579,7 +579,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
               </div>
             </div>
             <button onClick={handleSave} disabled={saving} style={{ alignSelf: 'flex-start' }}>
-              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save config'}
+              {saving ? 'Saving…' : 'Save config'}
             </button>
           </div>
         )}
@@ -611,7 +611,7 @@ function WorkshopDetail({ workshop, token, onClose, onUpdated }) {
               <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '4px 0 0' }}>0 = unlimited</p>
             </div>
             <button onClick={handleSave} disabled={saving} style={{ alignSelf: 'flex-start' }}>
-              {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save AI config'}
+              {saving ? 'Saving…' : 'Save AI config'}
             </button>
           </div>
         )}

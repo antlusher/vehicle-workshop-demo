@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../../context/ToastContext';
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
 import { getCustomerStats, setCustomerPassword } from '../../services/adminApi';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -175,16 +176,15 @@ function DetailsTab({ customer, token, onUpdated }) {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [savedOk, setSavedOk] = useState(false);
+  const toast = useToast();
 
   const handleSave = async (e) => {
     e.preventDefault();
-    setSaving(true); setSaveError(''); setSavedOk(false);
+    setSaving(true); setSaveError('');
     try {
       const updated = await updateCustomer(customer.id, details, token);
       onUpdated(updated);
-      setSavedOk(true);
-      setTimeout(() => setSavedOk(false), 2000);
+      toast('Customer details saved');
     } catch (err) { setSaveError(err.message); }
     finally { setSaving(false); }
   };
@@ -230,7 +230,7 @@ function DetailsTab({ customer, token, onUpdated }) {
       </div>
       {saveError && <p className="error" style={{ margin: 0 }}>{saveError}</p>}
       <button type="submit" disabled={saving} style={{ alignSelf: 'flex-start', fontSize: '0.85rem' }}>
-        {saving ? 'Saving…' : savedOk ? 'Saved ✓' : 'Save details'}
+        {saving ? 'Saving…' : 'Save details'}
       </button>
     </form>
   );

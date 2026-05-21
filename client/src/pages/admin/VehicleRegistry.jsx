@@ -5,6 +5,7 @@ import {
   getVehicleTypes, createVehicleType, updateVehicleType, deleteVehicleType,
 } from '../../services/registryApi';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useToast } from '../../context/ToastContext';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -93,6 +94,7 @@ function EngineForm({ initial, onSave, onCancel }) {
 }
 
 function EnginesTab({ token }) {
+  const toast = useToast();
   const [engines, setEngines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -123,11 +125,11 @@ function EnginesTab({ token }) {
               <button className="preview-close" onClick={closeModal}>✕</button>
             </div>
             <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
-              {showForm && <EngineForm onSave={async (form) => { await createEngine(form, token); closeModal(); load(); }} onCancel={closeModal} />}
+              {showForm && <EngineForm onSave={async (form) => { await createEngine(form, token); closeModal(); load(); toast('Engine saved'); }} onCancel={closeModal} />}
               {editingEntry && (
                 <EngineForm
                   initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
-                  onSave={async (form) => { await updateEngine(editingId, form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await updateEngine(editingId, form, token); closeModal(); load(); toast('Engine saved'); }}
                   onCancel={closeModal}
                 />
               )}
@@ -142,7 +144,7 @@ function EnginesTab({ token }) {
         message={`Delete engine ${engines.find((e) => e.id === confirmDeleteId)?.code}? This cannot be undone.`}
         confirmLabel="Delete"
         danger
-        onConfirm={async () => { await deleteEngine(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onConfirm={async () => { await deleteEngine(confirmDeleteId, token); setConfirmDeleteId(null); load(); toast('Deleted'); }}
         onCancel={() => setConfirmDeleteId(null)}
       />
 
@@ -238,6 +240,7 @@ function TransmissionForm({ initial, onSave, onCancel }) {
 }
 
 function TransmissionsTab({ token }) {
+  const toast = useToast();
   const [transmissions, setTransmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -268,11 +271,11 @@ function TransmissionsTab({ token }) {
               <button className="preview-close" onClick={closeModal}>✕</button>
             </div>
             <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
-              {showForm && <TransmissionForm onSave={async (form) => { await createTransmission(form, token); closeModal(); load(); }} onCancel={closeModal} />}
+              {showForm && <TransmissionForm onSave={async (form) => { await createTransmission(form, token); closeModal(); load(); toast('Transmission saved'); }} onCancel={closeModal} />}
               {editingEntry && (
                 <TransmissionForm
                   initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
-                  onSave={async (form) => { await updateTransmission(editingId, form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await updateTransmission(editingId, form, token); closeModal(); load(); toast('Transmission saved'); }}
                   onCancel={closeModal}
                 />
               )}
@@ -287,7 +290,7 @@ function TransmissionsTab({ token }) {
         message={`Delete transmission ${transmissions.find((t) => t.id === confirmDeleteId)?.code}? This cannot be undone.`}
         confirmLabel="Delete"
         danger
-        onConfirm={async () => { await deleteTransmission(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onConfirm={async () => { await deleteTransmission(confirmDeleteId, token); setConfirmDeleteId(null); load(); toast('Deleted'); }}
         onCancel={() => setConfirmDeleteId(null)}
       />
 
@@ -435,6 +438,7 @@ function VehicleTypeForm({ initial, engines, transmissions, onSave, onCancel }) 
 }
 
 function VehicleTypesTab({ token }) {
+  const toast = useToast();
   const [vehicleTypes, setVehicleTypes] = useState([]);
   const [engines, setEngines] = useState([]);
   const [transmissions, setTransmissions] = useState([]);
@@ -480,14 +484,14 @@ function VehicleTypesTab({ token }) {
             <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
               {showForm && (
                 <VehicleTypeForm engines={engines} transmissions={transmissions}
-                  onSave={async (form) => { await createVehicleType(form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await createVehicleType(form, token); closeModal(); load(); toast('Vehicle type saved'); }}
                   onCancel={closeModal}
                 />
               )}
               {editingEntry && (
                 <VehicleTypeForm
                   initial={editingEntry} engines={engines} transmissions={transmissions}
-                  onSave={async (form) => { await updateVehicleType(editingId, form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await updateVehicleType(editingId, form, token); closeModal(); load(); toast('Vehicle type saved'); }}
                   onCancel={closeModal}
                 />
               )}
@@ -502,7 +506,7 @@ function VehicleTypesTab({ token }) {
         message={(() => { const v = vehicleTypes.find((x) => x.id === confirmDeleteId); return v ? `Delete ${v.make} ${v.model}? This cannot be undone.` : 'Delete this vehicle type?'; })()}
         confirmLabel="Delete"
         danger
-        onConfirm={async () => { await deleteVehicleType(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onConfirm={async () => { await deleteVehicleType(confirmDeleteId, token); setConfirmDeleteId(null); load(); toast('Deleted'); }}
         onCancel={() => setConfirmDeleteId(null)}
       />
 

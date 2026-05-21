@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { useToast } from '../../context/ToastContext';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import {
   getAiRequests, getAiStats, getConversation, estimateCost,
@@ -612,6 +613,7 @@ function ImportTab({ token }) {
 }
 
 function KnowledgeBaseTab({ token }) {
+  const toast = useToast();
   const [entries, setEntries] = useState([]);
   const [engines, setEngines] = useState([]);
   const [transmissions, setTransmissions] = useState([]);
@@ -657,14 +659,14 @@ function KnowledgeBaseTab({ token }) {
             <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
               {showForm && (
                 <KbForm engines={engines} transmissions={transmissions}
-                  onSave={async (form) => { await createKbEntry(form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await createKbEntry(form, token); closeModal(); load(); toast('Knowledge entry saved'); }}
                   onCancel={closeModal} />
               )}
               {editingEntry && (
                 <KbForm
                   engines={engines} transmissions={transmissions}
                   initial={{ category: editingEntry.category, make: editingEntry.make || '', model: editingEntry.model || '', year_from: editingEntry.year_from || '', year_to: editingEntry.year_to || '', fault_code: editingEntry.fault_code || '', title: editingEntry.title, content: editingEntry.content, source: editingEntry.source || '', engine_id: editingEntry.engine_id || '', transmission_id: editingEntry.transmission_id || '' }}
-                  onSave={async (form) => { await updateKbEntry(editingId, form, token); closeModal(); load(); }}
+                  onSave={async (form) => { await updateKbEntry(editingId, form, token); closeModal(); load(); toast('Knowledge entry saved'); }}
                   onCancel={closeModal}
                 />
               )}
@@ -679,7 +681,7 @@ function KnowledgeBaseTab({ token }) {
         message="Delete this knowledge base entry? This cannot be undone."
         confirmLabel="Delete"
         danger
-        onConfirm={async () => { await deleteKbEntry(confirmDeleteId, token); setEntries((x) => x.filter((i) => i.id !== confirmDeleteId)); setConfirmDeleteId(null); }}
+        onConfirm={async () => { await deleteKbEntry(confirmDeleteId, token); setEntries((x) => x.filter((i) => i.id !== confirmDeleteId)); setConfirmDeleteId(null); toast('Entry deleted', 'success'); }}
         onCancel={() => setConfirmDeleteId(null)}
       />
 

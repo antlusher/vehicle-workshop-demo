@@ -4,8 +4,9 @@ import {
   Card, CardContent, TextField, Button, IconButton,
   Switch, FormControlLabel,
   Table, TableHead, TableBody, TableRow, TableCell,
-  Alert, Snackbar, InputAdornment,
+  Alert, InputAdornment,
 } from '@mui/material';
+import { useToast } from '../../context/ToastContext';
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -104,14 +105,6 @@ function Section({ title, children, sx }) {
   );
 }
 
-function useSaveState() {
-  const [saving, setSaving] = useState(false);
-  const [snack, setSnack] = useState({ open: false, severity: 'success', msg: '' });
-  const toast = (severity, msg) => setSnack({ open: true, severity, msg });
-  const closeSnack = () => setSnack(s => ({ ...s, open: false }));
-  return { saving, setSaving, snack, toast, closeSnack };
-}
-
 function SaveButton({ saving, onSave }) {
   return (
     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
@@ -123,16 +116,6 @@ function SaveButton({ saving, onSave }) {
   );
 }
 
-function SaveSnack({ snack, onClose }) {
-  return (
-    <Snackbar open={snack.open} autoHideDuration={3000} onClose={onClose}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}>
-      <Alert onClose={onClose} severity={snack.severity} variant="filled"
-        sx={{ borderRadius: 3 }}>{snack.msg}</Alert>
-    </Snackbar>
-  );
-}
-
 // ── Workshop Details ──────────────────────────────────────────────────────────
 
 function DetailsTab({ token }) {
@@ -140,7 +123,8 @@ function DetailsTab({ token }) {
     workshopName: '', addressLine1: '', addressLine2: '',
     city: '', postcode: '', phone: '', email: '', paymentNotes: '',
   });
-  const { saving, setSaving, snack, toast, closeSnack } = useSaveState();
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     apiFetch('/quotes/settings', {}, token).then((s) => setForm({
@@ -155,8 +139,8 @@ function DetailsTab({ token }) {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: form }, token); toast('success', 'Settings saved'); }
-    catch (err) { toast('error', err.message); }
+    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: form }, token); toast('Settings saved', 'success'); }
+    catch (err) { toast(err.message, 'error'); }
     finally { setSaving(false); }
   };
 
@@ -185,7 +169,6 @@ function DetailsTab({ token }) {
       </Section>
 
       <SaveButton saving={saving} onSave={handleSave} />
-      <SaveSnack snack={snack} onClose={closeSnack} />
     </>
   );
 }
@@ -194,7 +177,8 @@ function DetailsTab({ token }) {
 
 function RatesTab({ token }) {
   const [form, setForm] = useState({ labourRatePerHour: '75', defaultMarkupPct: '30', vatRate: '20' });
-  const { saving, setSaving, snack, toast, closeSnack } = useSaveState();
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     apiFetch('/quotes/settings', {}, token).then((s) => setForm({
@@ -220,8 +204,8 @@ function RatesTab({ token }) {
         defaultMarkupPct: String(updated.defaultMarkupPct ?? 30),
         vatRate: String(updated.vatRate ?? 20),
       });
-      toast('success', 'Rates saved');
-    } catch (err) { toast('error', err.message); }
+      toast('Rates saved', 'success');
+    } catch (err) { toast(err.message, 'error'); }
     finally { setSaving(false); }
   };
 
@@ -238,7 +222,6 @@ function RatesTab({ token }) {
         </Typography>
       </Section>
       <SaveButton saving={saving} onSave={handleSave} />
-      <SaveSnack snack={snack} onClose={closeSnack} />
     </>
   );
 }
@@ -518,7 +501,8 @@ function PermissionsTab({ token }) {
 
 function AiFeaturesTab({ token }) {
   const [aiEnabled, setAiEnabled] = useState(true);
-  const { saving, setSaving, snack, toast, closeSnack } = useSaveState();
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     apiFetch('/quotes/settings', {}, token).then((s) => setAiEnabled(s.aiEnabled !== false)).catch(() => {});
@@ -526,8 +510,8 @@ function AiFeaturesTab({ token }) {
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: { aiEnabled } }, token); toast('success', 'Saved'); }
-    catch (err) { toast('error', err.message); }
+    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: { aiEnabled } }, token); toast('Saved', 'success'); }
+    catch (err) { toast(err.message, 'error'); }
     finally { setSaving(false); }
   };
 
@@ -548,7 +532,6 @@ function AiFeaturesTab({ token }) {
         />
       </Section>
       <SaveButton saving={saving} onSave={handleSave} />
-      <SaveSnack snack={snack} onClose={closeSnack} />
     </>
   );
 }
@@ -566,7 +549,8 @@ function InvoiceTemplateTab({ token }) {
   const [workshopName, setWorkshopName] = useState('');
   const [logoUrl, setLogoUrl] = useState(null);
   const [logoUploading, setLogoUploading] = useState(false);
-  const { saving, setSaving, snack, toast, closeSnack } = useSaveState();
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     apiFetch('/quotes/settings', {}, token).then((s) => {
@@ -603,20 +587,20 @@ function InvoiceTemplateTab({ token }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       setLogoUrl(data.logoUrl);
-      toast('success', 'Logo uploaded');
-    } catch (err) { toast('error', err.message); }
+      toast('Logo uploaded', 'success');
+    } catch (err) { toast(err.message, 'error'); }
     finally { setLogoUploading(false); e.target.value = ''; }
   };
 
   const handleRemoveLogo = async () => {
     try { await apiFetch('/quotes/settings/logo', { method: 'DELETE' }, token); setLogoUrl(null); }
-    catch (err) { toast('error', err.message); }
+    catch (err) { toast(err.message, 'error'); }
   };
 
   const handleSave = async () => {
     setSaving(true);
-    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: form }, token); toast('success', 'Template saved'); }
-    catch (err) { toast('error', err.message); }
+    try { await apiFetch('/quotes/settings', { method: 'PATCH', body: form }, token); toast('Template saved', 'success'); }
+    catch (err) { toast(err.message, 'error'); }
     finally { setSaving(false); }
   };
 
@@ -721,7 +705,6 @@ function InvoiceTemplateTab({ token }) {
       </Box>
 
       <SaveButton saving={saving} onSave={handleSave} />
-      <SaveSnack snack={snack} onClose={closeSnack} />
     </>
   );
 }

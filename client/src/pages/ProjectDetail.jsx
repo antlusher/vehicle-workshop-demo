@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useToast } from '../context/ToastContext';
 import ReactMarkdown from 'react-markdown';
 import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
@@ -711,13 +712,13 @@ function ReportPreviewModal({ project, form, images, confirmedFixes, onClose }) 
 }
 
 function ReportTab({ project, token }) {
+  const toast = useToast();
   const [report, setReport] = useState(null);
   const [images, setImages] = useState([]);
   const [form, setForm] = useState({ diagnosis: '', workCarriedOut: '', technicianNotes: '', costParts: '', costLabour: '', costTotal: '' });
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const fileRef = useRef(null);
@@ -751,7 +752,7 @@ function ReportTab({ project, token }) {
   };
 
   const handleSave = async () => {
-    setSaving(true); setError(''); setSaved(false);
+    setSaving(true); setError('');
     try {
       const r = await reportsApi.saveReport(project.id, {
         diagnosis: form.diagnosis,
@@ -761,8 +762,7 @@ function ReportTab({ project, token }) {
         costLabour: form.costLabour ? parseFloat(form.costLabour) : null,
         costTotal: form.costTotal ? parseFloat(form.costTotal) : null,
       }, token);
-      setReport(r); setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setReport(r); toast('Report saved');
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
   };
@@ -824,7 +824,7 @@ function ReportTab({ project, token }) {
             Preview
           </button>
           <button onClick={handleSave} disabled={saving} style={{ fontSize: '0.8rem', padding: '5px 14px' }}>
-            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save report'}
+            {saving ? 'Saving…' : 'Save report'}
           </button>
           <button
             onClick={handlePublish} disabled={publishing || !report}

@@ -8,6 +8,7 @@ import CustomerPortal from './pages/CustomerPortal';
 import CustomerLogin from './pages/CustomerLogin';
 import QuoteAcceptPage from './pages/QuoteAcceptPage';
 import WorkshopShell from './pages/WorkshopShell';
+import { ToastProvider } from './context/ToastContext';
 import './App.css';
 
 function App() {
@@ -422,4 +423,10 @@ function App() {
   );
 }
 
-export default App;
+export default function AppWithToast() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
+  );
+}

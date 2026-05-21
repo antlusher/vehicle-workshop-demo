@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useToast } from '../../context/ToastContext';
 import { getUsers, getUser, updateUser, createUser, forceLogout } from '../../services/adminApi';
 
 function Badge({ value, trueLabel = 'Yes', falseLabel = 'No', trueClass = 'badge-green', falseClass = 'badge-grey' }) {
@@ -13,6 +14,7 @@ function RoleBadge({ role }) {
 function UserDetailPanel({ userId, token, onClose, onUpdated, currentUserEmail }) {
   const [user, setUser] = useState(null);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     getUser(userId, token).then(setUser);
@@ -24,6 +26,7 @@ function UserDetailPanel({ userId, token, onClose, onUpdated, currentUserEmail }
       await updateUser(userId, { [field]: value }, token);
       setUser((u) => ({ ...u, [field]: value }));
       onUpdated();
+      toast('User updated');
     } finally {
       setSaving(false);
     }
@@ -35,6 +38,7 @@ function UserDetailPanel({ userId, token, onClose, onUpdated, currentUserEmail }
       await forceLogout(userId, token);
       setUser((u) => ({ ...u, session_active: false }));
       onUpdated();
+      toast('User logged out');
     } finally {
       setSaving(false);
     }
