@@ -10,7 +10,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f4f7fb;
+  background: linear-gradient(180deg, rgb(0 2 36) 0%, rgb(0 26 151) 35%, rgb(6 0 255) 100%);
+  background-attachment: fixed;
   color: #1d2939;
 }
 

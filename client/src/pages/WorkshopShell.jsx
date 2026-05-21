@@ -1,0 +1,149 @@
+import { useState } from 'react';
+import Projects from './Projects';
+import ProjectDetail from './ProjectDetail';
+import Invoices from './admin/Invoices';
+import Customers from './admin/Customers';
+import AdminAgent from './AdminAgent';
+import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
+import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
+import PeopleRoundedIcon from '@mui/icons-material/PeopleRounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
+import SmartToyRoundedIcon from '@mui/icons-material/SmartToyRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+
+const NAV_ITEMS = [
+  { id: 'work',      label: 'Work',      Icon: HandymanRoundedIcon },
+  { id: 'invoices',  label: 'Invoices',  Icon: ReceiptLongRoundedIcon },
+  { id: 'customers', label: 'Customers', Icon: PeopleRoundedIcon },
+];
+
+function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onAdmin, onAssistant, onLogout }) {
+  return (
+    <nav className="app-nav-rail">
+      <div className="nav-rail-brand">Ask<br />Bob</div>
+
+      <div className="nav-rail-items">
+        {NAV_ITEMS.map(({ id, label, Icon }) => {
+          const active = section === id;
+          return (
+            <button key={id} type="button"
+              className={`nav-rail-item${active ? ' active' : ''}`}
+              onClick={() => onSection(id)}>
+              <div className="nav-rail-pill">
+                <Icon style={{ fontSize: 22 }} />
+              </div>
+              <span className="nav-rail-label">{label}</span>
+            </button>
+          );
+        })}
+
+        {aiEnabled && (
+          <button type="button" className="nav-rail-item" onClick={onAssistant}>
+            <div className="nav-rail-pill">
+              <SmartToyRoundedIcon style={{ fontSize: 22 }} />
+            </div>
+            <span className="nav-rail-label">Assistant</span>
+          </button>
+        )}
+
+        {canEnterAdmin && (
+          <button type="button" className="nav-rail-item" onClick={onAdmin}>
+            <div className="nav-rail-pill">
+              <AdminPanelSettingsRoundedIcon style={{ fontSize: 22 }} />
+            </div>
+            <span className="nav-rail-label">Admin</span>
+          </button>
+        )}
+      </div>
+
+      <div className="nav-rail-footer">
+        {userEmail && (
+          <div className="nav-rail-email">{userEmail}</div>
+        )}
+        <button type="button" className="nav-rail-item" onClick={onLogout}>
+          <div className="nav-rail-pill">
+            <LogoutRoundedIcon style={{ fontSize: 20 }} />
+          </div>
+          <span className="nav-rail-label">Logout</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+export default function WorkshopShell({
+  token, user, projects, archivedProjects, selectedProject, projectLoading,
+  aiEnabled, error, canEnterAdmin,
+  onCreateProject, onCreateProjectManual, onSelectProject,
+  onCloseProject, onReopenProject, onArchiveProject, onRestoreProject,
+  onAskQuestion, onConfirmSuggestion, onClearHistory, onUpdateVehicle, onRefreshProject,
+  onProjectCreated, onEnterAdmin, onLogout,
+}) {
+  const [section, setSection] = useState('work');
+  const [showAssistant, setShowAssistant] = useState(false);
+
+  return (
+    <div className="main-shell">
+      {showAssistant && (
+        <AdminAgent
+          token={token}
+          onClose={() => setShowAssistant(false)}
+          onProjectCreated={onProjectCreated}
+        />
+      )}
+
+      <NavRail
+        section={section}
+        onSection={setSection}
+        userEmail={user?.email}
+        canEnterAdmin={canEnterAdmin}
+        aiEnabled={aiEnabled}
+        onAdmin={onEnterAdmin}
+        onAssistant={() => setShowAssistant(true)}
+        onLogout={onLogout}
+      />
+
+      <div className="main-content">
+        {user?.demoMode && (
+          <div className="demo-banner">
+            Demo mode active: AI responses are fallback guidance until the API key is configured.
+          </div>
+        )}
+
+        {section === 'work' && (
+          <div className="app-stack">
+            <Projects
+              projects={projects}
+              archivedProjects={archivedProjects}
+              onCreateProject={onCreateProject}
+              onCreateProjectManual={onCreateProjectManual}
+              onSelectProject={onSelectProject}
+              onCloseProject={onCloseProject}
+              onReopenProject={onReopenProject}
+              onArchiveProject={onArchiveProject}
+              onRestoreProject={onRestoreProject}
+              selectedProject={selectedProject}
+              error={error}
+            />
+            <div className="panel-right">
+              <ProjectDetail
+                project={selectedProject}
+                projectLoading={projectLoading}
+                onAsk={onAskQuestion}
+                onConfirmSuggestion={onConfirmSuggestion}
+                onClearHistory={onClearHistory}
+                onUpdateVehicle={onUpdateVehicle}
+                onRefreshProject={onRefreshProject}
+                token={token}
+                aiEnabled={aiEnabled}
+              />
+            </div>
+          </div>
+        )}
+
+        {section === 'invoices'  && <Invoices  token={token} />}
+        {section === 'customers' && <Customers token={token} />}
+      </div>
+    </div>
+  );
+}

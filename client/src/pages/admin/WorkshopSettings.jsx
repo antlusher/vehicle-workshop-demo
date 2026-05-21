@@ -1,17 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Box, Stack, Typography, Tabs, Tab,
+  Box, Stack, Typography,
   Card, CardContent, TextField, Button, IconButton,
   Switch, FormControlLabel,
   Table, TableHead, TableBody, TableRow, TableCell,
   Alert, Snackbar, InputAdornment,
 } from '@mui/material';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import SaveRoundedIcon from '@mui/icons-material/SaveRounded';
+import StoreRoundedIcon from '@mui/icons-material/StoreRounded';
+import CurrencyPoundRoundedIcon from '@mui/icons-material/CurrencyPoundRounded';
+import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
+import Inventory2RoundedIcon from '@mui/icons-material/Inventory2Rounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
+import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 
 const BASE = '/api';
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -58,8 +65,9 @@ const m3Theme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none', fontWeight: 500, fontSize: '0.875rem',
-          minWidth: 'auto', padding: '10px 20px',
+          minWidth: 'auto', padding: '10px 16px', minHeight: 48,
           '&.Mui-selected': { fontWeight: 600 },
+          '& .MuiTab-iconWrapper': { marginBottom: 0 },
         },
       },
     },
@@ -721,39 +729,96 @@ function InvoiceTemplateTab({ token }) {
 // ── Shell ──────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'details',     label: 'Workshop Details' },
-  { id: 'rates',       label: 'Rates' },
-  { id: 'technicians', label: 'Technicians' },
-  { id: 'parts',       label: 'Parts Catalogue' },
-  { id: 'permissions', label: 'Permissions' },
-  { id: 'ai',          label: 'AI Features' },
-  { id: 'template',    label: 'Invoice Template' },
+  { id: 'details',     short: 'Workshop',    label: 'Workshop Details',  Icon: StoreRoundedIcon },
+  { id: 'rates',       short: 'Rates',       label: 'Rates & Pricing',   Icon: CurrencyPoundRoundedIcon },
+  { id: 'technicians', short: 'Team',        label: 'Technicians',       Icon: GroupRoundedIcon },
+  { id: 'parts',       short: 'Parts',       label: 'Parts Catalogue',   Icon: Inventory2RoundedIcon },
+  { id: 'permissions', short: 'Permissions', label: 'Permissions',       Icon: AdminPanelSettingsRoundedIcon },
+  { id: 'ai',          short: 'AI',          label: 'AI Features',       Icon: AutoAwesomeRoundedIcon },
+  { id: 'template',    short: 'Invoice',     label: 'Invoice Template',  Icon: ReceiptLongRoundedIcon },
 ];
+
+function NavRail({ tab, setTab }) {
+  return (
+    <Box sx={{
+      width: 88,
+      minHeight: '100vh',
+      bgcolor: 'background.paper',
+      borderRight: '1px solid #E0E2EC',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      pt: 3,
+      pb: 4,
+      flexShrink: 0,
+      position: 'sticky',
+      top: 0,
+      alignSelf: 'flex-start',
+      maxHeight: '100vh',
+      overflowY: 'auto',
+    }}>
+      <Typography sx={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'text.secondary', mb: 3 }}>
+        Settings
+      </Typography>
+      {TABS.map(({ id, short, Icon }) => {
+        const active = tab === id;
+        return (
+          <Box
+            key={id}
+            onClick={() => setTab(id)}
+            sx={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', py: 1, cursor: 'pointer',
+              '&:hover .rail-pill': { bgcolor: active ? alpha('#1558D6', 0.14) : 'action.hover' },
+            }}
+          >
+            <Box className="rail-pill" sx={{
+              width: 56, height: 32, borderRadius: '16px',
+              bgcolor: active ? alpha('#1558D6', 0.12) : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: active ? 'primary.main' : 'text.secondary',
+              transition: 'background-color 0.15s',
+            }}>
+              <Icon sx={{ fontSize: 22 }} />
+            </Box>
+            <Typography sx={{
+              fontSize: '0.68rem', textAlign: 'center', lineHeight: 1.3, mt: 0.5, px: 0.5,
+              color: active ? 'primary.main' : 'text.secondary',
+              fontWeight: active ? 600 : 400,
+            }}>
+              {short}
+            </Typography>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
 
 export default function WorkshopSettings({ token }) {
   const [tab, setTab] = useState('details');
+  const activeTab = TABS.find(t => t.id === tab);
 
   return (
     <ThemeProvider theme={m3Theme}>
-      <Box sx={{ bgcolor: 'background.default', minHeight: '100%', pb: 6 }}>
-        <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid #E0E2EC', px: 4, pt: 3, pb: 0 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '1.35rem', color: 'text.primary', mb: 2 }}>
-            Workshop Settings
-          </Typography>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto"
-            sx={{ '& .MuiTabs-indicator': { height: 3, borderRadius: '3px 3px 0 0' } }}>
-            {TABS.map((t) => <Tab key={t.id} value={t.id} label={t.label} disableRipple />)}
-          </Tabs>
-        </Box>
+      <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
+        <NavRail tab={tab} setTab={setTab} />
 
-        <Box sx={{ maxWidth: 940, mx: 'auto', px: 4, pt: 4 }}>
-          {tab === 'details'     && <DetailsTab token={token} />}
-          {tab === 'rates'       && <RatesTab token={token} />}
-          {tab === 'technicians' && <TechniciansTab token={token} />}
-          {tab === 'parts'       && <PartsCatalogueTab token={token} />}
-          {tab === 'permissions' && <PermissionsTab token={token} />}
-          {tab === 'ai'          && <AiFeaturesTab token={token} />}
-          {tab === 'template'    && <InvoiceTemplateTab token={token} />}
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ bgcolor: 'background.paper', borderBottom: '1px solid #E0E2EC', px: 4, py: 3, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {activeTab && <activeTab.Icon sx={{ fontSize: 22, color: 'primary.main' }} />}
+            <Typography sx={{ fontWeight: 700, fontSize: '1.25rem', color: 'text.primary' }}>
+              {activeTab?.label}
+            </Typography>
+          </Box>
+
+          <Box sx={{ maxWidth: 940, mx: 'auto', px: 4, pt: 4, pb: 6 }}>
+            {tab === 'details'     && <DetailsTab token={token} />}
+            {tab === 'rates'       && <RatesTab token={token} />}
+            {tab === 'technicians' && <TechniciansTab token={token} />}
+            {tab === 'parts'       && <PartsCatalogueTab token={token} />}
+            {tab === 'permissions' && <PermissionsTab token={token} />}
+            {tab === 'ai'          && <AiFeaturesTab token={token} />}
+            {tab === 'template'    && <InvoiceTemplateTab token={token} />}
+          </Box>
         </Box>
       </Box>
     </ThemeProvider>

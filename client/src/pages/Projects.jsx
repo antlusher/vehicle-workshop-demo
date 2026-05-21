@@ -1,198 +1,323 @@
 import { useState } from 'react';
+import {
+  Box, Typography, Card, CardActionArea, CardContent,
+  Chip, IconButton, Button,
+  Dialog, DialogTitle, DialogContent, DialogActions,
+  TextField, MenuItem, Menu,
+} from '@mui/material';
+import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
+import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
+import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
+import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
+import ArchiveRoundedIcon from '@mui/icons-material/ArchiveRounded';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Plug-in Hybrid', 'LPG', 'Other'];
 const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
 const EMPTY_MANUAL = { registration: '', vin: '', make: '', model: '', year: '', engineCode: '', fuelType: '', trim: '', bodyType: '' };
 
-function ProjectCard({ project, selectedProject, archived, onSelect, onClose, onReopen, onArchive, onRestore }) {
+const m3Theme = createTheme({
+  palette: { primary: { main: '#1558D6' }, background: { default: '#F3F4F9', paper: '#ffffff' } },
+  typography: { fontFamily: '"Roboto", "Helvetica Neue", sans-serif' },
+  shape: { borderRadius: 12 },
+  components: {
+    MuiButton: {
+      styleOverrides: { root: { borderRadius: 100, textTransform: 'none', fontWeight: 500 } },
+    },
+    MuiCard: {
+      styleOverrides: { root: { boxShadow: 'none' } },
+    },
+    MuiDialog: {
+      styleOverrides: { paper: { borderRadius: '24px' } },
+    },
+    MuiChip: {
+      styleOverrides: { root: { borderRadius: '8px', fontWeight: 500, fontSize: '0.72rem' } },
+    },
+  },
+});
+
+function ProjectCard({ project, selected, onSelect, onClose, onReopen, onArchive, archived }) {
+  const [anchor, setAnchor] = useState(null);
+
+  const openMenu = (e) => { e.stopPropagation(); setAnchor(e.currentTarget); };
+  const closeMenu = () => setAnchor(null);
+
+  const reg = project.registration || project.vin || '—';
+  const vehicleLine = [project.make, project.model, project.year].filter(Boolean).join(' ') || 'Unknown vehicle';
+
   return (
-    <div
-      className="project-card"
-      style={{ borderColor: selectedProject?.id === project.id ? '#2563eb' : '#e5e7eb' }}
-    >
-      <strong>{project.registration || project.vin || 'Untitled project'}</strong>
-      <div className="meta">{project.make || 'Unknown make'} {project.model || ''} {project.year || ''}</div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-        {archived ? (
-          <button type="button" className="secondary" onClick={onRestore}>Restore</button>
-        ) : (
-          <>
-            <button type="button" onClick={() => onSelect(project.id)}>Open</button>
-            {!project.closed && <button type="button" className="secondary" onClick={() => onClose(project.id)}>Close</button>}
-            {project.closed && <button type="button" className="secondary" onClick={() => onReopen(project.id)}>Reopen</button>}
-            <button type="button" className="secondary" style={{ marginLeft: 'auto', color: '#6b7280' }} onClick={(e) => onArchive(e, project.id)}>Delete</button>
-          </>
-        )}
-      </div>
-    </div>
+    <Card sx={{
+      minWidth: 164, maxWidth: 180, flexShrink: 0,
+      border: selected ? '2px solid #1558D6' : '1.5px solid #E0E2EC',
+      bgcolor: selected ? alpha('#1558D6', 0.05) : 'background.paper',
+      transition: 'border-color 0.15s, background-color 0.15s',
+      opacity: archived ? 0.6 : 1,
+      position: 'relative',
+    }}>
+      <CardActionArea onClick={() => !archived && onSelect(project.id)} disabled={archived}>
+        <CardContent sx={{ p: 1.5, pb: '10px !important' }}>
+          <Typography sx={{
+            fontFamily: '"Courier New", "Roboto Mono", monospace',
+            fontWeight: 700, fontSize: '1rem', letterSpacing: '0.04em',
+            textTransform: 'uppercase', color: selected ? 'primary.main' : 'text.primary',
+            lineHeight: 1.2,
+          }}>
+            {reg}
+          </Typography>
+          <Typography variant="body2" sx={{ fontSize: '0.74rem', color: 'text.secondary', mt: 0.25, lineHeight: 1.3 }}>
+            {vehicleLine}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
+            <Chip
+              label={archived ? 'Archived' : project.closed ? 'Closed' : 'Open'}
+              size="small"
+              sx={{
+                height: 20, px: 0.25,
+                bgcolor: archived ? '#E0E2EC' : project.closed ? '#E0E2EC' : alpha('#1558D6', 0.1),
+                color: archived ? 'text.secondary' : project.closed ? 'text.secondary' : 'primary.main',
+              }}
+            />
+            {!archived && <ChevronRightRoundedIcon sx={{ fontSize: 16, color: selected ? 'primary.main' : 'text.secondary' }} />}
+          </Box>
+        </CardContent>
+      </CardActionArea>
+
+      {/* Actions menu */}
+      <Box sx={{ position: 'absolute', top: 4, right: 4 }}>
+        <IconButton size="small" onClick={openMenu} sx={{ width: 22, height: 22, opacity: 0.5, '&:hover': { opacity: 1 } }}>
+          <MoreVertRoundedIcon sx={{ fontSize: 14 }} />
+        </IconButton>
+        <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={closeMenu}
+          PaperProps={{ sx: { borderRadius: 3, minWidth: 160 } }}>
+          {!archived && !project.closed && (
+            <MenuItem onClick={() => { onClose(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
+              Close project
+            </MenuItem>
+          )}
+          {!archived && project.closed && (
+            <MenuItem onClick={() => { onReopen(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
+              Reopen project
+            </MenuItem>
+          )}
+          {archived && (
+            <MenuItem onClick={() => { onReopen && onReopen(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
+              Restore project
+            </MenuItem>
+          )}
+          {!archived && (
+            <MenuItem onClick={(e) => { onArchive(e, project.id); closeMenu(); }}
+              sx={{ fontSize: '0.875rem', color: 'error.main' }}>
+              Delete project
+            </MenuItem>
+          )}
+        </Menu>
+      </Box>
+    </Card>
   );
 }
 
-function ProjectGroup({ label, projects, selectedProject, onSelect, onClose, onReopen, onArchive, emptyText }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-        {label} {projects.length > 0 && <span style={{ fontWeight: 400 }}>({projects.length})</span>}
-      </div>
-      {projects.length === 0 && emptyText ? (
-        <p style={{ color: '#9ca3af', fontSize: '0.88rem' }}>{emptyText}</p>
-      ) : (
-        projects.map((project) => (
-          <ProjectCard key={project.id} project={project} selectedProject={selectedProject}
-            onSelect={onSelect} onClose={onClose} onReopen={onReopen} onArchive={onArchive} />
-        ))
-      )}
-    </div>
-  );
-}
-
-function Projects({ projects, archivedProjects, onCreateProject, onCreateProjectManual, onSelectProject, onCloseProject, onReopenProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
+function CreateProjectDialog({ open, onClose, onLookup, onManual, error }) {
+  const [tab, setTab] = useState('lookup');
   const [identifier, setIdentifier] = useState('');
-  const [manual, setManual] = useState(false);
   const [form, setForm] = useState(EMPTY_MANUAL);
-  const [showArchived, setShowArchived] = useState(false);
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const handleLookupSubmit = async (e) => {
+  const handleLookup = async (e) => {
     e.preventDefault();
     const cleaned = identifier.trim().toUpperCase().replace(/\s+/g, '');
-    if (cleaned) {
-      await onCreateProject(cleaned);
-      setIdentifier('');
-    }
+    if (!cleaned) return;
+    await onLookup(cleaned);
+    setIdentifier('');
   };
 
-  const handleManualSubmit = async (e) => {
+  const handleManual = async (e) => {
     e.preventDefault();
     if (!form.registration && !form.vin && !form.make) return;
-    await onCreateProjectManual(form);
+    await onManual(form);
     setForm(EMPTY_MANUAL);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>New project</DialogTitle>
+      <DialogContent sx={{ pt: '8px !important' }}>
+        {/* Tab toggle */}
+        <Box sx={{ display: 'flex', gap: 1, mb: 2.5 }}>
+          {['lookup', 'manual'].map((t) => (
+            <Button key={t} variant={tab === t ? 'contained' : 'outlined'} size="small"
+              onClick={() => setTab(t)} sx={{ px: 2 }}>
+              {t === 'lookup' ? 'Reg / VIN lookup' : 'Enter manually'}
+            </Button>
+          ))}
+        </Box>
+
+        {tab === 'lookup' ? (
+          <Box component="form" id="create-form" onSubmit={handleLookup}>
+            <TextField
+              fullWidth label="Registration or VIN" value={identifier} autoFocus
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="e.g. AB12 CDE or 17-char VIN"
+              size="small" variant="outlined"
+              sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }}
+            />
+          </Box>
+        ) : (
+          <Box component="form" id="create-form" onSubmit={handleManual}
+            sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+            {[
+              { key: 'registration', label: 'Registration', placeholder: 'AB12 CDE' },
+              { key: 'vin', label: 'VIN', placeholder: '17-char VIN' },
+              { key: 'make', label: 'Make', placeholder: 'e.g. Ford' },
+              { key: 'model', label: 'Model', placeholder: 'e.g. Focus' },
+              { key: 'year', label: 'Year', placeholder: '2019', maxLength: 4 },
+              { key: 'engineCode', label: 'Engine code', placeholder: 'e.g. R9M' },
+              { key: 'trim', label: 'Trim / variant', placeholder: 'ST-Line, Titanium', colSpan: 2 },
+            ].map(({ key, label, placeholder, maxLength, colSpan }) => (
+              <TextField key={key} label={label} value={form[key]} onChange={set(key)}
+                placeholder={placeholder} size="small" variant="outlined"
+                inputProps={{ maxLength }}
+                sx={{ gridColumn: colSpan ? '1 / -1' : undefined, '& .MuiOutlinedInput-root': { borderRadius: '10px' } }}
+              />
+            ))}
+            <TextField select label="Fuel type" value={form.fuelType} onChange={set('fuelType')}
+              size="small" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }}>
+              <MenuItem value="">— Select —</MenuItem>
+              {FUEL_TYPES.map((f) => <MenuItem key={f} value={f}>{f}</MenuItem>)}
+            </TextField>
+            <TextField select label="Body type" value={form.bodyType} onChange={set('bodyType')}
+              size="small" variant="outlined" sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px' } }}>
+              <MenuItem value="">— Select —</MenuItem>
+              {BODY_TYPES.map((b) => <MenuItem key={b} value={b}>{b}</MenuItem>)}
+            </TextField>
+          </Box>
+        )}
+
+        {error && (
+          <Typography sx={{ mt: 1.5, fontSize: '0.85rem', color: 'error.main' }}>{error}</Typography>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+        <Button onClick={onClose} variant="outlined" sx={{ px: 3 }}>Cancel</Button>
+        <Button type="submit" form="create-form" variant="contained" sx={{ px: 3 }}>
+          Create project
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function Projects({ projects, archivedProjects, onCreateProject, onCreateProjectManual, onSelectProject,
+  onCloseProject, onReopenProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  const handleLookup = async (cleaned) => {
+    await onCreateProject(cleaned);
+    setDialogOpen(false);
+  };
+
+  const handleManual = async (form) => {
+    await onCreateProjectManual(form);
+    setDialogOpen(false);
   };
 
   const handleArchive = (e, projectId) => {
     e.stopPropagation();
-    if (window.confirm('Remove this project from your list? The data and history will be kept and can be restored.')) {
+    if (window.confirm('Remove this project? Data and history are kept and can be restored.')) {
       onArchiveProject(projectId);
     }
   };
 
   const handleRestore = (e, projectId) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     onRestoreProject(projectId);
   };
 
-  const openProjects = projects.filter((p) => !p.closed);
-  const closedProjects = projects.filter((p) => p.closed);
+  const displayProjects = showArchived ? (archivedProjects || []) : projects;
+  const openCount = projects.filter(p => !p.closed).length;
+  const closedCount = projects.filter(p => p.closed).length;
+  const archivedCount = (archivedProjects || []).length;
 
   return (
-    <div className="card">
-      <h2 className="section-title">Projects</h2>
+    <ThemeProvider theme={m3Theme}>
+      <Box sx={{ bgcolor: 'background.paper', border: '1.5px solid #E0E2EC', borderRadius: 3, px: 2, py: 1.5 }}>
 
-      {!manual ? (
-        <form onSubmit={handleLookupSubmit}>
-          <label htmlFor="identifier">Registration or VIN</label>
-          <input
-            id="identifier"
-            name="identifier"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            placeholder="Enter registration or VIN"
-          />
-          <button type="submit">Create project</button>
-          <button type="button" className="secondary" style={{ marginTop: 6, fontSize: '0.8rem' }} onClick={() => setManual(true)}>
-            Enter vehicle details manually
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleManualSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px' }}>
-            <div>
-              <label>Registration</label>
-              <input value={form.registration} onChange={(e) => set('registration', e.target.value)} placeholder="e.g. AB12 CDE" />
-            </div>
-            <div>
-              <label>VIN</label>
-              <input value={form.vin} onChange={(e) => set('vin', e.target.value)} placeholder="17-char VIN" />
-            </div>
-            <div>
-              <label>Make</label>
-              <input value={form.make} onChange={(e) => set('make', e.target.value)} placeholder="e.g. Ford" />
-            </div>
-            <div>
-              <label>Model</label>
-              <input value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="e.g. Focus" />
-            </div>
-            <div>
-              <label>Year</label>
-              <input value={form.year} onChange={(e) => set('year', e.target.value)} placeholder="e.g. 2019" maxLength={4} />
-            </div>
-            <div>
-              <label>Engine code</label>
-              <input value={form.engineCode} onChange={(e) => set('engineCode', e.target.value)} placeholder="e.g. R9M" />
-            </div>
-            <div>
-              <label>Fuel type</label>
-              <select value={form.fuelType} onChange={(e) => set('fuelType', e.target.value)}>
-                <option value="">— Select —</option>
-                {FUEL_TYPES.map((f) => <option key={f}>{f}</option>)}
-              </select>
-            </div>
-            <div>
-              <label>Body type</label>
-              <select value={form.bodyType} onChange={(e) => set('bodyType', e.target.value)}>
-                <option value="">— Select —</option>
-                {BODY_TYPES.map((b) => <option key={b}>{b}</option>)}
-              </select>
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label>Trim / variant</label>
-              <input value={form.trim} onChange={(e) => set('trim', e.target.value)} placeholder="e.g. ST-Line, Titanium" />
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-            <button type="submit">Create project</button>
-            <button type="button" className="secondary" onClick={() => { setManual(false); setForm(EMPTY_MANUAL); }}>
-              Back to lookup
-            </button>
-          </div>
-        </form>
-      )}
-
-      {error && <p className="error">{error}</p>}
-
-      <div style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-          <button
-            type="button"
-            className="secondary"
-            style={{ fontSize: '0.78rem', padding: '3px 10px' }}
-            onClick={() => setShowArchived((v) => !v)}
-          >
-            {showArchived ? 'Show active' : `Archived${(archivedProjects?.length ?? 0) > 0 ? ` (${archivedProjects.length})` : ''}`}
-          </button>
-        </div>
-
-        {showArchived ? (
-          (archivedProjects || []).length === 0 ? (
-            <p style={{ color: '#9ca3af', fontSize: '0.88rem' }}>No archived projects.</p>
-          ) : (
-            (archivedProjects || []).map((project) => (
-              <ProjectCard key={project.id} project={project} selectedProject={selectedProject} archived
-                onSelect={onSelectProject} onRestore={(e) => handleRestore(e, project.id)} />
-            ))
-          )
-        ) : (
-          <>
-            <ProjectGroup label="Open" projects={openProjects} selectedProject={selectedProject}
-              onSelect={onSelectProject} onClose={onCloseProject} onReopen={onReopenProject} onArchive={handleArchive} emptyText="No open projects." />
-            {closedProjects.length > 0 && (
-              <ProjectGroup label="Closed" projects={closedProjects} selectedProject={selectedProject}
-                onSelect={onSelectProject} onClose={onCloseProject} onReopen={onReopenProject} onArchive={handleArchive} />
+        {/* Header row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+          <DirectionsCarRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'text.primary', flex: 1 }}>
+            Projects
+            {!showArchived && (openCount > 0 || closedCount > 0) && (
+              <Typography component="span" sx={{ ml: 1, fontSize: '0.8rem', color: 'text.secondary', fontWeight: 400 }}>
+                {openCount} open{closedCount > 0 ? `, ${closedCount} closed` : ''}
+              </Typography>
             )}
-          </>
-        )}
-      </div>
-    </div>
+          </Typography>
+          {archivedCount > 0 && (
+            <Button size="small" variant={showArchived ? 'contained' : 'outlined'}
+              startIcon={<ArchiveRoundedIcon sx={{ fontSize: 14 }} />}
+              onClick={() => setShowArchived(v => !v)}
+              sx={{ fontSize: '0.75rem', px: 1.5, py: 0.5, height: 28 }}>
+              Archived ({archivedCount})
+            </Button>
+          )}
+        </Box>
+
+        {/* Card strip */}
+        <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 0.5,
+          '&::-webkit-scrollbar': { height: 4 },
+          '&::-webkit-scrollbar-thumb': { bgcolor: '#C4C6D0', borderRadius: 2 },
+        }}>
+
+          {/* New project card (only in active view) */}
+          {!showArchived && (
+            <Card sx={{ minWidth: 120, maxWidth: 120, flexShrink: 0, border: '1.5px dashed #C4C6D0',
+              bgcolor: 'transparent', boxShadow: 'none !important' }}>
+              <CardActionArea onClick={() => setDialogOpen(true)}
+                sx={{ height: '100%', minHeight: 96, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                <Box sx={{ width: 32, height: 32, borderRadius: '50%', bgcolor: alpha('#1558D6', 0.1),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AddRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+                </Box>
+                <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontWeight: 500, textAlign: 'center' }}>
+                  New project
+                </Typography>
+              </CardActionArea>
+            </Card>
+          )}
+
+          {/* Project cards */}
+          {displayProjects.map((project) => (
+            <ProjectCard
+              key={project.id}
+              project={project}
+              selected={selectedProject?.id === project.id}
+              archived={showArchived}
+              onSelect={onSelectProject}
+              onClose={onCloseProject}
+              onReopen={showArchived ? (id) => handleRestore(null, id) : onReopenProject}
+              onArchive={handleArchive}
+            />
+          ))}
+
+          {/* Empty state */}
+          {displayProjects.length === 0 && (
+            <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', py: 2.5, px: 1 }}>
+              {showArchived ? 'No archived projects.' : 'No projects yet — create your first one.'}
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
+      <CreateProjectDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onLookup={handleLookup}
+        onManual={handleManual}
+        error={error}
+      />
+    </ThemeProvider>
   );
 }
 

@@ -1,4 +1,10 @@
 import { useState, useEffect } from 'react';
+import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
+import StoreRoundedIcon from '@mui/icons-material/StoreRounded';
+import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
+import AssessmentRoundedIcon from '@mui/icons-material/AssessmentRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
 import {
   getSysStats, getWorkshops, createWorkshop, updateWorkshop,
   getSysAdmins, createSysAdmin, deleteSysAdmin,
@@ -1194,12 +1200,43 @@ function RagEvalPage({ token, workshops }) {
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 const NAV = [
-  { id: 'overview',   label: 'Overview' },
-  { id: 'workshops',  label: 'Workshops' },
-  { id: 'brain',      label: 'Knowledge Brain' },
-  { id: 'sysadmins', label: 'Sysadmins' },
-  { id: 'rageval',    label: 'RAG Eval' },
+  { id: 'overview',  label: 'Overview',  Icon: DashboardRoundedIcon },
+  { id: 'workshops', label: 'Workshops', Icon: StoreRoundedIcon },
+  { id: 'brain',     label: 'Brain',     Icon: PsychologyRoundedIcon },
+  { id: 'sysadmins', label: 'Admins',    Icon: AdminPanelSettingsRoundedIcon },
+  { id: 'rageval',   label: 'RAG Eval',  Icon: AssessmentRoundedIcon },
 ];
+
+function NavRail({ page, setPage, userEmail, onLogout }) {
+  return (
+    <nav className="app-nav-rail">
+      <div className="nav-rail-brand">Ask<br />Bob</div>
+
+      <div className="nav-rail-items">
+        {NAV.map(({ id, label, Icon }) => (
+          <button key={id} type="button"
+            className={`nav-rail-item${page === id ? ' active' : ''}`}
+            onClick={() => setPage(id)}>
+            <div className="nav-rail-pill">
+              <Icon style={{ fontSize: 22 }} />
+            </div>
+            <span className="nav-rail-label">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="nav-rail-footer">
+        {userEmail && <div className="nav-rail-email">{userEmail}</div>}
+        <button type="button" className="nav-rail-item" onClick={onLogout}>
+          <div className="nav-rail-pill">
+            <LogoutRoundedIcon style={{ fontSize: 20 }} />
+          </div>
+          <span className="nav-rail-label">Logout</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 export default function SysAdminShell({ token, userEmail, onLogout, onActAs }) {
   const [page, setPage] = useState('overview');
@@ -1212,24 +1249,8 @@ export default function SysAdminShell({ token, userEmail, onLogout, onActAs }) {
   }, [token]);
 
   return (
-    <div className="sys-shell">
-      <header className="sys-header">
-        <div className="sys-header-left">
-          <span className="sys-brand">Ask Bob</span>
-          <span className="sys-brand-sub">System Admin</span>
-        </div>
-        <nav className="sys-nav">
-          {NAV.map((n) => (
-            <button key={n.id} className={`sys-nav-btn${page===n.id?' active':''}`} onClick={() => setPage(n.id)}>
-              {n.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sys-header-right">
-          <span className="sys-user">{userEmail}</span>
-          <button className="secondary" style={{ fontSize: '0.8rem', padding: '6px 14px' }} onClick={onLogout}>Logout</button>
-        </div>
-      </header>
+    <div className="main-shell">
+      <NavRail page={page} setPage={setPage} userEmail={userEmail} onLogout={onLogout} />
       <main className="sys-content">
         {page === 'overview'   && <OverviewPage token={token} />}
         {page === 'workshops'  && <WorkshopsPage token={token} onActAs={onActAs} />}

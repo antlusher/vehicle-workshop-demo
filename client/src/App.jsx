@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react';
 import * as api from './services/api';
 import { exitActAs } from './services/sysadminApi';
 import Login from './pages/Login';
-import Projects from './pages/Projects';
-import ProjectDetail from './pages/ProjectDetail';
 import AdminShell from './pages/admin/AdminShell';
 import SysAdminShell from './pages/SysAdminShell';
 import CustomerPortal from './pages/CustomerPortal';
 import CustomerLogin from './pages/CustomerLogin';
 import QuoteAcceptPage from './pages/QuoteAcceptPage';
-import AdminAgent from './pages/AdminAgent';
+import WorkshopShell from './pages/WorkshopShell';
 import './App.css';
 
 function App() {
@@ -274,7 +272,6 @@ function App() {
     }
   };
 
-  const [showAssistant, setShowAssistant] = useState(false);
   const [actorState, setActorState] = useState(null);
   const [aiEnabled, setAiEnabled] = useState(true);
 
@@ -386,69 +383,32 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
-      {showAssistant && (
-        <AdminAgent
-          token={token}
-          onClose={() => setShowAssistant(false)}
-          onProjectCreated={reloadProjects}
-        />
-      )}
-      <header className="app-header">
-        <div>
-          <h1>Ask Bob</h1>
-          <p>{user?.email}</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          {aiEnabled && (
-            <button className="secondary" onClick={() => setShowAssistant(true)} style={{ fontSize: '0.85rem' }}>
-              Assistant
-            </button>
-          )}
-          {canEnterAdmin && (
-            <button className="secondary" onClick={() => setAdminView(true)} style={{ fontSize: '0.85rem' }}>
-              Admin
-            </button>
-          )}
-          <button className="secondary" onClick={handleLogout}>Logout</button>
-        </div>
-      </header>
-      {user?.demoMode && (
-        <div className="demo-banner">
-          Demo mode active: AI responses are fallback guidance until the API key is configured.
-        </div>
-      )}
-      <main className="app-grid">
-        <div className="panel panel-left">
-          <Projects
-            projects={projects}
-            archivedProjects={archivedProjects}
-            onCreateProject={handleCreateProject}
-            onCreateProjectManual={handleCreateProjectManual}
-            onSelectProject={handleSelectProject}
-            onCloseProject={handleCloseProject}
-            onReopenProject={handleReopenProject}
-            onArchiveProject={handleArchiveProject}
-            onRestoreProject={handleRestoreProject}
-            selectedProject={selectedProject}
-            error={error}
-          />
-        </div>
-        <div className="panel-right">
-          <ProjectDetail
-            project={selectedProject}
-            projectLoading={projectLoading}
-            onAsk={handleAskQuestion}
-            onConfirmSuggestion={handleConfirmSuggestion}
-            onClearHistory={handleClearHistory}
-            onUpdateVehicle={handleUpdateVehicle}
-            onRefreshProject={handleSelectProject}
-            token={token}
-            aiEnabled={aiEnabled}
-          />
-        </div>
-      </main>
-    </div>
+    <WorkshopShell
+      token={token}
+      user={user}
+      projects={projects}
+      archivedProjects={archivedProjects}
+      selectedProject={selectedProject}
+      projectLoading={projectLoading}
+      aiEnabled={aiEnabled}
+      error={error}
+      canEnterAdmin={canEnterAdmin}
+      onCreateProject={handleCreateProject}
+      onCreateProjectManual={handleCreateProjectManual}
+      onSelectProject={handleSelectProject}
+      onCloseProject={handleCloseProject}
+      onReopenProject={handleReopenProject}
+      onArchiveProject={handleArchiveProject}
+      onRestoreProject={handleRestoreProject}
+      onAskQuestion={handleAskQuestion}
+      onConfirmSuggestion={handleConfirmSuggestion}
+      onClearHistory={handleClearHistory}
+      onUpdateVehicle={handleUpdateVehicle}
+      onRefreshProject={handleSelectProject}
+      onProjectCreated={reloadProjects}
+      onEnterAdmin={() => setAdminView(true)}
+      onLogout={handleLogout}
+    />
   );
 }
 

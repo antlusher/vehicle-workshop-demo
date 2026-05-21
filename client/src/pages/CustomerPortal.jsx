@@ -22,6 +22,10 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded';
 import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
+import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
+import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded';
+import PhotoLibraryRoundedIcon from '@mui/icons-material/PhotoLibraryRounded';
+import ReceiptRoundedIcon from '@mui/icons-material/ReceiptRounded';
 
 import { getMyVehicles, addVehicle, getVehicleStats, getVehicleJobs, getJobReport, getJobQuote,
          getVehicleMot, getVehicleGallery, getVehicleInvoices, getInvoiceDetail, downloadInvoicePdf,
@@ -70,8 +74,9 @@ const cpTheme = createTheme({
       styleOverrides: {
         root: {
           textTransform: 'none', fontWeight: 500, fontSize: '0.875rem',
-          minWidth: 'auto', padding: '10px 20px',
+          minWidth: 'auto', padding: '10px 16px', minHeight: 48,
           '&.Mui-selected': { fontWeight: 600 },
+          '& .MuiTab-iconWrapper': { marginBottom: 0 },
         },
       },
     },
@@ -830,11 +835,11 @@ function ProjectPhotosTab({ vehicleId, token }) {
 // ── Vehicle Detail ────────────────────────────────────────────────────────────
 
 const VEHICLE_TABS = [
-  { id: 'jobs',    label: 'Jobs' },
-  { id: 'mycar',   label: 'My Car' },
-  { id: 'photos',  label: 'Photos' },
-  { id: 'gallery', label: 'Report Gallery' },
-  { id: 'invoices',label: 'Invoices' },
+  { id: 'jobs',    label: 'Jobs',          icon: <HandymanRoundedIcon sx={{ fontSize: 18 }} /> },
+  { id: 'mycar',   label: 'My Car',        icon: <DirectionsCarRoundedIcon sx={{ fontSize: 18 }} /> },
+  { id: 'photos',  label: 'Photos',        icon: <PhotoCameraRoundedIcon sx={{ fontSize: 18 }} /> },
+  { id: 'gallery', label: 'Report Gallery',icon: <PhotoLibraryRoundedIcon sx={{ fontSize: 18 }} /> },
+  { id: 'invoices',label: 'Invoices',      icon: <ReceiptRoundedIcon sx={{ fontSize: 18 }} /> },
 ];
 
 function VehicleDetail({ vehicle, token, onBack, workshopName }) {
@@ -872,7 +877,7 @@ function VehicleDetail({ vehicle, token, onBack, workshopName }) {
       <Box sx={{ borderBottom: '1px solid #E1E2EC', mb: 3 }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons="auto"
           sx={{ '& .MuiTabs-indicator': { height: 3, borderRadius: '3px 3px 0 0' } }}>
-          {VEHICLE_TABS.map((t) => <Tab key={t.id} value={t.id} label={t.label} disableRipple />)}
+          {VEHICLE_TABS.map((t) => <Tab key={t.id} value={t.id} label={t.label} icon={t.icon} iconPosition="start" disableRipple />)}
         </Tabs>
       </Box>
 

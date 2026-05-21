@@ -4,6 +4,14 @@ import VoiceInput from '../components/VoiceInput';
 import * as api from '../services/api';
 import * as reportsApi from '../services/reportsApi';
 import QuoteTab from './QuoteTab';
+import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
+import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
+import MenuBookRoundedIcon from '@mui/icons-material/MenuBookRounded';
+import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
+import AssignmentRoundedIcon from '@mui/icons-material/AssignmentRounded';
+import RequestQuoteRoundedIcon from '@mui/icons-material/RequestQuoteRounded';
+import DescriptionRoundedIcon from '@mui/icons-material/DescriptionRounded';
+import PhotoCameraRoundedIcon from '@mui/icons-material/PhotoCameraRounded';
 
 const OPEN_ENDED_START = /^(which|what|how|describe|list|name|where|when|who)\b/i;
 const PREP_WH = /^(at|in|on|under|during|from|by|for)\s+(what|which|how|where|when|who)\b/i;
@@ -1412,27 +1420,39 @@ function ProjectDetail({ project, projectLoading, onAsk, onConfirmSuggestion, on
         </button>
       )}
 
-      <div className="chat-tabs">
-        <button type="button" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>Diagnosis</button>
-        <button type="button" className={`chat-tab${tab === 'vehicle' ? ' active' : ''}`} onClick={() => setTab('vehicle')}>Vehicle Info</button>
-        <button type="button" className={`chat-tab${tab === 'specs' ? ' active' : ''}`} onClick={() => setTab('specs')}>Quick Reference</button>
+      <div className="chat-tabs" role="tablist">
+        <button type="button" role="tab" className={`chat-tab${tab === 'diagnosis' ? ' active' : ''}`} onClick={() => setTab('diagnosis')}>
+          <PsychologyRoundedIcon className="chat-tab-icon" /><span>Diagnosis</span>
+        </button>
+        <button type="button" role="tab" className={`chat-tab${tab === 'vehicle' ? ' active' : ''}`} onClick={() => setTab('vehicle')}>
+          <DirectionsCarRoundedIcon className="chat-tab-icon" /><span>Vehicle Info</span>
+        </button>
+        <button type="button" role="tab" className={`chat-tab${tab === 'specs' ? ' active' : ''}`} onClick={() => setTab('specs')}>
+          <MenuBookRoundedIcon className="chat-tab-icon" /><span>Quick Reference</span>
+        </button>
         {project.vehicleId && (
-          <button type="button" className={`chat-tab${tab === 'history' ? ' active' : ''}${(project.vehicleHistory?.confirmedFixes?.length ?? 0) > 0 ? ' chat-tab--alert' : ''}`} onClick={() => setTab('history')}>
-            Vehicle History
+          <button type="button" role="tab" className={`chat-tab${tab === 'history' ? ' active' : ''}${(project.vehicleHistory?.confirmedFixes?.length ?? 0) > 0 ? ' chat-tab--alert' : ''}`} onClick={() => setTab('history')}>
+            <HistoryRoundedIcon className="chat-tab-icon" /><span>Vehicle History</span>
             {(project.vehicleHistory?.jobTimeline?.length ?? 0) > 1 && (
               <span className="chat-tab-badge">{project.vehicleHistory.jobTimeline.length}</span>
             )}
           </button>
         )}
         {project.registration && (
-          <button type="button" className={`chat-tab${tab === 'mot' ? ' active' : ''}`} onClick={() => setTab('mot')}>
-            MOT History
+          <button type="button" role="tab" className={`chat-tab${tab === 'mot' ? ' active' : ''}`} onClick={() => setTab('mot')}>
+            <AssignmentRoundedIcon className="chat-tab-icon" /><span>MOT History</span>
             {project.motTests?.length > 0 && <span className="chat-tab-badge">{project.motTests.length}</span>}
           </button>
         )}
-        <button type="button" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>Quote</button>
-        <button type="button" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>Customer Report</button>
-        <button type="button" className={`chat-tab${tab === 'photos' ? ' active' : ''}`} onClick={() => setTab('photos')}>Photos</button>
+        <button type="button" role="tab" className={`chat-tab${tab === 'quote' ? ' active' : ''}`} onClick={() => setTab('quote')}>
+          <RequestQuoteRoundedIcon className="chat-tab-icon" /><span>Quote</span>
+        </button>
+        <button type="button" role="tab" className={`chat-tab${tab === 'report' ? ' active' : ''}`} onClick={() => setTab('report')}>
+          <DescriptionRoundedIcon className="chat-tab-icon" /><span>Customer Report</span>
+        </button>
+        <button type="button" role="tab" className={`chat-tab${tab === 'photos' ? ' active' : ''}`} onClick={() => setTab('photos')}>
+          <PhotoCameraRoundedIcon className="chat-tab-icon" /><span>Photos</span>
+        </button>
       </div>
 
       {tab === 'vehicle' && <div className="tab-pane"><VehicleInfo project={project} onUpdateVehicle={onUpdateVehicle} /></div>}
