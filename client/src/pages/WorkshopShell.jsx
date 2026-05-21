@@ -19,7 +19,19 @@ const NAV_ITEMS = [
   { id: 'customers', label: 'Customers', Icon: PeopleRoundedIcon },
 ];
 
-function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onProjects, onAdmin, onAssistant, onLogout }) {
+function QuickAddBadge({ onClick }) {
+  return (
+    <button
+      type="button"
+      className="nav-quick-add-badge"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+    >
+      <AddRoundedIcon style={{ fontSize: 11 }} />
+    </button>
+  );
+}
+
+function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, quickAdd, onProjects, onAdmin, onAssistant, onLogout }) {
   return (
     <nav className="app-nav-rail">
       <div className="nav-rail-brand">Ask<br />Bob</div>
@@ -28,23 +40,29 @@ function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onPr
         {NAV_ITEMS.map(({ id, label, Icon }) => {
           const active = section === id;
           return (
-            <button key={id} type="button"
-              className={`nav-rail-item${active ? ' active' : ''}`}
-              onClick={() => onSection(id)}>
-              <div className="nav-rail-pill">
-                <Icon style={{ fontSize: 22 }} />
-              </div>
-              <span className="nav-rail-label">{label}</span>
-            </button>
+            <div key={id} className="nav-item-wrapper">
+              <button type="button"
+                className={`nav-rail-item${active ? ' active' : ''}`}
+                onClick={() => onSection(id)}>
+                <div className="nav-rail-pill">
+                  <Icon style={{ fontSize: 22 }} />
+                </div>
+                <span className="nav-rail-label">{label}</span>
+              </button>
+              {quickAdd?.[id] && <QuickAddBadge onClick={quickAdd[id]} />}
+            </div>
           );
         })}
 
-        <button type="button" className="nav-rail-item" onClick={onProjects}>
-          <div className="nav-rail-pill">
-            <DirectionsCarRoundedIcon style={{ fontSize: 22 }} />
-          </div>
-          <span className="nav-rail-label">Projects</span>
-        </button>
+        <div className="nav-item-wrapper">
+          <button type="button" className="nav-rail-item" onClick={onProjects}>
+            <div className="nav-rail-pill">
+              <DirectionsCarRoundedIcon style={{ fontSize: 22 }} />
+            </div>
+            <span className="nav-rail-label">Projects</span>
+          </button>
+          {quickAdd?.projects && <QuickAddBadge onClick={quickAdd.projects} />}
+        </div>
 
         {aiEnabled && (
           <button type="button" className="nav-rail-item" onClick={onAssistant}>
@@ -91,11 +109,18 @@ export default function WorkshopShell({
   const [section, setSection] = useState('work');
   const [showAssistant, setShowAssistant] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
+  const [openCreateCustomer, setOpenCreateCustomer] = useState(false);
 
   const handleSelectProject = (id) => {
     onSelectProject(id);
     setShowProjects(false);
     setSection('work');
+  };
+
+  const quickAdd = {
+    projects:  () => setShowProjects(true),
+    invoices:  () => setSection('invoices'),
+    customers: () => { setSection('customers'); setOpenCreateCustomer(true); },
   };
 
   return (
@@ -140,6 +165,7 @@ export default function WorkshopShell({
         userEmail={user?.email}
         canEnterAdmin={canEnterAdmin}
         aiEnabled={aiEnabled}
+        quickAdd={quickAdd}
         onProjects={() => setShowProjects(true)}
         onAdmin={onEnterAdmin}
         onAssistant={() => setShowAssistant(true)}
@@ -154,45 +180,29 @@ export default function WorkshopShell({
         )}
 
         {section === 'work' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(100vh - 56px)' }}>
-            <div className="quickadd-row">
-              <button className="quickadd-card" onClick={() => setShowProjects(true)}>
-                <div className="quickadd-card-icon">
-                  <AddRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
-                </div>
-                New project
-              </button>
-              <button className="quickadd-card" onClick={() => setSection('customers')}>
-                <div className="quickadd-card-icon">
-                  <PeopleRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
-                </div>
-                Customer
-              </button>
-              <button className="quickadd-card" onClick={() => setSection('invoices')}>
-                <div className="quickadd-card-icon">
-                  <ReceiptLongRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
-                </div>
-                Quote
-              </button>
-            </div>
-            <div className="panel-right" style={{ flex: 1, height: 'auto', minHeight: 0 }}>
-              <ProjectDetail
-                project={selectedProject}
-                projectLoading={projectLoading}
-                onAsk={onAskQuestion}
-                onConfirmSuggestion={onConfirmSuggestion}
-                onClearHistory={onClearHistory}
-                onUpdateVehicle={onUpdateVehicle}
-                onRefreshProject={onRefreshProject}
-                token={token}
-                aiEnabled={aiEnabled}
-              />
-            </div>
+          <div className="panel-right" style={{ height: 'calc(100vh - 56px)' }}>
+            <ProjectDetail
+              project={selectedProject}
+              projectLoading={projectLoading}
+              onAsk={onAskQuestion}
+              onConfirmSuggestion={onConfirmSuggestion}
+              onClearHistory={onClearHistory}
+              onUpdateVehicle={onUpdateVehicle}
+              onRefreshProject={onRefreshProject}
+              token={token}
+              aiEnabled={aiEnabled}
+            />
           </div>
         )}
 
-        {section === 'invoices'  && <Invoices  token={token} />}
-        {section === 'customers' && <Customers token={token} />}
+        {section === 'invoices' && <Invoices token={token} />}
+        {section === 'customers' && (
+          <Customers
+            token={token}
+            openCreate={openCreateCustomer}
+            onOpenCreateHandled={() => setOpenCreateCustomer(false)}
+          />
+        )}
       </div>
     </div>
   );

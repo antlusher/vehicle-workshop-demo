@@ -342,7 +342,7 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   );
 }
 
-export default function Customers({ token }) {
+export default function Customers({ token, openCreate, onOpenCreateHandled }) {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
@@ -353,6 +353,10 @@ export default function Customers({ token }) {
 
   const load = () => getCustomers(token).then(setCustomers).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (openCreate) { setShowCreate(true); onOpenCreateHandled?.(); }
+  }, [openCreate]);
 
   const handleCreate = async (e) => {
     e.preventDefault();

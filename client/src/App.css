@@ -298,42 +298,38 @@ label { display: block; margin-bottom: 4px; font-weight: 600; }
   gap: 12px;
 }
 
-/* ── Quick-add row ── */
-.quickadd-row {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.quickadd-card {
+/* ── Nav quick-add badge ── */
+.nav-item-wrapper {
+  position: relative;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 18px;
-  background: white;
-  border: 1.5px solid #E0E2EC;
-  border-radius: 14px;
-  cursor: pointer;
-  color: #374151;
-  font-size: 0.78rem;
-  font-weight: 500;
-  min-width: 84px;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-  box-shadow: 0 2px 8px rgba(15,23,42,0.04);
 }
-.quickadd-card:hover {
-  border-color: #1558D6;
-  color: #1558D6;
-  background: #f0f4ff;
-}
-.quickadd-card-icon {
-  width: 30px;
-  height: 30px;
+.nav-quick-add-badge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: rgba(21,88,214,0.09);
+  background: #16a34a;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 2px solid rgba(255,255,255,0.25);
+  padding: 0;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(22,163,74,0.5);
+}
+.nav-item-wrapper:hover .nav-quick-add-badge {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .panel-right {
