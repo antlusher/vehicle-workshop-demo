@@ -234,7 +234,7 @@ function InvoiceModal({ invoiceId, token, onClose, onStatusChange }) {
 
 // ── Create invoice modal ──────────────────────────────────────────────────────
 
-function CreateInvoiceModal({ token, onClose, onCreated }) {
+export function CreateInvoiceModal({ token, onClose, onCreated }) {
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [registration, setRegistration] = useState('');

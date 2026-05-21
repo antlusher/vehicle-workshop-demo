@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import Projects from './Projects';
+import Projects, { CreateProjectDialog } from './Projects';
 import ProjectDetail from './ProjectDetail';
-import Invoices from './admin/Invoices';
-import Customers from './admin/Customers';
+import Invoices, { CreateInvoiceModal } from './admin/Invoices';
+import Customers, { CreateCustomerModal } from './admin/Customers';
 import AdminAgent from './AdminAgent';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
@@ -109,7 +109,9 @@ export default function WorkshopShell({
   const [section, setSection] = useState('work');
   const [showAssistant, setShowAssistant] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
-  const [openCreateCustomer, setOpenCreateCustomer] = useState(false);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false);
 
   const handleSelectProject = (id) => {
     onSelectProject(id);
@@ -118,9 +120,9 @@ export default function WorkshopShell({
   };
 
   const quickAdd = {
-    projects:  () => setShowProjects(true),
-    invoices:  () => setSection('invoices'),
-    customers: () => { setSection('customers'); setOpenCreateCustomer(true); },
+    projects:  () => setShowCreateProject(true),
+    customers: () => setShowCreateCustomer(true),
+    invoices:  () => setShowCreateInvoice(true),
   };
 
   return (
@@ -130,6 +132,30 @@ export default function WorkshopShell({
           token={token}
           onClose={() => setShowAssistant(false)}
           onProjectCreated={onProjectCreated}
+        />
+      )}
+
+      {showCreateProject && (
+        <CreateProjectDialog
+          open={showCreateProject}
+          onClose={() => setShowCreateProject(false)}
+          onLookup={async (reg) => { await onCreateProject(reg); setShowCreateProject(false); }}
+          onManual={async (form) => { await onCreateProjectManual(form); setShowCreateProject(false); }}
+          error={error}
+        />
+      )}
+      {showCreateCustomer && (
+        <CreateCustomerModal
+          token={token}
+          onClose={() => setShowCreateCustomer(false)}
+          onCreated={() => setShowCreateCustomer(false)}
+        />
+      )}
+      {showCreateInvoice && (
+        <CreateInvoiceModal
+          token={token}
+          onClose={() => setShowCreateInvoice(false)}
+          onCreated={() => setShowCreateInvoice(false)}
         />
       )}
 
@@ -196,13 +222,7 @@ export default function WorkshopShell({
         )}
 
         {section === 'invoices' && <Invoices token={token} />}
-        {section === 'customers' && (
-          <Customers
-            token={token}
-            openCreate={openCreateCustomer}
-            onOpenCreateHandled={() => setOpenCreateCustomer(false)}
-          />
-        )}
+        {section === 'customers' && <Customers token={token} />}
       </div>
     </div>
   );

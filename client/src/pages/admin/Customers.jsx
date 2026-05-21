@@ -342,21 +342,11 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   );
 }
 
-export default function Customers({ token, openCreate, onOpenCreateHandled }) {
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
+export function CreateCustomerModal({ token, onClose, onCreated }) {
   const [form, setForm] = useState({ email: '', ...EMPTY_DETAILS });
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
-
-  const load = () => getCustomers(token).then(setCustomers).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
-
-  useEffect(() => {
-    if (openCreate) { setShowCreate(true); onOpenCreateHandled?.(); }
-  }, [openCreate]);
+  const f = (key) => ({ value: form[key], onChange: (e) => setForm((s) => ({ ...s, [key]: e.target.value })) });
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -364,12 +354,77 @@ export default function Customers({ token, openCreate, onOpenCreateHandled }) {
     setCreating(true); setCreateError('');
     try {
       const c = await createCustomer(form, token);
-      setCustomers((cs) => [c, ...cs]);
-      setForm({ email: '', ...EMPTY_DETAILS });
-      setShowCreate(false);
-    } catch (err) { setCreateError(err.message); }
-    finally { setCreating(false); }
+      onCreated?.(c);
+      onClose();
+    } catch (err) { setCreateError(err.message); setCreating(false); }
   };
+
+  return (
+    <div className="preview-overlay" onClick={onClose}>
+      <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <div className="preview-modal-header">
+          <h3>New customer</h3>
+          <button className="preview-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="kb-form-row">
+              <div className="kb-form-group">
+                <label>Full name</label>
+                <input placeholder="Jane Smith" {...f('name')} />
+              </div>
+              <div className="kb-form-group">
+                <label>Phone</label>
+                <input type="tel" placeholder="07700 900000" {...f('phone')} />
+              </div>
+            </div>
+            <div className="kb-form-group">
+              <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
+              <input type="email" required {...f('email')} placeholder="customer@example.com" />
+              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '4px 0 0' }}>An activation email will be sent automatically.</p>
+            </div>
+            <div className="kb-form-group">
+              <label>Address line 1</label>
+              <input placeholder="123 High Street" {...f('addressLine1')} />
+            </div>
+            <div className="kb-form-group">
+              <label>Address line 2</label>
+              <input placeholder="Apartment, suite, etc." {...f('addressLine2')} />
+            </div>
+            <div className="kb-form-row">
+              <div className="kb-form-group">
+                <label>Town / City</label>
+                <input placeholder="London" {...f('city')} />
+              </div>
+              <div className="kb-form-group">
+                <label>Postcode</label>
+                <input placeholder="SW1A 1AA" {...f('postcode')} />
+              </div>
+            </div>
+            {createError && <p className="error">{createError}</p>}
+            <div className="kb-form-actions">
+              <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
+              <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Customers({ token, openCreate, onOpenCreateHandled }) {
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const load = () => getCustomers(token).then(setCustomers).finally(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (openCreate) { setShowCreate(true); onOpenCreateHandled?.(); }
+  }, [openCreate]);
 
   const handleUpdated = (updated) => {
     setCustomers((cs) => cs.map((c) => c.id === updated.id ? { ...c, ...updated } : c));
@@ -381,8 +436,6 @@ export default function Customers({ token, openCreate, onOpenCreateHandled }) {
     setSelected(null);
   };
 
-  const f = (key) => ({ value: form[key], onChange: (e) => setForm((s) => ({ ...s, [key]: e.target.value })) });
-
   return (
     <div>
       <div className="admin-toolbar">
@@ -391,56 +444,11 @@ export default function Customers({ token, openCreate, onOpenCreateHandled }) {
       </div>
 
       {showCreate && (
-        <div className="preview-overlay" onClick={() => setShowCreate(false)}>
-          <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
-            <div className="preview-modal-header">
-              <h3>New customer</h3>
-              <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
-            </div>
-            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
-              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div className="kb-form-row">
-                  <div className="kb-form-group">
-                    <label>Full name</label>
-                    <input placeholder="Jane Smith" {...f('name')} />
-                  </div>
-                  <div className="kb-form-group">
-                    <label>Phone</label>
-                    <input type="tel" placeholder="07700 900000" {...f('phone')} />
-                  </div>
-                </div>
-                <div className="kb-form-group">
-                  <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
-                  <input type="email" required {...f('email')} placeholder="customer@example.com" />
-                  <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '4px 0 0' }}>An activation email will be sent automatically.</p>
-                </div>
-                <div className="kb-form-group">
-                  <label>Address line 1</label>
-                  <input placeholder="123 High Street" {...f('addressLine1')} />
-                </div>
-                <div className="kb-form-group">
-                  <label>Address line 2</label>
-                  <input placeholder="Apartment, suite, etc." {...f('addressLine2')} />
-                </div>
-                <div className="kb-form-row">
-                  <div className="kb-form-group">
-                    <label>Town / City</label>
-                    <input placeholder="London" {...f('city')} />
-                  </div>
-                  <div className="kb-form-group">
-                    <label>Postcode</label>
-                    <input placeholder="SW1A 1AA" {...f('postcode')} />
-                  </div>
-                </div>
-                {createError && <p className="error">{createError}</p>}
-                <div className="kb-form-actions">
-                  <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
-                  <button type="button" className="secondary" onClick={() => setShowCreate(false)}>Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+        <CreateCustomerModal
+          token={token}
+          onClose={() => setShowCreate(false)}
+          onCreated={(c) => { setCustomers((cs) => [c, ...cs]); }}
+        />
       )}
 
       <div>

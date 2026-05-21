@@ -98,7 +98,7 @@ function ProjectCard({ project, selected, onSelect, onArchive, onRestore, archiv
   );
 }
 
-function CreateProjectDialog({ open, onClose, onLookup, onManual, error }) {
+export function CreateProjectDialog({ open, onClose, onLookup, onManual, error }) {
   const [tab, setTab] = useState('lookup');
   const [identifier, setIdentifier] = useState('');
   const [form, setForm] = useState(EMPTY_MANUAL);
@@ -120,6 +120,7 @@ function CreateProjectDialog({ open, onClose, onLookup, onManual, error }) {
   };
 
   return (
+    <ThemeProvider theme={m3Theme}>
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>New project</DialogTitle>
       <DialogContent sx={{ pt: '8px !important' }}>
@@ -185,6 +186,7 @@ function CreateProjectDialog({ open, onClose, onLookup, onManual, error }) {
         </Button>
       </DialogActions>
     </Dialog>
+    </ThemeProvider>
   );
 }
 
