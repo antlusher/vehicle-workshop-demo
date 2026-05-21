@@ -21,6 +21,16 @@ function App() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key !== 'Escape') return;
+      const overlays = document.querySelectorAll('.preview-overlay');
+      if (overlays.length) overlays[overlays.length - 1].click();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, []);
+
+  useEffect(() => {
     const handleForcedLogout = () => {
       setToken(null);
       setUser(null);
