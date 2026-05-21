@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getCustomers, createCustomer, updateCustomer, deleteCustomer, getCustomerVehicles, linkVehicle, unlinkVehicle } from '../../services/customerApi';
 import { getCustomerStats, setCustomerPassword } from '../../services/adminApi';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 const EMPTY_DETAILS = { name: '', phone: '', addressLine1: '', addressLine2: '', city: '', postcode: '', email: '' };
 
@@ -109,10 +110,12 @@ function VehiclesTab({ customer, token }) {
     finally { setLinking(false); }
   };
 
-  const handleUnlink = async (vehicleId) => {
-    if (!confirm('Remove this vehicle from the customer?')) return;
-    await unlinkVehicle(customer.id, vehicleId, token);
-    setVehicles((vs) => vs.filter((v) => v.id !== vehicleId));
+  const [unlinkTarget, setUnlinkTarget] = useState(null);
+
+  const handleUnlink = async () => {
+    await unlinkVehicle(customer.id, unlinkTarget, token);
+    setVehicles((vs) => vs.filter((v) => v.id !== unlinkTarget));
+    setUnlinkTarget(null);
   };
 
   if (loading) return <p className="admin-loading">Loading…</p>;
@@ -130,7 +133,7 @@ function VehiclesTab({ customer, token }) {
                 <span style={{ marginLeft: 8, fontSize: '0.8rem', color: '#6b7280' }}>{[v.make, v.model, v.year].filter(Boolean).join(' ')}</span>
               </div>
               <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 10px', background: '#fee2e2', color: '#b91c1c' }}
-                onClick={() => handleUnlink(v.id)}>Remove</button>
+                onClick={() => setUnlinkTarget(v.id)}>Remove</button>
             </div>
           ))}
         </div>
@@ -151,6 +154,15 @@ function VehiclesTab({ customer, token }) {
       <p style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: 6 }}>
         The vehicle must have been looked up or created in Ask Bob first.
       </p>
+      <ConfirmDialog
+        open={!!unlinkTarget}
+        title="Remove vehicle"
+        message="Remove this vehicle from the customer? The vehicle record itself will not be deleted."
+        confirmLabel="Remove"
+        danger
+        onConfirm={handleUnlink}
+        onCancel={() => setUnlinkTarget(null)}
+      />
     </>
   );
 }
@@ -227,6 +239,7 @@ function DetailsTab({ customer, token, onUpdated }) {
 function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   const [tab, setTab] = useState('activity');
   const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [showPwForm, setShowPwForm] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
@@ -247,7 +260,7 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete ${customer.name || customer.email}? This cannot be undone. Their vehicles and job history will remain but the customer record will be removed.`)) return;
+    setConfirmDelete(false);
     setDeleting(true);
     try {
       await deleteCustomer(customer.id, token);
@@ -290,7 +303,7 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
           <button
             className="secondary"
             style={{ fontSize: '0.8rem', background: '#fee2e2', color: '#b91c1c', borderColor: '#fecaca' }}
-            onClick={handleDelete}
+            onClick={() => setConfirmDelete(true)}
             disabled={deleting}
           >
             {deleting ? 'Deleting…' : 'Delete customer'}
@@ -314,6 +327,15 @@ function CustomerDetail({ customer, token, onClose, onUpdated, onDeleted }) {
           </form>
         )}
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete customer"
+        message={`Delete ${customer.name || customer.email}? This cannot be undone. Their vehicles and job history will remain but the customer record will be removed.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }
@@ -359,51 +381,59 @@ export default function Customers({ token }) {
     <div>
       <div className="admin-toolbar">
         <h2 className="admin-page-title" style={{ margin: 0 }}>Customers</h2>
-        <button onClick={() => setShowCreate((s) => !s)}>{showCreate ? 'Cancel' : '+ New customer'}</button>
+        <button onClick={() => setShowCreate(true)}>+ New customer</button>
       </div>
 
       {showCreate && (
-        <div className="kb-form-wrap" style={{ marginBottom: 20 }}>
-          <h3 className="admin-section-title" style={{ marginTop: 0 }}>Create customer account</h3>
-          <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="kb-form-row">
-              <div className="kb-form-group">
-                <label>Full name</label>
-                <input placeholder="Jane Smith" {...f('name')} />
-              </div>
-              <div className="kb-form-group">
-                <label>Phone</label>
-                <input type="tel" placeholder="07700 900000" {...f('phone')} />
-              </div>
+        <div className="preview-overlay" onClick={() => setShowCreate(false)}>
+          <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>New customer</h3>
+              <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
             </div>
-            <div className="kb-form-group">
-              <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
-              <input type="email" required {...f('email')} placeholder="customer@example.com" />
-              <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '4px 0 0' }}>An activation email will be sent automatically.</p>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div className="kb-form-row">
+                  <div className="kb-form-group">
+                    <label>Full name</label>
+                    <input placeholder="Jane Smith" {...f('name')} />
+                  </div>
+                  <div className="kb-form-group">
+                    <label>Phone</label>
+                    <input type="tel" placeholder="07700 900000" {...f('phone')} />
+                  </div>
+                </div>
+                <div className="kb-form-group">
+                  <label>Email <span style={{ color: '#b91c1c' }}>*</span></label>
+                  <input type="email" required {...f('email')} placeholder="customer@example.com" />
+                  <p style={{ fontSize: '0.75rem', color: '#9ca3af', margin: '4px 0 0' }}>An activation email will be sent automatically.</p>
+                </div>
+                <div className="kb-form-group">
+                  <label>Address line 1</label>
+                  <input placeholder="123 High Street" {...f('addressLine1')} />
+                </div>
+                <div className="kb-form-group">
+                  <label>Address line 2</label>
+                  <input placeholder="Apartment, suite, etc." {...f('addressLine2')} />
+                </div>
+                <div className="kb-form-row">
+                  <div className="kb-form-group">
+                    <label>Town / City</label>
+                    <input placeholder="London" {...f('city')} />
+                  </div>
+                  <div className="kb-form-group">
+                    <label>Postcode</label>
+                    <input placeholder="SW1A 1AA" {...f('postcode')} />
+                  </div>
+                </div>
+                {createError && <p className="error">{createError}</p>}
+                <div className="kb-form-actions">
+                  <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
+                  <button type="button" className="secondary" onClick={() => setShowCreate(false)}>Cancel</button>
+                </div>
+              </form>
             </div>
-            <div className="kb-form-group">
-              <label>Address line 1</label>
-              <input placeholder="123 High Street" {...f('addressLine1')} />
-            </div>
-            <div className="kb-form-group">
-              <label>Address line 2</label>
-              <input placeholder="Apartment, suite, etc." {...f('addressLine2')} />
-            </div>
-            <div className="kb-form-row">
-              <div className="kb-form-group">
-                <label>Town / City</label>
-                <input placeholder="London" {...f('city')} />
-              </div>
-              <div className="kb-form-group">
-                <label>Postcode</label>
-                <input placeholder="SW1A 1AA" {...f('postcode')} />
-              </div>
-            </div>
-            {createError && <p className="error">{createError}</p>}
-            <div className="kb-form-actions">
-              <button type="submit" disabled={creating}>{creating ? 'Creating…' : 'Create account'}</button>
-            </div>
-          </form>
+          </div>
         </div>
       )}
 

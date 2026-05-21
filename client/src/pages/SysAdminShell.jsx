@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ConfirmDialog from '../components/ConfirmDialog';
 import DashboardRoundedIcon from '@mui/icons-material/DashboardRounded';
 import StoreRoundedIcon from '@mui/icons-material/StoreRounded';
 import PsychologyRoundedIcon from '@mui/icons-material/PsychologyRounded';
@@ -124,35 +125,60 @@ function BrainPage({ token }) {
   const [filterCat, setFilterCat] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const load = (params = {}) => getBrainEntries(token, params).then(setEntries).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
 
   const editingEntry = editingId ? entries.find((e) => e.id === editingId) : null;
+  const modalOpen = showForm || !!editingEntry;
+  const closeModal = () => { setShowForm(false); setEditingId(null); };
 
   return (
     <div>
       <div className="admin-toolbar">
         <h2 className="admin-page-title" style={{ margin: 0 }}>Knowledge Brain</h2>
-        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add entry</button>}
+        <button onClick={() => { setShowForm(true); setEditingId(null); }}>+ Add entry</button>
       </div>
       <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: 20 }}>
         Global knowledge shared across all workshops during AI diagnosis. The AI automatically draws from these entries alongside each workshop's own knowledge base.
       </p>
 
-      {showForm && (
-        <BrainEntryForm
-          onSave={async (form) => { await createBrainEntry(form, token); setShowForm(false); load(); }}
-          onCancel={() => setShowForm(false)}
-        />
+      {modalOpen && (
+        <div className="preview-overlay" onClick={closeModal}>
+          <div className="preview-modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>{editingEntry ? 'Edit brain entry' : 'New brain entry'}</h3>
+              <button className="preview-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              {showForm && (
+                <BrainEntryForm
+                  onSave={async (form) => { await createBrainEntry(form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+              {editingEntry && (
+                <BrainEntryForm
+                  initial={editingEntry}
+                  onSave={async (form) => { await updateBrainEntry(editingId, form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
+        </div>
       )}
-      {editingEntry && (
-        <BrainEntryForm
-          initial={editingEntry}
-          onSave={async (form) => { await updateBrainEntry(editingId, form, token); setEditingId(null); load(); }}
-          onCancel={() => setEditingId(null)}
-        />
-      )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete brain entry"
+        message="Delete this global knowledge entry? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => { await deleteBrainEntry(confirmDeleteId, token); setEntries((x) => x.filter((i) => i.id !== confirmDeleteId)); setConfirmDeleteId(null); }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input style={{ flex: 1, padding: '6px 10px', borderRadius: 6, border: '1px solid #334155', background: '#1e293b', color: '#e2e8f0' }}
@@ -182,7 +208,7 @@ function BrainPage({ token }) {
                   <td style={{ whiteSpace: 'nowrap', display: 'flex', gap: 6 }}>
                     <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
                     <button className="secondary" style={{ fontSize: '0.72rem', padding: '2px 8px', color: '#dc2626', borderColor: '#dc2626' }}
-                      onClick={async () => { if (!window.confirm('Delete this global entry?')) return; await deleteBrainEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>
+                      onClick={() => setConfirmDeleteId(e.id)}>
                       Delete
                     </button>
                   </td>
@@ -205,6 +231,7 @@ function SysAdminsPage({ token, currentUserEmail }) {
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState('');
   const [deleting, setDeleting] = useState(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState(null);
 
   const load = () => getSysAdmins(token).then(setAdmins).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
@@ -249,7 +276,7 @@ function SysAdminsPage({ token, currentUserEmail }) {
                         className="secondary"
                         style={{ fontSize: '0.75rem', padding: '3px 10px', color: '#dc2626', borderColor: '#dc2626' }}
                         disabled={deleting === a.id}
-                        onClick={() => { if (window.confirm(`Remove sysadmin ${a.email}?`)) handleDelete(a.id); }}
+                        onClick={() => setConfirmRemoveId(a.id)}
                       >
                         {deleting === a.id ? '…' : 'Remove'}
                       </button>
@@ -263,6 +290,16 @@ function SysAdminsPage({ token, currentUserEmail }) {
         )}
       </div>
       {err && <p className="error" style={{ marginBottom: 12 }}>{err}</p>}
+
+      <ConfirmDialog
+        open={!!confirmRemoveId}
+        title="Remove sysadmin"
+        message={`Remove ${admins.find((a) => a.id === confirmRemoveId)?.email} as a system administrator?`}
+        confirmLabel="Remove"
+        danger
+        onConfirm={() => { handleDelete(confirmRemoveId); setConfirmRemoveId(null); }}
+        onCancel={() => setConfirmRemoveId(null)}
+      />
 
       <h3 className="admin-section-title">Add sysadmin</h3>
       <div className="kb-form-wrap">

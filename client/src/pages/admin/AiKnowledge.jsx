@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import ConfirmDialog from '../../components/ConfirmDialog';
 import {
   getAiRequests, getAiStats, getConversation, estimateCost,
   getLearningStats,
@@ -622,33 +623,53 @@ function KnowledgeBaseTab({ token }) {
     load(params);
   };
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const editingEntry = editingId ? entries.find((e) => e.id === editingId) : null;
+  const modalOpen = showForm || !!editingEntry;
+  const closeModal = () => { setShowForm(false); setEditingId(null); };
 
   return (
     <div>
       <div className="admin-toolbar" style={{ marginBottom: 16 }}>
         <span />
-        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add entry</button>}
+        <button onClick={() => { setShowForm(true); setEditingId(null); }}>+ Add entry</button>
       </div>
 
-      {showForm && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">New entry</h3>
-          <KbForm engines={engines} transmissions={transmissions} onSave={async (form) => { await createKbEntry(form, token); setShowForm(false); load(); }} onCancel={() => setShowForm(false)} />
+      {modalOpen && (
+        <div className="preview-overlay" onClick={closeModal}>
+          <div className="preview-modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>{editingEntry ? 'Edit entry' : 'New entry'}</h3>
+              <button className="preview-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              {showForm && (
+                <KbForm engines={engines} transmissions={transmissions}
+                  onSave={async (form) => { await createKbEntry(form, token); closeModal(); load(); }}
+                  onCancel={closeModal} />
+              )}
+              {editingEntry && (
+                <KbForm
+                  engines={engines} transmissions={transmissions}
+                  initial={{ category: editingEntry.category, make: editingEntry.make || '', model: editingEntry.model || '', year_from: editingEntry.year_from || '', year_to: editingEntry.year_to || '', fault_code: editingEntry.fault_code || '', title: editingEntry.title, content: editingEntry.content, source: editingEntry.source || '', engine_id: editingEntry.engine_id || '', transmission_id: editingEntry.transmission_id || '' }}
+                  onSave={async (form) => { await updateKbEntry(editingId, form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {editingEntry && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">Edit entry</h3>
-          <KbForm
-            engines={engines} transmissions={transmissions}
-            initial={{ category: editingEntry.category, make: editingEntry.make || '', model: editingEntry.model || '', year_from: editingEntry.year_from || '', year_to: editingEntry.year_to || '', fault_code: editingEntry.fault_code || '', title: editingEntry.title, content: editingEntry.content, source: editingEntry.source || '', engine_id: editingEntry.engine_id || '', transmission_id: editingEntry.transmission_id || '' }}
-            onSave={async (form) => { await updateKbEntry(editingId, form, token); setEditingId(null); load(); }}
-            onCancel={() => setEditingId(null)}
-          />
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete entry"
+        message="Delete this knowledge base entry? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => { await deleteKbEntry(confirmDeleteId, token); setEntries((x) => x.filter((i) => i.id !== confirmDeleteId)); setConfirmDeleteId(null); }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <div className="admin-filters">
         <input className="admin-search" placeholder="Search title, content or fault code..." value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
@@ -690,7 +711,7 @@ function KnowledgeBaseTab({ token }) {
                     {!e.is_global && (
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
-                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm('Delete this entry?')) return; await deleteKbEntry(e.id, token); setEntries((x) => x.filter((i) => i.id !== e.id)); }}>Delete</button>
+                        <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={() => setConfirmDeleteId(e.id)}>Delete</button>
                       </div>
                     )}
                   </td>

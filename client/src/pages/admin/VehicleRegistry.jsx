@@ -4,6 +4,7 @@ import {
   getTransmissions, createTransmission, updateTransmission, deleteTransmission,
   getVehicleTypes, createVehicleType, updateVehicleType, deleteVehicleType,
 } from '../../services/registryApi';
+import ConfirmDialog from '../../components/ConfirmDialog';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -100,7 +101,10 @@ function EnginesTab({ token }) {
   const load = () => getEngines(token).then(setEngines).finally(() => setLoading(false));
   useEffect(() => { load(); }, [token]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const editingEntry = editingId ? engines.find((e) => e.id === editingId) : null;
+  const modalOpen = showForm || !!editingEntry;
+  const closeModal = () => { setShowForm(false); setEditingId(null); };
 
   return (
     <div>
@@ -108,26 +112,39 @@ function EnginesTab({ token }) {
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
           Engine records are shared across makes. A fix confirmed on any vehicle with this engine surfaces for all others.
         </p>
-        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add engine</button>}
+        <button onClick={() => { setShowForm(true); setEditingId(null); }}>+ Add engine</button>
       </div>
 
-      {showForm && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">New engine</h3>
-          <EngineForm onSave={async (form) => { await createEngine(form, token); setShowForm(false); load(); }} onCancel={() => setShowForm(false)} />
+      {modalOpen && (
+        <div className="preview-overlay" onClick={closeModal}>
+          <div className="preview-modal" style={{ maxWidth: 600 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>{editingEntry ? 'Edit engine' : 'New engine'}</h3>
+              <button className="preview-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              {showForm && <EngineForm onSave={async (form) => { await createEngine(form, token); closeModal(); load(); }} onCancel={closeModal} />}
+              {editingEntry && (
+                <EngineForm
+                  initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
+                  onSave={async (form) => { await updateEngine(editingId, form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {editingEntry && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">Edit engine</h3>
-          <EngineForm
-            initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
-            onSave={async (form) => { await updateEngine(editingId, form, token); setEditingId(null); load(); }}
-            onCancel={() => setEditingId(null)}
-          />
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete engine"
+        message={`Delete engine ${engines.find((e) => e.id === confirmDeleteId)?.code}? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => { await deleteEngine(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       {loading ? <p className="admin-loading">Loading...</p> : (
         <div className="admin-table-wrap">
@@ -147,7 +164,7 @@ function EnginesTab({ token }) {
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(e.id); setShowForm(false); }}>Edit</button>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm(`Delete engine ${e.code}?`)) return; await deleteEngine(e.id, token); load(); }}>Delete</button>
+                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={() => setConfirmDeleteId(e.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -229,7 +246,10 @@ function TransmissionsTab({ token }) {
   const load = () => getTransmissions(token).then(setTransmissions).finally(() => setLoading(false));
   useEffect(() => { load(); }, [token]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const editingEntry = editingId ? transmissions.find((t) => t.id === editingId) : null;
+  const modalOpen = showForm || !!editingEntry;
+  const closeModal = () => { setShowForm(false); setEditingId(null); };
 
   return (
     <div>
@@ -237,26 +257,39 @@ function TransmissionsTab({ token }) {
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
           Transmission records enable cross-make knowledge sharing for gearbox faults.
         </p>
-        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add transmission</button>}
+        <button onClick={() => { setShowForm(true); setEditingId(null); }}>+ Add transmission</button>
       </div>
 
-      {showForm && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">New transmission</h3>
-          <TransmissionForm onSave={async (form) => { await createTransmission(form, token); setShowForm(false); load(); }} onCancel={() => setShowForm(false)} />
+      {modalOpen && (
+        <div className="preview-overlay" onClick={closeModal}>
+          <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>{editingEntry ? 'Edit transmission' : 'New transmission'}</h3>
+              <button className="preview-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              {showForm && <TransmissionForm onSave={async (form) => { await createTransmission(form, token); closeModal(); load(); }} onCancel={closeModal} />}
+              {editingEntry && (
+                <TransmissionForm
+                  initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
+                  onSave={async (form) => { await updateTransmission(editingId, form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {editingEntry && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">Edit transmission</h3>
-          <TransmissionForm
-            initial={{ ...editingEntry, known_makes: editingEntry.known_makes || [] }}
-            onSave={async (form) => { await updateTransmission(editingId, form, token); setEditingId(null); load(); }}
-            onCancel={() => setEditingId(null)}
-          />
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete transmission"
+        message={`Delete transmission ${transmissions.find((t) => t.id === confirmDeleteId)?.code}? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => { await deleteTransmission(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       {loading ? <p className="admin-loading">Loading...</p> : (
         <div className="admin-table-wrap">
@@ -275,7 +308,7 @@ function TransmissionsTab({ token }) {
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(t.id); setShowForm(false); }}>Edit</button>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm(`Delete transmission ${t.code}?`)) return; await deleteTransmission(t.id, token); load(); }}>Delete</button>
+                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={() => setConfirmDeleteId(t.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>
@@ -417,7 +450,10 @@ function VehicleTypesTab({ token }) {
 
   useEffect(() => { load(); }, [token]);
 
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const editingEntry = editingId ? vehicleTypes.find((v) => v.id === editingId) : null;
+  const modalOpen = showForm || !!editingEntry;
+  const closeModal = () => { setShowForm(false); setEditingId(null); };
 
   const filtered = vehicleTypes.filter((v) => {
     if (!search) return true;
@@ -431,31 +467,44 @@ function VehicleTypesTab({ token }) {
         <p style={{ margin: 0, color: '#6b7280', fontSize: '0.9rem' }}>
           Link make/model variants to their engine and transmission. Projects assigned to a vehicle type inherit cross-make knowledge.
         </p>
-        {!showForm && !editingId && <button onClick={() => setShowForm(true)}>+ Add vehicle type</button>}
+        <button onClick={() => { setShowForm(true); setEditingId(null); }}>+ Add vehicle type</button>
       </div>
 
-      {showForm && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">New vehicle type</h3>
-          <VehicleTypeForm
-            engines={engines} transmissions={transmissions}
-            onSave={async (form) => { await createVehicleType(form, token); setShowForm(false); load(); }}
-            onCancel={() => setShowForm(false)}
-          />
+      {modalOpen && (
+        <div className="preview-overlay" onClick={closeModal}>
+          <div className="preview-modal" style={{ maxWidth: 700 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>{editingEntry ? 'Edit vehicle type' : 'New vehicle type'}</h3>
+              <button className="preview-close" onClick={closeModal}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+              {showForm && (
+                <VehicleTypeForm engines={engines} transmissions={transmissions}
+                  onSave={async (form) => { await createVehicleType(form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+              {editingEntry && (
+                <VehicleTypeForm
+                  initial={editingEntry} engines={engines} transmissions={transmissions}
+                  onSave={async (form) => { await updateVehicleType(editingId, form, token); closeModal(); load(); }}
+                  onCancel={closeModal}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {editingEntry && (
-        <div className="kb-form-wrap">
-          <h3 className="admin-section-title">Edit vehicle type</h3>
-          <VehicleTypeForm
-            initial={editingEntry}
-            engines={engines} transmissions={transmissions}
-            onSave={async (form) => { await updateVehicleType(editingId, form, token); setEditingId(null); load(); }}
-            onCancel={() => setEditingId(null)}
-          />
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmDeleteId}
+        title="Delete vehicle type"
+        message={(() => { const v = vehicleTypes.find((x) => x.id === confirmDeleteId); return v ? `Delete ${v.make} ${v.model}? This cannot be undone.` : 'Delete this vehicle type?'; })()}
+        confirmLabel="Delete"
+        danger
+        onConfirm={async () => { await deleteVehicleType(confirmDeleteId, token); setConfirmDeleteId(null); load(); }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
 
       <div style={{ marginBottom: 12 }}>
         <input className="admin-search" placeholder="Filter by make, model or engine code..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ maxWidth: 360 }} />
@@ -490,7 +539,7 @@ function VehicleTypesTab({ token }) {
                   <td>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px' }} onClick={() => { setEditingId(v.id); setShowForm(false); }}>Edit</button>
-                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={async () => { if (!confirm(`Delete ${v.make} ${v.model}?`)) return; await deleteVehicleType(v.id, token); load(); }}>Delete</button>
+                      <button className="secondary" style={{ fontSize: '0.75rem', padding: '3px 10px', background: '#fee2e2', color: '#b91c1c' }} onClick={() => setConfirmDeleteId(v.id)}>Delete</button>
                     </div>
                   </td>
                 </tr>

@@ -171,8 +171,7 @@ function CreateUserForm({ token, onCreated, onCancel }) {
   };
 
   return (
-    <div className="kb-form-wrap">
-      <h3 className="admin-section-title" style={{ marginTop: 0 }}>New user</h3>
+    <div>
       <form className="kb-form" onSubmit={handleSubmit}>
         <div className="kb-form-row">
           <div className="kb-form-group">
@@ -244,11 +243,21 @@ export default function Users({ token, currentUserEmail }) {
         </div>
 
         {showCreate && (
-          <CreateUserForm
-            token={token}
-            onCreated={() => { setShowCreate(false); load(); }}
-            onCancel={() => setShowCreate(false)}
-          />
+          <div className="preview-overlay" onClick={() => setShowCreate(false)}>
+            <div className="preview-modal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+              <div className="preview-modal-header">
+                <h3>New user</h3>
+                <button className="preview-close" onClick={() => setShowCreate(false)}>✕</button>
+              </div>
+              <div className="preview-modal-body" style={{ padding: '20px 24px' }}>
+                <CreateUserForm
+                  token={token}
+                  onCreated={() => { setShowCreate(false); load(); }}
+                  onCancel={() => setShowCreate(false)}
+                />
+              </div>
+            </div>
+          </div>
         )}
 
         <div className="admin-table-wrap">
