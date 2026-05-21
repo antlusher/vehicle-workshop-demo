@@ -227,9 +227,10 @@ export default function Users({ token, currentUserEmail }) {
 
   useEffect(() => { load(); }, [token]);
 
-  const filtered = users.filter((u) =>
-    !search || u.email.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = users.filter((u) => {
+    if (u.role === 'customer') return false;
+    return !search || u.email.toLowerCase().includes(search.toLowerCase());
+  });
 
   if (loading) return <p className="admin-loading">Loading...</p>;
 
