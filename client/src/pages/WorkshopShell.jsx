@@ -5,6 +5,7 @@ import Invoices from './admin/Invoices';
 import Customers from './admin/Customers';
 import AdminAgent from './AdminAgent';
 import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
+import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
 import PeopleRoundedIcon from '@mui/icons-material/PeopleRounded';
 import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
@@ -17,7 +18,7 @@ const NAV_ITEMS = [
   { id: 'customers', label: 'Customers', Icon: PeopleRoundedIcon },
 ];
 
-function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onAdmin, onAssistant, onLogout }) {
+function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onProjects, onAdmin, onAssistant, onLogout }) {
   return (
     <nav className="app-nav-rail">
       <div className="nav-rail-brand">Ask<br />Bob</div>
@@ -36,6 +37,13 @@ function NavRail({ section, onSection, userEmail, canEnterAdmin, aiEnabled, onAd
             </button>
           );
         })}
+
+        <button type="button" className="nav-rail-item" onClick={onProjects}>
+          <div className="nav-rail-pill">
+            <DirectionsCarRoundedIcon style={{ fontSize: 22 }} />
+          </div>
+          <span className="nav-rail-label">Projects</span>
+        </button>
 
         {aiEnabled && (
           <button type="button" className="nav-rail-item" onClick={onAssistant}>
@@ -81,6 +89,13 @@ export default function WorkshopShell({
 }) {
   const [section, setSection] = useState('work');
   const [showAssistant, setShowAssistant] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
+
+  const handleSelectProject = (id) => {
+    onSelectProject(id);
+    setShowProjects(false);
+    setSection('work');
+  };
 
   return (
     <div className="main-shell">
@@ -92,12 +107,39 @@ export default function WorkshopShell({
         />
       )}
 
+      {showProjects && (
+        <div className="preview-overlay" onClick={() => setShowProjects(false)}>
+          <div className="preview-modal" style={{ maxWidth: 780 }} onClick={(e) => e.stopPropagation()}>
+            <div className="preview-modal-header">
+              <h3>Projects</h3>
+              <button className="preview-close" onClick={() => setShowProjects(false)}>✕</button>
+            </div>
+            <div className="preview-modal-body" style={{ padding: '16px 24px 24px' }}>
+              <Projects
+                projects={projects}
+                archivedProjects={archivedProjects}
+                onCreateProject={onCreateProject}
+                onCreateProjectManual={onCreateProjectManual}
+                onSelectProject={handleSelectProject}
+                onCloseProject={onCloseProject}
+                onReopenProject={onReopenProject}
+                onArchiveProject={onArchiveProject}
+                onRestoreProject={onRestoreProject}
+                selectedProject={selectedProject}
+                error={error}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <NavRail
         section={section}
         onSection={setSection}
         userEmail={user?.email}
         canEnterAdmin={canEnterAdmin}
         aiEnabled={aiEnabled}
+        onProjects={() => setShowProjects(true)}
         onAdmin={onEnterAdmin}
         onAssistant={() => setShowAssistant(true)}
         onLogout={onLogout}
@@ -111,33 +153,18 @@ export default function WorkshopShell({
         )}
 
         {section === 'work' && (
-          <div className="app-stack">
-            <Projects
-              projects={projects}
-              archivedProjects={archivedProjects}
-              onCreateProject={onCreateProject}
-              onCreateProjectManual={onCreateProjectManual}
-              onSelectProject={onSelectProject}
-              onCloseProject={onCloseProject}
-              onReopenProject={onReopenProject}
-              onArchiveProject={onArchiveProject}
-              onRestoreProject={onRestoreProject}
-              selectedProject={selectedProject}
-              error={error}
+          <div className="panel-right" style={{ height: 'calc(100vh - 32px)', borderRadius: 18 }}>
+            <ProjectDetail
+              project={selectedProject}
+              projectLoading={projectLoading}
+              onAsk={onAskQuestion}
+              onConfirmSuggestion={onConfirmSuggestion}
+              onClearHistory={onClearHistory}
+              onUpdateVehicle={onUpdateVehicle}
+              onRefreshProject={onRefreshProject}
+              token={token}
+              aiEnabled={aiEnabled}
             />
-            <div className="panel-right">
-              <ProjectDetail
-                project={selectedProject}
-                projectLoading={projectLoading}
-                onAsk={onAskQuestion}
-                onConfirmSuggestion={onConfirmSuggestion}
-                onClearHistory={onClearHistory}
-                onUpdateVehicle={onUpdateVehicle}
-                onRefreshProject={onRefreshProject}
-                token={token}
-                aiEnabled={aiEnabled}
-              />
-            </div>
           </div>
         )}
 
