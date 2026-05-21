@@ -4,6 +4,7 @@ import ProjectDetail from './ProjectDetail';
 import Invoices from './admin/Invoices';
 import Customers from './admin/Customers';
 import AdminAgent from './AdminAgent';
+import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import HandymanRoundedIcon from '@mui/icons-material/HandymanRounded';
 import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
 import ReceiptLongRoundedIcon from '@mui/icons-material/ReceiptLongRounded';
@@ -153,18 +154,40 @@ export default function WorkshopShell({
         )}
 
         {section === 'work' && (
-          <div className="panel-right" style={{ height: 'calc(100vh - 32px)', borderRadius: 18 }}>
-            <ProjectDetail
-              project={selectedProject}
-              projectLoading={projectLoading}
-              onAsk={onAskQuestion}
-              onConfirmSuggestion={onConfirmSuggestion}
-              onClearHistory={onClearHistory}
-              onUpdateVehicle={onUpdateVehicle}
-              onRefreshProject={onRefreshProject}
-              token={token}
-              aiEnabled={aiEnabled}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: 'calc(100vh - 56px)' }}>
+            <div className="quickadd-row">
+              <button className="quickadd-card" onClick={() => setShowProjects(true)}>
+                <div className="quickadd-card-icon">
+                  <AddRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
+                </div>
+                New project
+              </button>
+              <button className="quickadd-card" onClick={() => setSection('customers')}>
+                <div className="quickadd-card-icon">
+                  <PeopleRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
+                </div>
+                Customer
+              </button>
+              <button className="quickadd-card" onClick={() => setSection('invoices')}>
+                <div className="quickadd-card-icon">
+                  <ReceiptLongRoundedIcon style={{ fontSize: 17, color: '#1558D6' }} />
+                </div>
+                Quote
+              </button>
+            </div>
+            <div className="panel-right" style={{ flex: 1, height: 'auto', minHeight: 0 }}>
+              <ProjectDetail
+                project={selectedProject}
+                projectLoading={projectLoading}
+                onAsk={onAskQuestion}
+                onConfirmSuggestion={onConfirmSuggestion}
+                onClearHistory={onClearHistory}
+                onUpdateVehicle={onUpdateVehicle}
+                onRefreshProject={onRefreshProject}
+                token={token}
+                aiEnabled={aiEnabled}
+              />
+            </div>
           </div>
         )}
 

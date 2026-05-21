@@ -3,14 +3,14 @@ import {
   Box, Typography, Card, CardActionArea, CardContent,
   Chip, IconButton, Button,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, Menu,
+  TextField, MenuItem,
 } from '@mui/material';
 import { ThemeProvider, createTheme, alpha } from '@mui/material/styles';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
-import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
 import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
 import ArchiveRoundedIcon from '@mui/icons-material/ArchiveRounded';
+import UnarchiveRoundedIcon from '@mui/icons-material/UnarchiveRounded';
 
 const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'Mild Hybrid', 'Plug-in Hybrid', 'LPG', 'Other'];
 const BODY_TYPES = ['Hatchback', 'Saloon', 'Estate', 'SUV', 'MPV', 'Van', 'Pickup', 'Coupe', 'Convertible', 'Other'];
@@ -36,30 +36,27 @@ const m3Theme = createTheme({
   },
 });
 
-function ProjectCard({ project, selected, onSelect, onClose, onReopen, onArchive, archived }) {
-  const [anchor, setAnchor] = useState(null);
+const GREEN = '#16a34a';
 
-  const openMenu = (e) => { e.stopPropagation(); setAnchor(e.currentTarget); };
-  const closeMenu = () => setAnchor(null);
-
+function ProjectCard({ project, selected, onSelect, onArchive, onRestore, archived }) {
   const reg = project.registration || project.vin || '—';
   const vehicleLine = [project.make, project.model, project.year].filter(Boolean).join(' ') || 'Unknown vehicle';
 
   return (
     <Card sx={{
-      minWidth: 164, maxWidth: 180, flexShrink: 0,
-      border: selected ? '2px solid #1558D6' : '1.5px solid #E0E2EC',
-      bgcolor: selected ? alpha('#1558D6', 0.05) : 'background.paper',
+      border: selected ? `2px solid ${GREEN}` : '1.5px solid #E0E2EC',
+      bgcolor: selected ? alpha(GREEN, 0.04) : 'background.paper',
       transition: 'border-color 0.15s, background-color 0.15s',
-      opacity: archived ? 0.6 : 1,
+      opacity: archived ? 0.65 : 1,
       position: 'relative',
     }}>
       <CardActionArea onClick={() => !archived && onSelect(project.id)} disabled={archived}>
         <CardContent sx={{ p: 1.5, pb: '10px !important' }}>
           <Typography sx={{
             fontFamily: '"Courier New", "Roboto Mono", monospace',
-            fontWeight: 700, fontSize: '1rem', letterSpacing: '0.04em',
-            textTransform: 'uppercase', color: selected ? 'primary.main' : 'text.primary',
+            fontWeight: 700, fontSize: '0.95rem', letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            color: selected ? GREEN : 'text.primary',
             lineHeight: 1.2,
           }}>
             {reg}
@@ -69,48 +66,33 @@ function ProjectCard({ project, selected, onSelect, onClose, onReopen, onArchive
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
             <Chip
-              label={archived ? 'Archived' : project.closed ? 'Closed' : 'Open'}
+              label={archived ? 'Archived' : selected ? 'Active' : project.closed ? 'Closed' : 'Open'}
               size="small"
               sx={{
                 height: 20, px: 0.25,
-                bgcolor: archived ? '#E0E2EC' : project.closed ? '#E0E2EC' : alpha('#1558D6', 0.1),
-                color: archived ? 'text.secondary' : project.closed ? 'text.secondary' : 'primary.main',
+                bgcolor: archived ? '#E0E2EC' : selected ? alpha(GREEN, 0.12) : project.closed ? '#E0E2EC' : alpha('#1558D6', 0.1),
+                color: archived ? 'text.secondary' : selected ? GREEN : project.closed ? 'text.secondary' : '#1558D6',
               }}
             />
-            {!archived && <ChevronRightRoundedIcon sx={{ fontSize: 16, color: selected ? 'primary.main' : 'text.secondary' }} />}
+            {!archived && <ChevronRightRoundedIcon sx={{ fontSize: 16, color: selected ? GREEN : 'text.secondary' }} />}
           </Box>
         </CardContent>
       </CardActionArea>
 
-      {/* Actions menu */}
       <Box sx={{ position: 'absolute', top: 4, right: 4 }}>
-        <IconButton size="small" onClick={openMenu} sx={{ width: 22, height: 22, opacity: 0.5, '&:hover': { opacity: 1 } }}>
-          <MoreVertRoundedIcon sx={{ fontSize: 14 }} />
-        </IconButton>
-        <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={closeMenu}
-          PaperProps={{ sx: { borderRadius: 3, minWidth: 160 } }}>
-          {!archived && !project.closed && (
-            <MenuItem onClick={() => { onClose(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
-              Close project
-            </MenuItem>
-          )}
-          {!archived && project.closed && (
-            <MenuItem onClick={() => { onReopen(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
-              Reopen project
-            </MenuItem>
-          )}
-          {archived && (
-            <MenuItem onClick={() => { onReopen && onReopen(project.id); closeMenu(); }} sx={{ fontSize: '0.875rem' }}>
-              Restore project
-            </MenuItem>
-          )}
-          {!archived && (
-            <MenuItem onClick={(e) => { onArchive(e, project.id); closeMenu(); }}
-              sx={{ fontSize: '0.875rem', color: 'error.main' }}>
-              Delete project
-            </MenuItem>
-          )}
-        </Menu>
+        {archived ? (
+          <IconButton size="small" title="Restore project"
+            onClick={(e) => { e.stopPropagation(); onRestore(project.id); }}
+            sx={{ width: 22, height: 22, opacity: 0.35, '&:hover': { opacity: 1, color: 'primary.main' } }}>
+            <UnarchiveRoundedIcon sx={{ fontSize: 13 }} />
+          </IconButton>
+        ) : (
+          <IconButton size="small" title="Archive project"
+            onClick={(e) => { e.stopPropagation(); onArchive(project.id); }}
+            sx={{ width: 22, height: 22, opacity: 0.25, '&:hover': { opacity: 1, color: 'error.main' } }}>
+            <ArchiveRoundedIcon sx={{ fontSize: 13 }} />
+          </IconButton>
+        )}
       </Box>
     </Card>
   );
@@ -210,6 +192,7 @@ function Projects({ projects, archivedProjects, onCreateProject, onCreateProject
   onCloseProject, onReopenProject, onArchiveProject, onRestoreProject, selectedProject, error }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState(null);
 
   const handleLookup = async (cleaned) => {
     await onCreateProject(cleaned);
@@ -221,18 +204,6 @@ function Projects({ projects, archivedProjects, onCreateProject, onCreateProject
     setDialogOpen(false);
   };
 
-  const handleArchive = (e, projectId) => {
-    e.stopPropagation();
-    if (window.confirm('Remove this project? Data and history are kept and can be restored.')) {
-      onArchiveProject(projectId);
-    }
-  };
-
-  const handleRestore = (e, projectId) => {
-    e?.stopPropagation();
-    onRestoreProject(projectId);
-  };
-
   const displayProjects = showArchived ? (archivedProjects || []) : projects;
   const openCount = projects.filter(p => !p.closed).length;
   const closedCount = projects.filter(p => p.closed).length;
@@ -240,74 +211,63 @@ function Projects({ projects, archivedProjects, onCreateProject, onCreateProject
 
   return (
     <ThemeProvider theme={m3Theme}>
-      <Box sx={{ bgcolor: 'background.paper', border: '1.5px solid #E0E2EC', borderRadius: 3, px: 2, py: 1.5 }}>
-
-        {/* Header row */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
-          <DirectionsCarRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-          <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'text.primary', flex: 1 }}>
-            Projects
-            {!showArchived && (openCount > 0 || closedCount > 0) && (
-              <Typography component="span" sx={{ ml: 1, fontSize: '0.8rem', color: 'text.secondary', fontWeight: 400 }}>
-                {openCount} open{closedCount > 0 ? `, ${closedCount} closed` : ''}
-              </Typography>
-            )}
-          </Typography>
-          {archivedCount > 0 && (
-            <Button size="small" variant={showArchived ? 'contained' : 'outlined'}
-              startIcon={<ArchiveRoundedIcon sx={{ fontSize: 14 }} />}
-              onClick={() => setShowArchived(v => !v)}
-              sx={{ fontSize: '0.75rem', px: 1.5, py: 0.5, height: 28 }}>
-              Archived ({archivedCount})
-            </Button>
-          )}
-        </Box>
-
-        {/* Card strip */}
-        <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 0.5,
-          '&::-webkit-scrollbar': { height: 4 },
-          '&::-webkit-scrollbar-thumb': { bgcolor: '#C4C6D0', borderRadius: 2 },
-        }}>
-
-          {/* New project card (only in active view) */}
-          {!showArchived && (
-            <Card sx={{ minWidth: 120, maxWidth: 120, flexShrink: 0, border: '1.5px dashed #C4C6D0',
-              bgcolor: 'transparent', boxShadow: 'none !important' }}>
-              <CardActionArea onClick={() => setDialogOpen(true)}
-                sx={{ height: '100%', minHeight: 96, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                <Box sx={{ width: 32, height: 32, borderRadius: '50%', bgcolor: alpha('#1558D6', 0.1),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <AddRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
-                </Box>
-                <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontWeight: 500, textAlign: 'center' }}>
-                  New project
-                </Typography>
-              </CardActionArea>
-            </Card>
-          )}
-
-          {/* Project cards */}
-          {displayProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              selected={selectedProject?.id === project.id}
-              archived={showArchived}
-              onSelect={onSelectProject}
-              onClose={onCloseProject}
-              onReopen={showArchived ? (id) => handleRestore(null, id) : onReopenProject}
-              onArchive={handleArchive}
-            />
-          ))}
-
-          {/* Empty state */}
-          {displayProjects.length === 0 && (
-            <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', py: 2.5, px: 1 }}>
-              {showArchived ? 'No archived projects.' : 'No projects yet — create your first one.'}
+      {/* Header row */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+        <DirectionsCarRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'text.primary', flex: 1 }}>
+          {!showArchived && (openCount > 0 || closedCount > 0) && (
+            <Typography component="span" sx={{ ml: 0, fontSize: '0.82rem', color: 'text.secondary', fontWeight: 400 }}>
+              {openCount} open{closedCount > 0 ? `, ${closedCount} closed` : ''}
             </Typography>
           )}
-        </Box>
+        </Typography>
+        {archivedCount > 0 && (
+          <Button size="small" variant={showArchived ? 'contained' : 'outlined'}
+            startIcon={<ArchiveRoundedIcon sx={{ fontSize: 14 }} />}
+            onClick={() => setShowArchived(v => !v)}
+            sx={{ fontSize: '0.75rem', px: 1.5, py: 0.5, height: 28 }}>
+            Archived ({archivedCount})
+          </Button>
+        )}
+      </Box>
+
+      {/* 4-column grid */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1.5 }}>
+
+        {/* New project card (active view only) */}
+        {!showArchived && (
+          <Card sx={{ border: '1.5px dashed #C4C6D0', bgcolor: 'transparent', boxShadow: 'none !important' }}>
+            <CardActionArea onClick={() => setDialogOpen(true)}
+              sx={{ minHeight: 96, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+              <Box sx={{ width: 32, height: 32, borderRadius: '50%', bgcolor: alpha('#1558D6', 0.1),
+                display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AddRoundedIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+              </Box>
+              <Typography sx={{ fontSize: '0.75rem', color: 'primary.main', fontWeight: 500 }}>
+                New project
+              </Typography>
+            </CardActionArea>
+          </Card>
+        )}
+
+        {displayProjects.map((project) => (
+          <ProjectCard
+            key={project.id}
+            project={project}
+            selected={selectedProject?.id === project.id}
+            archived={showArchived}
+            onSelect={onSelectProject}
+            onArchive={(id) => setArchiveConfirm(id)}
+            onRestore={onRestoreProject}
+          />
+        ))}
+
+        {displayProjects.length === 0 && (
+          <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', py: 2.5, gridColumn: '1 / -1' }}>
+            {showArchived ? 'No archived projects.' : 'No projects yet — create your first one.'}
+          </Typography>
+        )}
       </Box>
 
       <CreateProjectDialog
@@ -317,6 +277,22 @@ function Projects({ projects, archivedProjects, onCreateProject, onCreateProject
         onManual={handleManual}
         error={error}
       />
+
+      {/* Archive confirmation */}
+      <Dialog open={!!archiveConfirm} onClose={() => setArchiveConfirm(null)}
+        PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Archive this project?</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ fontSize: '0.9rem', color: 'text.secondary' }}>
+            The project and its history are kept. You can restore it from the archived view.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+          <Button onClick={() => setArchiveConfirm(null)} variant="outlined">Cancel</Button>
+          <Button onClick={() => { onArchiveProject(archiveConfirm); setArchiveConfirm(null); }}
+            variant="contained" color="error">Archive</Button>
+        </DialogActions>
+      </Dialog>
     </ThemeProvider>
   );
 }
